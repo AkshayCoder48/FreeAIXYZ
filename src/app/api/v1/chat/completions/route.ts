@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { complete, resolveModel, type PromptTurn } from "@/lib/toolbaz";
+import {
+  complete,
+  resolveModel,
+  ToolbazError,
+  type PromptTurn,
+} from "@/lib/toolbaz";
 import {
   generateCompletionId,
   generateToolCallId,
@@ -30,6 +35,35 @@ function errorResponse(
     error: { message, type, param: null, code },
   };
   return NextResponse.json(body, { status });
+}
+
+/**
+ * Translate an upstream Toolbaz error into an OpenAI-shaped error response
+ * with an appropriate HTTP status:
+ *   - INVALID_MODEL / suspicious   → 400 (bad request)
+ *   - quota exceeded               → 429 (rate limited)
+ *   - empty output                 → 502 (bad gateway, retryable)
+ *   - anything else                → 502
+ */
+function upstreamErrorResponse(err: unknown) {
+  if (err instanceof ToolbazError) {
+    const detail = err.upstreamBody;
+    let status = 502;
+    let code = "toolbaz_error";
+    if (/INVALID_MODEL/i.test(detail)) {
+      status = 400;
+      code = "invalid_model";
+    } else if (/quota/i.test(detail)) {
+      status = 429;
+      code = "rate_limit_exceeded";
+    } else if (/suspicious/i.test(detail)) {
+      status = 400;
+      code = "upstream_rejected";
+    }
+    return errorResponse(err.message, status, "upstream_error", code);
+  }
+  const message = err instanceof Error ? err.message : "Unknown upstream error";
+  return errorResponse(message, 502, "upstream_error", "toolbaz_error");
 }
 
 /** POST /api/v1/chat/completions — OpenAI-compatible chat completions. */
@@ -88,8 +122,7 @@ async function jsonCompletion(
   try {
     result = await complete({ model, turns });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown upstream error";
-    return errorResponse(message, 502, "upstream_error", "toolbaz_error");
+    return upstreamErrorResponse(err);
   }
 
   const promptText = turns.map((t) => t.text).join("\n");
@@ -343,7 +376,11 @@ async function streamCompletion(
           return;
         }
         const message =
-          err instanceof Error ? err.message : "Unknown upstream error";
+          err instanceof ToolbazError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Unknown upstream error";
         send({
           id,
           object: "chat.completion.chunk",

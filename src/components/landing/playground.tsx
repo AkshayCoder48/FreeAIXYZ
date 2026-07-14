@@ -17,15 +17,18 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { TOOLBAZ_MODELS } from "@/lib/toolbaz";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-const MODELS = [
-  { id: "toolbaz-v4.5-fast", label: "toolbaz-v4.5-fast", hint: "Fast & balanced" },
-];
+const MODELS = TOOLBAZ_MODELS.map((m) => ({
+  id: m.id,
+  label: m.id,
+  hint: m.description,
+}));
 
 const SAMPLE_PROMPTS = [
   "Write a haiku about serverless APIs",

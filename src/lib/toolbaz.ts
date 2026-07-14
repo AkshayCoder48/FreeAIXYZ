@@ -274,9 +274,8 @@ export async function complete({
   });
 
   if (!res.ok) {
-    throw new Error(
-      `writing.php returned HTTP ${res.status}: ${await res.text().catch(() => "")}`,
-    );
+    const raw = await res.text().catch(() => "");
+    throw new ToolbazError(model, res.status, raw);
   }
 
   const raw = await res.text();
@@ -284,21 +283,98 @@ export async function complete({
   return { text: cleaned, model, sessionId };
 }
 
-/** Models exposed by the gateway. */
-export const TOOLBAZ_MODELS = [
-  {
-    id: "toolbaz-v4.5-fast",
-    upstream: "toolbaz-v4.5-fast",
-    description: "Toolbaz v4.5 Fast — the only upstream model currently accepted",
-  },
-] as const;
+/**
+ * Typed error for upstream Toolbaz failures. Produces a clear, actionable
+ * message and exposes the raw upstream body so the client can inspect it.
+ *
+ * Common upstream failures we translate:
+ *   - `INVALID_MODEL`            → the model id isn't recognized by Toolbaz
+ *   - `Output is empty!`         → model returned nothing (often a quota blip
+ *                                  or a model that refused the prompt)
+ *   - `quota limit`              → per-minute rate limit on that model
+ *   - `Suspicious Activity`      → captcha/fingerprint rejected
+ */
+export class ToolbazError extends Error {
+  readonly upstreamStatus: number;
+  readonly upstreamBody: string;
+  readonly model: string;
+
+  constructor(model: string, status: number, body: string) {
+    const detail = body.trim().slice(0, 300);
+    let message: string;
+    if (/INVALID_MODEL/i.test(detail)) {
+      message = `Model "${model}" is not recognized by the upstream. See GET /api/v1/models for supported ids.`;
+    } else if (/empty/i.test(detail)) {
+      message = `Upstream returned an empty response for model "${model}". This is often a transient quota issue — retry, or try a different model.`;
+    } else if (/quota/i.test(detail)) {
+      message = `Per-minute quota for model "${model}" exceeded. Retry shortly or use a different model.`;
+    } else if (/suspicious/i.test(detail)) {
+      message = `Upstream rejected the request as suspicious. Retry.`;
+    } else {
+      message = `Upstream error for model "${model}" (HTTP ${status}): ${detail}`;
+    }
+    super(message);
+    this.name = "ToolbazError";
+    this.model = model;
+    this.upstreamStatus = status;
+    this.upstreamBody = detail;
+  }
+}
 
 /**
- * Resolve any incoming model name to a real upstream Toolbaz model.
- * Toolbaz only accepts `toolbaz-v4.5-fast` (other names return INVALID_MODEL),
- * so all OpenAI-style aliases collapse to it.
+ * Models Toolbaz supports, as advertised on the toolbaz.com writer UI.
+ * Each is passed through verbatim to `writing.php`'s `model` field.
+ * `unfiltered_x` is intentionally omitted from the public list (it bypasses
+ * safety filters), but is still accepted if a caller requests it explicitly.
+ */
+export interface ToolbazModel {
+  id: string;
+  description: string;
+}
+
+export const TOOLBAZ_MODELS: readonly ToolbazModel[] = [
+  { id: "toolbaz-v4.5-fast", description: "Toolbaz v4.5 Fast — quick & balanced" },
+  { id: "toolbaz_v4", description: "ToolBaz v4 — general purpose" },
+  { id: "gpt-5", description: "GPT-5" },
+  { id: "gpt-5.2", description: "GPT-5.2" },
+  { id: "gpt-4o-latest", description: "GPT-4o (latest)" },
+  { id: "gpt-oss-120b", description: "GPT-OSS-120B — open-weight" },
+  { id: "o3-mini", description: "o3-mini — reasoning" },
+  { id: "claude-sonnet-4", description: "Claude Sonnet 4" },
+  { id: "gemini-2.5-flash", description: "Gemini 2.5 Flash" },
+  { id: "gemini-2.5-pro", description: "Gemini 2.5 Pro" },
+  { id: "gemini-3-flash", description: "Gemini 3 Flash" },
+  { id: "gemini-3.1-flash-lite", description: "Gemini 3.1 Flash Lite" },
+  { id: "deepseek-r1", description: "DeepSeek R1 — reasoning" },
+  { id: "deepseek-v3", description: "DeepSeek V3" },
+  { id: "deepseek-v3.1", description: "DeepSeek V3.1" },
+  { id: "grok-4-fast", description: "Grok 4 Fast" },
+  { id: "llama-4-maverick", description: "Llama 4 Maverick" },
+  { id: "L3-70B-Euryale-v2.1", description: "L3-70B Euryale v2.1" },
+  { id: "midnight-rose", description: "Midnight Rose" },
+] as const;
+
+/** The default model used when a request omits `model`. */
+export const DEFAULT_MODEL = "toolbaz-v4.5-fast";
+
+/**
+ * Resolve the incoming `model` to the upstream model id sent to Toolbaz.
+ *
+ * The requested model id is passed through VERBATIM — Toolbaz accepts a wide
+ * range of ids (gpt-5, claude-sonnet-4, gemini-2.5-pro, deepseek-r1, …) and we
+ * don't second-guess the caller. If no model is given we default to
+ * `toolbaz-v4.5-fast`. Unknown ids are still forwarded so newly-added Toolbaz
+ * models work without a code change; if Toolbaz rejects it the error surfaces
+ * to the client.
  */
 export function resolveModel(requested: string | undefined): string {
-  // The single valid upstream model.
-  return TOOLBAZ_MODELS[0].upstream;
+  if (!requested || typeof requested !== "string" || requested.trim() === "") {
+    return DEFAULT_MODEL;
+  }
+  return requested.trim();
+}
+
+/** The display name echoed back in API responses (what the client asked for). */
+export function displayModel(requested: string | undefined): string {
+  return resolveModel(requested);
 }

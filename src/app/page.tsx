@@ -383,15 +383,14 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-card/40 backdrop-blur overflow-hidden">
-            <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_2fr_1fr] gap-4 px-5 py-3 border-b border-border bg-muted/30 text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[1fr_auto] gap-4 px-5 py-3 border-b border-border bg-muted/30 text-xs font-medium text-muted-foreground">
               <span>Model ID</span>
-              <span className="hidden sm:block">Upstream</span>
               <span className="text-right">Status</span>
             </div>
             {TOOLBAZ_MODELS.map((m) => (
               <div
                 key={m.id}
-                className="grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_2fr_1fr] gap-4 px-5 py-4 border-b border-border/60 last:border-0 items-center hover:bg-accent/30 transition-colors"
+                className="grid grid-cols-[1fr_auto] gap-4 px-5 py-4 border-b border-border/60 last:border-0 items-center hover:bg-accent/30 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -404,9 +403,6 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                     </p>
                   </div>
                 </div>
-                <code className="hidden sm:block text-xs text-muted-foreground">
-                  {m.upstream}
-                </code>
                 <div className="flex justify-end">
                   <Badge
                     variant="outline"
