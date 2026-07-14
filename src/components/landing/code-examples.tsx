@@ -84,6 +84,32 @@ curl -N ${origin}/api/v1/chat/completions \\
     "stream": true,
     "messages": [{"role": "user", "content": "Count to 5"}]
   }'`,
+  tools: `# Function / tool calling
+curl ${origin}/api/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "toolbaz-v4.5-fast",
+    "messages": [
+      {"role": "user", "content": "What is the weather in Boston?"}
+    ],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {"type": "string", "description": "City name"}
+          },
+          "required": ["location"]
+        }
+      }
+    }]
+  }'
+
+# response.choices[0].message.tool_calls  -> [{ name: "get_weather", arguments: '{"location":"Boston"}' }]
+# finish_reason: "tool_calls"`,
 });
 
 const LABELS: Record<string, string> = {
@@ -91,6 +117,7 @@ const LABELS: Record<string, string> = {
   python: "Python",
   javascript: "JavaScript",
   stream: "Streaming",
+  tools: "Tools",
 };
 
 export function CodeExamples() {

@@ -189,39 +189,51 @@ function cleanResponse(text: string): string {
   return text.replace(/\s*\[model:\s*[^\]]*\]\s*$/i, "").trim();
 }
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+/** A pre-serialized conversation turn (role label + text already rendered). */
+export interface PromptTurn {
+  role: string;
+  text: string;
 }
 
 /**
- * Convert an OpenAI-style messages array into the single `text` string that
+ * Convert an array of pre-serialized turns into the single `text` string that
  * writing.php expects. The prompt is wrapped with the Hangul-filler delimiters
  * exactly like the Toolbaz web UI does.
+ *
+ * Callers are responsible for serializing each message to its `text` (this
+ * keeps tool-call / tool-result rendering in the API route layer, where it
+ * belongs).
  */
-export function messagesToText(messages: ChatMessage[]): string {
-  const filtered = messages.filter((m) => m.content != null && m.content !== "");
+export function turnsToText(turns: PromptTurn[]): string {
+  const filtered = turns.filter((t) => t.text != null && t.text !== "");
   if (filtered.length === 0) {
     return `${FILLER} : ${FILLER}`;
   }
 
   // Single user message -> exact same shape as the website.
   if (filtered.length === 1 && filtered[0].role === "user") {
-    return `${FILLER} : ${filtered[0].content}${FILLER}`;
+    return `${FILLER} : ${filtered[0].text}${FILLER}`;
   }
 
   const parts: string[] = [];
-  for (const m of filtered) {
+  for (const t of filtered) {
     const label =
-      m.role === "system" ? "System" : m.role === "assistant" ? "Assistant" : "User";
-    parts.push(`${label}: ${m.content}`);
+      t.role === "system"
+        ? "System"
+        : t.role === "assistant"
+          ? "Assistant"
+          : t.role === "tool" || t.role === "function"
+            ? "Tool"
+            : "User";
+    parts.push(`${label}: ${t.text}`);
   }
   return `${FILLER} : ${parts.join("\n\n")}${FILLER}`;
 }
 
 export interface CompletionOptions {
   model: string;
-  messages: ChatMessage[];
+  /** Pre-serialized conversation turns. */
+  turns: PromptTurn[];
   signal?: AbortSignal;
 }
 
@@ -241,12 +253,12 @@ export interface CompletionResult {
  */
 export async function complete({
   model,
-  messages,
+  turns,
   signal,
 }: CompletionOptions): Promise<CompletionResult> {
   const { captcha, sessionId, userAgent } = await requestCaptchaToken();
 
-  const text = messagesToText(messages);
+  const text = turnsToText(turns);
   const body = new URLSearchParams({
     text,
     capcha: captcha,
@@ -272,30 +284,21 @@ export async function complete({
   return { text: cleaned, model, sessionId };
 }
 
-/** Models exposed by the gateway. The primary one is `toolbaz-v4.5-fast`. */
+/** Models exposed by the gateway. */
 export const TOOLBAZ_MODELS = [
   {
     id: "toolbaz-v4.5-fast",
     upstream: "toolbaz-v4.5-fast",
-    description: "Toolbaz v4.5 Fast — quick, balanced responses",
-  },
-  {
-    id: "toolbaz-v4.5",
-    upstream: "toolbaz-v4.5",
-    description: "Toolbaz v4.5 — higher quality, slower",
+    description: "Toolbaz v4.5 Fast — the only upstream model currently accepted",
   },
 ] as const;
 
-/** Resolve any incoming model name to a real upstream Toolbaz model. */
+/**
+ * Resolve any incoming model name to a real upstream Toolbaz model.
+ * Toolbaz only accepts `toolbaz-v4.5-fast` (other names return INVALID_MODEL),
+ * so all OpenAI-style aliases collapse to it.
+ */
 export function resolveModel(requested: string | undefined): string {
-  if (!requested) return TOOLBAZ_MODELS[0].upstream;
-  const found = TOOLBAZ_MODELS.find((m) => m.id === requested);
-  if (found) return found.upstream;
-  // Common OpenAI aliases -> fast, so drop-in clients keep working.
-  const lower = requested.toLowerCase();
-  if (lower.includes("gpt") || lower.includes("claude") || lower.includes("gemini")) {
-    return TOOLBAZ_MODELS[0].upstream;
-  }
-  // Unknown but pass it through verbatim — Toolbaz may still accept it.
-  return requested;
+  // The single valid upstream model.
+  return TOOLBAZ_MODELS[0].upstream;
 }

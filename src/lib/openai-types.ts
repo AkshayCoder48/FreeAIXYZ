@@ -1,10 +1,35 @@
-/** Minimal OpenAI-compatible type definitions shared by the API routes. */
+/** OpenAI-compatible type definitions shared by the API routes. */
+
+export interface OAIToolFunction {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface OAITool {
+  type: "function";
+  function: OAIToolFunction;
+}
+
+export interface OAIToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
 
 export interface OAIChatMessage {
   role: "system" | "user" | "assistant" | "tool" | "function";
   content: string | null;
   name?: string;
+  tool_call_id?: string;
+  tool_calls?: OAIToolCall[];
 }
+
+export type OAIToolChoice =
+  | "none"
+  | "auto"
+  | "required"
+  | { type: "function"; function: { name: string } };
 
 export interface OAIChatCompletionRequest {
   model: string;
@@ -17,7 +42,8 @@ export interface OAIChatCompletionRequest {
   presence_penalty?: number;
   n?: number | null;
   user?: string;
-  // any other fields are ignored but tolerated
+  tools?: OAITool[];
+  tool_choice?: OAIToolChoice;
   [key: string]: unknown;
 }
 
@@ -28,7 +54,11 @@ export interface OAIChatCompletionResponse {
   model: string;
   choices: {
     index: number;
-    message: { role: "assistant"; content: string };
+    message: {
+      role: "assistant";
+      content: string | null;
+      tool_calls?: OAIToolCall[];
+    };
     finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | null;
   }[];
   usage: {
@@ -71,4 +101,13 @@ export function generateCompletionId(): string {
   return `chatcmpl-${Date.now().toString(36)}-${counter.toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+}
+
+let toolCounter = 0;
+/** Generate an OpenAI-style tool call id. */
+export function generateToolCallId(): string {
+  toolCounter = (toolCounter + 1) % 1_000_000;
+  return `call_${Date.now().toString(36)}${toolCounter.toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
 }

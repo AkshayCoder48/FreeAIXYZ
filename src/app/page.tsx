@@ -12,6 +12,7 @@ import {
   Cpu,
   CheckCircle2,
   Activity,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,12 @@ const FEATURES = [
     icon: Server,
     title: "Serverless",
     desc: "Runs entirely on Next.js edge-friendly route handlers. Stateless, horizontally scalable, no persistent session store.",
+    accent: "text-emerald-400",
+  },
+  {
+    icon: Wrench,
+    title: "Tool / Function Calling",
+    desc: "Full OpenAI tools API support — pass tools, get back tool_calls with finish_reason. Prior assistant tool_calls and tool-result messages round-trip correctly through the conversation.",
     accent: "text-emerald-400",
   },
 ];
@@ -440,7 +447,8 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                   "POST /api/v1/chat/completions",
                   "GET /api/v1/models",
                   "Supports stream: true (SSE)",
-                  "Supports system / user / assistant roles",
+                  "Supports system / user / assistant / tool roles",
+                  "Supports tools & tool_calls (function calling)",
                   "Returns OpenAI-shaped usage stats",
                 ].map((t) => (
                   <li key={t} className="flex items-start gap-2">

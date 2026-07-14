@@ -24,8 +24,7 @@ interface Message {
 }
 
 const MODELS = [
-  { id: "toolbaz-v4.5-fast", label: "toolbaz-v4.5-fast", hint: "Quick & balanced" },
-  { id: "toolbaz-v4.5", label: "toolbaz-v4.5", hint: "Higher quality" },
+  { id: "toolbaz-v4.5-fast", label: "toolbaz-v4.5-fast", hint: "Fast & balanced" },
 ];
 
 const SAMPLE_PROMPTS = [
