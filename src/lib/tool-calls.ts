@@ -160,6 +160,20 @@ export function parseToolCalls(
   }
   text = text.replace(fenceRe, "").trim();
 
+  // Pattern 1b: some models use ```json or ``` (generic) for the fence.
+  // Accept any fenced block whose content parses to a tool call.
+  if (raw.length === 0) {
+    const genericFenceRe = /```[a-z]*\s*\n?([\s\S]*?)```/g;
+    while ((match = genericFenceRe.exec(output)) !== null) {
+      const inner = match[1].trim();
+      if (/(\\*)"?name"?\s*:/.test(inner) && /(\\*)"?arguments"?\s*:/.test(inner)) {
+        const parsed = extractCallsFromJson(inner);
+        raw.push(...parsed);
+      }
+    }
+    text = text.replace(genericFenceRe, "").trim();
+  }
+
   // Pattern 2: if no fenced block found, look for a bare JSON array/object
   // that looks like a tool call (has "name" and "arguments" keys).
   if (raw.length === 0) {
@@ -189,33 +203,66 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Attempt to JSON.parse a string using several unescaping strategies.
+ * Models are inconsistent: some emit clean JSON (`{"name":"x"}`), others
+ * emit escaped quotes (`{\"name\":\"x\"}`) or even double-escaped
+ * (`{\\\"name\\\":\\\"x\\\"}`). We try each variant until one parses.
+ */
+function tryParseJsonLoose(s: string): unknown | null {
+  const candidates: string[] = [s];
+
+  // Strategy 1: unescape literal \" → "
+  if (s.includes('\\"')) {
+    candidates.push(s.replace(/\\"/g, '"'));
+  }
+  // Strategy 2: unescape \\\" → " (double-escaped)
+  if (s.includes('\\\\"')) {
+    candidates.push(s.replace(/\\"/g, '"'));
+  }
+  // Strategy 3: remove all backslashes before quotes
+  if (/\\+"/.test(s)) {
+    candidates.push(s.replace(/\\+"/g, '"'));
+  }
+
+  for (const candidate of candidates) {
+    // Try the full string first
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      /* try sub-match */
+    }
+    // Try extracting the first JSON array
+    const arrMatch = candidate.match(/\[[\s\S]*\]/);
+    if (arrMatch) {
+      try {
+        return JSON.parse(arrMatch[0]);
+      } catch {
+        /* try next */
+      }
+    }
+    // Try extracting the first JSON object
+    const objMatch = candidate.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try {
+        return JSON.parse(objMatch[0]);
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  return null;
+}
+
 /** Parse a JSON string that should be a tool-call array or single object. */
 function extractCallsFromJson(jsonStr: string): { name: string; arguments: unknown }[] {
   const trimmed = jsonStr.trim();
   if (!trimmed) return [];
-  try {
-    const parsed = JSON.parse(trimmed);
+  const parsed = tryParseJsonLoose(trimmed);
+  if (parsed !== null) {
     return normalizeCalls(parsed);
-  } catch {
-    // Try to locate the first JSON array/object substring.
-    const arrMatch = trimmed.match(/\[[\s\S]*\]/);
-    if (arrMatch) {
-      try {
-        return normalizeCalls(JSON.parse(arrMatch[0]));
-      } catch {
-        /* ignore */
-      }
-    }
-    const objMatch = trimmed.match(/\{[\s\S]*\}/);
-    if (objMatch) {
-      try {
-        return normalizeCalls(JSON.parse(objMatch[0]));
-      } catch {
-        /* ignore */
-      }
-    }
-    return [];
   }
+  return [];
 }
 
 function normalizeCalls(parsed: unknown): { name: string; arguments: unknown }[] {
@@ -244,36 +291,34 @@ function normalizeCalls(parsed: unknown): { name: string; arguments: unknown }[]
 function tryBareToolCall(
   output: string,
 ): { calls: { name: string; arguments: unknown }[]; text: string } | null {
-  // Must contain both keys to be considered a tool call.
-  if (!/"name"\s*:/.test(output) || !/"arguments"\s*:/.test(output)) {
+  // Must contain both keys (allowing escaped quotes) to be considered a tool call.
+  if (!/(\\*)"?name"?\s*:/.test(output) || !/(\\*)"?arguments"?\s*:/.test(output)) {
     return null;
   }
   const arrMatch = output.match(/\[[\s\S]*\]/);
   if (arrMatch) {
-    try {
-      const calls = normalizeCalls(JSON.parse(arrMatch[0]));
+    const parsed = tryParseJsonLoose(arrMatch[0]);
+    if (parsed) {
+      const calls = normalizeCalls(parsed);
       if (calls.length > 0) {
         return {
           calls,
           text: output.replace(arrMatch[0], "").trim(),
         };
       }
-    } catch {
-      /* ignore */
     }
   }
   const objMatch = output.match(/\{[\s\S]*\}/);
   if (objMatch) {
-    try {
-      const calls = normalizeCalls(JSON.parse(objMatch[0]));
+    const parsed = tryParseJsonLoose(objMatch[0]);
+    if (parsed) {
+      const calls = normalizeCalls(parsed);
       if (calls.length > 0) {
         return {
           calls,
           text: output.replace(objMatch[0], "").trim(),
         };
       }
-    } catch {
-      /* ignore */
     }
   }
   return null;
