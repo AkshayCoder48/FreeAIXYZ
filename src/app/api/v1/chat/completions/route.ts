@@ -368,7 +368,8 @@ async function streamCompletion(
             model.provider === "nsfwlover" ||
             model.provider === "surfsense" ||
             model.provider === "jollygen" ||
-            model.provider === "unlimitedai";
+            model.provider === "unlimitedai" ||
+            model.provider === "theoldllm";
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.

@@ -18,7 +18,8 @@ export type ProviderId =
   | "freeaionline"
   | "surfsense"
   | "jollygen"
-  | "unlimitedai";
+  | "unlimitedai"
+  | "theoldllm";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -88,6 +89,25 @@ export const MODELS: readonly GatewayModel[] = [
   // ─── UnlimitedAI.chat provider: uncensored reasoning, NDJSON streaming ───
   uai("nsfw-lustre-reasoning", "chat-model-reasoning", "Uncensored reasoning model — no content filters, real token streaming, deep thinking", "nsfw", 128000),
   uai("nsfw-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "nsfw", 128000, true),
+
+  // ─── TheOldLLM provider: 50+ models, experimental (Vercel checkpoint) ───
+  // Unique models NOT available from other providers. Overlapping models
+  // (gpt-5, gpt-5.2, claude-sonnet-4, gemini-2.5-pro, deepseek-r1, grok-4-fast)
+  // use the existing Toolbaz entries.
+  tol("claude-opus-4.5", "claude-opus-4-5", "Claude Opus 4.5 — Anthropic's flagship model", 200000),
+  tol("gpt-5.1", "gpt-5.1", "GPT-5.1", 270000),
+  tol("gpt-5-mini", "gpt-5-mini", "GPT-5 Mini — lightweight, fast", 128000),
+  tol("gpt-4o", "gpt-4o", "GPT-4o — multimodal flagship", 128000),
+  tol("o4-mini", "o4-mini", "O4 Mini — reasoning model", 200000),
+  tol("gemini-3-pro-preview", "gemini-3-pro-preview", "Gemini 3 Pro Preview — Google's latest", 1000000),
+  tol("grok-4", "grok-4", "Grok 4 — xAI's flagship", 131000),
+  tol("kimi-k2", "kimi-k2", "Kimi K2 — Moonshot's long-context model", 128000),
+  tol("qwen3-235b-a22b", "qwen3-235b-a22b", "Qwen 3 235B — Alibaba's flagship", 128000),
+  tol("glm-4.7", "glm-4.7", "GLM 4.7 — Zhipu AI", 128000),
+  tol("mistral-large-2512", "mistral-large-2512", "Mistral Large 2512", 128000),
+  tol("minimax-m2", "minimax-m2", "Minimax M2", 128000),
+  tol("llama-3.3-70b", "llama-3.3-70b-instruct", "Llama 3.3 70B Instruct — Meta", 128000),
+  tol("deepseek-v3.2", "deepseek-v3.2", "DeepSeek V3.2 — latest DeepSeek", 128000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -245,6 +265,32 @@ function uai(
   };
 }
 
+/** TheOldLLM model helper. Experimental (Vercel checkpoint). Real SSE streaming. */
+function tol(
+  id: string,
+  upstream: string,
+  description: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "theoldllm",
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    experimental: true,
+    capabilities: {
+      streaming: true, // real OpenAI SSE
+      tools: true, // via prompt injection
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false, // proxy mode supports vision but needs URL images
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -309,5 +355,9 @@ export const PROVIDER_INFO: Record<
   unlimitedai: {
     name: "UnlimitedAI",
     description: "Uncensored reasoning + web search, NDJSON token streaming",
+  },
+  theoldllm: {
+    name: "TheOldLLM",
+    description: "50+ models (GPT-5, Claude Opus, Gemini 3, Grok 4, Kimi, Qwen…) — experimental, may be checkpoint-blocked",
   },
 };
