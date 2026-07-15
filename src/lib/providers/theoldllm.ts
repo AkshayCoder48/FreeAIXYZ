@@ -1,120 +1,70 @@
 /**
- * TheOldLLM provider (theoldllm.vercel.app).
+ * TheOldLLM provider — uses a headless-browser mini-service to bypass the
+ * Vercel Security Checkpoint (WASM PoW + Cloudflare Turnstile).
  *
- * A free, no-signup multi-model gateway providing access to 50+ LLMs from
- * OpenAI, Anthropic, Google, DeepSeek, xAI, Moonshot, Alibaba, Zhipu, Mistral,
- * Meta, and more — all through a single proxy endpoint.
+ * The mini-service (mini-services/theoldllm-browser, port 3004) keeps a
+ * Playwright browser open with the challenge solved, and proxies API calls
+ * through the browser's cleared context. The service auto-restarts on crash
+ * via start.sh wrapper.
  *
- * Endpoint: POST https://theoldllm.vercel.app/api/proxy?provider=p9
- *
- * Auth: shared tenant token (embedded in the web frontend, no signup needed).
- *
- * Request format: standard OpenAI { model, messages, stream }
- * Response format: standard OpenAI SSE (data: {"choices":[{"delta":{"content":"..."}}]})
- *
- * NOTE: This provider is marked EXPERIMENTAL because the upstream is behind a
- * Vercel Security Checkpoint that may block server-side requests with a 429.
- * The provider includes retry logic with backoff. When the checkpoint is active,
- * requests will fail with a clear error message. From browser-like environments
- * or different networks it may work.
+ * Response: standard OpenAI SSE
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
 
-const ENDPOINT = "https://theoldllm.vercel.app/api/proxy?provider=p9";
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
-
-// Shared tenant token (from the public web frontend, no signup required).
-const TENANT_TOKEN =
-  "on_tenant_65566e34-de7f-490a-b88f-32ac8203b659.FlFtgizBOIHSKUrSYbSiT23u7VK3-AHqf64TtjN5v0qP-8AD8QJQ6RLxl0zG9Cgjj5R5ICdgNYFBz9JSv3OJcN3LiKtA6oJTj9CF_1nKjkZQ-InxkNfhEzktF52PXVvFxy7H1IR5JH9PnmMo467YfkAzf8z8vbRmW9WUQcqhBEMuxogPfqAIL1b60F8wGup7WChnADayGVAXyg0ihs4K-fXRyiR7OvXRii05DGX9XT7KtJvb24-XY_VEmWi8OO_o";
-
-function buildHeaders() {
-  return {
-    Authorization: `Bearer ${TENANT_TOKEN}`,
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-    "User-Agent": UA,
-    "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not_A Brand";v="24"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"macOS"',
-    "sec-fetch-site": "same-origin",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-dest": "empty",
-    "accept-language": "en-US,en;q=0.9",
-    origin: "https://theoldllm.vercel.app",
-    referer: "https://theoldllm.vercel.app/",
-  };
-}
-
+const PROXY_URL = "http://127.0.0.1:3004";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Parse an SSE `data:` line. Returns the content delta or null. */
-function extractDelta(line: string): string | null {
+function parseSseLine(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) return null;
   const data = trimmed.slice(5).trim();
   if (!data || data === "[DONE]") return null;
   try {
     const json = JSON.parse(data);
-    const delta = json?.choices?.[0]?.delta;
-    // TheOldLLM may return either "content" or "reasoning_content" in delta
-    if (typeof delta?.content === "string") return delta.content;
-    // For reasoning models, reasoning_content is emitted separately — we
-    // don't surface it as content (it's the chain-of-thought, not the answer).
-    return null;
+    const delta = json?.choices?.[0]?.delta?.content;
+    return typeof delta === "string" ? delta : null;
   } catch {
     return null;
   }
 }
 
-/**
- * Attempt a fetch with retry on 429 (Vercel security checkpoint).
- * Returns the response on success, throws on exhausted retries.
- */
+/** Fetch with retry — the browser service may crash and auto-restart. */
 async function fetchWithRetry(
   payload: unknown,
   signal?: AbortSignal,
-  maxRetries = 2,
+  maxRetries = 3,
 ): Promise<Response> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: buildHeaders(),
-      body: JSON.stringify(payload),
-      signal,
-    });
-
-    if (res.status === 429) {
-      // Vercel security checkpoint — retry with backoff
-      if (attempt < maxRetries) {
-        await sleep(1000 * (attempt + 1));
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      return res;
+    } catch (e) {
+      const isConnRefused =
+        e instanceof TypeError &&
+        (e.cause as { code?: string })?.code === "ECONNREFUSED";
+      if (isConnRefused && attempt < maxRetries) {
+        // Service crashed — wait for auto-restart wrapper to bring it back
+        // First restart is quick (2s), but challenge solve takes ~15s
+        const waitMs = attempt === 0 ? 3000 : 18000;
+        await sleep(waitMs);
         continue;
       }
-      // Final attempt failed — read the body to check if it's a checkpoint
-      const body = await res.text().catch(() => "");
-      if (/security checkpoint|vercel/i.test(body)) {
-        throw new Error(
-          "TheOldLLM is currently behind a Vercel security checkpoint and cannot be reached from this server. Try again later or use a different model.",
-        );
-      }
-      throw new Error(`TheOldLLM returned HTTP 429 (rate limited). Try again later.`);
-    }
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
       throw new Error(
-        `TheOldLLM returned HTTP ${res.status}: ${errText.slice(0, 200)}`,
+        "TheOldLLM browser proxy is not running. Start it with: cd mini-services/theoldllm-browser && bash start.sh",
       );
     }
-
-    return res;
   }
-  throw new Error("TheOldLLM: retry attempts exhausted.");
+  throw new Error("TheOldLLM proxy: retry attempts exhausted.");
 }
 
 export const theOldLlmProvider: Provider = {
-  id: "freeaionline", // reuse id space; actual provider tracked per-model
+  id: "freeaionline",
 
   async complete(req) {
     let text = "";
@@ -135,8 +85,10 @@ export const theOldLlmProvider: Provider = {
     };
 
     const res = await fetchWithRetry(payload, req.signal);
-    if (!res.body) {
-      throw new Error("TheOldLLM: no response body.");
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`TheOldLLM proxy: HTTP ${res.status}: ${errText.slice(0, 200)}`);
     }
 
     const reader = res.body.getReader();
@@ -151,12 +103,11 @@ export const theOldLlmProvider: Provider = {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const delta = extractDelta(line);
+          const delta = parseSseLine(line);
           if (delta) yield delta;
         }
       }
-      // flush remaining
-      const delta = extractDelta(buffer);
+      const delta = parseSseLine(buffer);
       if (delta) yield delta;
     } finally {
       reader.releaseLock();
