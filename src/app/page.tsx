@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Playground } from "@/components/landing/playground";
 import { CodeExamples } from "@/components/landing/code-examples";
-import { TOOLBAZ_MODELS } from "@/lib/toolbaz";
+import { ModelsShowcase } from "@/components/landing/models-showcase";
 
 const FEATURES = [
   {
@@ -218,10 +218,10 @@ export default function Home() {
             {/* stat row */}
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {[
-                ["$0", "Cost per request"],
-                ["0", "API keys needed"],
+                ["21", "Models available"],
+                ["3", "Free providers"],
                 ["∞", "Daily request limit"],
-                ["100%", "OpenAI-compatible"],
+                ["$0", "Cost — forever"],
               ].map(([big, small]) => (
                 <div
                   key={small}
@@ -372,48 +372,22 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
           id="models"
           className="mx-auto max-w-6xl px-4 sm:px-6 py-12 scroll-mt-20"
         >
-          <div className="mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-              Available models
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Fetch them live from{" "}
-              <code className="text-emerald-400 text-xs">GET /api/v1/models</code>
-              .
-            </p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card/40 backdrop-blur overflow-hidden">
-            <div className="grid grid-cols-[1fr_auto] gap-4 px-5 py-3 border-b border-border bg-muted/30 text-xs font-medium text-muted-foreground">
-              <span>Model ID</span>
-              <span className="text-right">Status</span>
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                All models
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {21} models across 3 free providers. Filter, search, and inspect
+                capabilities. Live list at{" "}
+                <code className="text-emerald-400 text-xs">
+                  GET /api/v1/models
+                </code>
+                .
+              </p>
             </div>
-            {TOOLBAZ_MODELS.map((m) => (
-              <div
-                key={m.id}
-                className="grid grid-cols-[1fr_auto] gap-4 px-5 py-4 border-b border-border/60 last:border-0 items-center hover:bg-accent/30 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                    <Cpu className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <div>
-                    <code className="text-sm font-medium">{m.id}</code>
-                    <p className="text-[11px] text-muted-foreground">
-                      {m.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Badge
-                    variant="outline"
-                    className="gap-1 border-emerald-500/30 text-emerald-400 bg-emerald-500/5"
-                  >
-                    <CheckCircle2 className="h-3 w-3" /> ready
-                  </Badge>
-                </div>
-              </div>
-            ))}
           </div>
+          <ModelsShowcase />
         </section>
 
         {/* Docs */}

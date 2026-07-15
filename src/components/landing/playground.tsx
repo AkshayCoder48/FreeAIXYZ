@@ -17,14 +17,14 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { TOOLBAZ_MODELS } from "@/lib/toolbaz";
+import { MODELS } from "@/lib/providers";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-const MODELS = TOOLBAZ_MODELS.map((m) => ({
+const PLAYGROUND_MODELS = MODELS.map((m) => ({
   id: m.id,
   label: m.id,
   hint: m.description,
@@ -340,7 +340,7 @@ export function Playground() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MODELS.map((m) => (
+                {PLAYGROUND_MODELS.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     <div className="flex flex-col">
                       <span>{m.label}</span>

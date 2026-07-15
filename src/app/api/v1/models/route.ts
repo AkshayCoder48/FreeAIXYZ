@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { TOOLBAZ_MODELS } from "@/lib/toolbaz";
+import { MODELS } from "@/lib/providers";
 import type { OAIModelList } from "@/lib/openai-types";
 
 export const runtime = "nodejs";
@@ -11,11 +11,11 @@ const CREATED = Math.floor(Date.now() / 1000);
 export async function GET() {
   const payload: OAIModelList = {
     object: "list",
-    data: TOOLBAZ_MODELS.map((m) => ({
+    data: MODELS.map((m) => ({
       id: m.id,
       object: "model",
       created: CREATED,
-      owned_by: "free-gpt-gateway",
+      owned_by: m.provider,
     })),
   };
   return NextResponse.json(payload);

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import {
-  complete,
-  resolveModel,
-  ToolbazError,
-  type PromptTurn,
-} from "@/lib/toolbaz";
+  resolveGatewayModel,
+  getProvider,
+  type GatewayModel,
+  type ProviderMessage,
+} from "@/lib/providers";
+import { ToolbazError } from "@/lib/toolbaz";
 import {
   generateCompletionId,
   generateToolCallId,
@@ -37,14 +38,7 @@ function errorResponse(
   return NextResponse.json(body, { status });
 }
 
-/**
- * Translate an upstream Toolbaz error into an OpenAI-shaped error response
- * with an appropriate HTTP status:
- *   - INVALID_MODEL / suspicious   → 400 (bad request)
- *   - quota exceeded               → 429 (rate limited)
- *   - empty output                 → 502 (bad gateway, retryable)
- *   - anything else                → 502
- */
+/** Translate an upstream error into an OpenAI-shaped error response. */
 function upstreamErrorResponse(err: unknown) {
   if (err instanceof ToolbazError) {
     const detail = err.upstreamBody;
@@ -63,7 +57,13 @@ function upstreamErrorResponse(err: unknown) {
     return errorResponse(err.message, status, "upstream_error", code);
   }
   const message = err instanceof Error ? err.message : "Unknown upstream error";
-  return errorResponse(message, 502, "upstream_error", "toolbaz_error");
+  const isQuota = /quota|rate.?limit|429/i.test(message);
+  return errorResponse(
+    message,
+    isQuota ? 429 : 502,
+    "upstream_error",
+    isQuota ? "rate_limit_exceeded" : "upstream_error",
+  );
 }
 
 /** POST /api/v1/chat/completions — OpenAI-compatible chat completions. */
@@ -81,61 +81,63 @@ export async function POST(request: Request) {
     );
   }
 
-  const model = resolveModel(body.model);
-  const useTools = hasTools(body.tools);
+  const model = resolveGatewayModel(body.model);
+  const useTools = hasTools(body.tools) && model.capabilities.tools;
 
-  // Serialize the conversation into the text turns Toolbaz expects.
-  // When tools are present, a system directive describing them is prepended.
-  const turns: PromptTurn[] = [];
+  // Build the provider message list. Tool system prompt is prepended when tools
+  // are active so every provider sees the tool-calling instructions.
+  const messages: ProviderMessage[] = [];
   if (useTools) {
-    turns.push({
+    messages.push({
       role: "system",
-      text: buildToolSystemPrompt(body.tools!, body.tool_choice),
+      content: buildToolSystemPrompt(body.tools!, body.tool_choice),
     });
   }
   for (const m of body.messages) {
     const text = messageToText(m);
     if (text !== null && text !== "") {
-      turns.push({ role: m.role, text });
+      messages.push({ role: m.role as ProviderMessage["role"], content: text });
     }
   }
-
-  if (turns.length === 0) {
+  if (messages.length === 0) {
     return errorResponse("No usable messages after serialization.");
   }
 
   const wantsStream = body.stream === true;
+  const provider = getProvider(model.provider);
 
   if (wantsStream) {
-    return streamCompletion(model, turns, request, useTools);
+    return streamCompletion(model, provider, messages, useTools, request);
   }
-  return jsonCompletion(model, turns, useTools);
+  return jsonCompletion(model, provider, messages, useTools);
 }
 
-/** Non-streaming: one round-trip to Toolbaz, then a single JSON response. */
+/** Non-streaming completion. */
 async function jsonCompletion(
-  model: string,
-  turns: PromptTurn[],
+  model: GatewayModel,
+  provider: ReturnType<typeof getProvider>,
+  messages: ProviderMessage[],
   useTools: boolean,
 ) {
-  let result;
+  let text: string;
   try {
-    result = await complete({ model, turns });
+    const result = await provider.complete({ model, messages });
+    text = result.text;
   } catch (err) {
     return upstreamErrorResponse(err);
   }
 
-  const promptText = turns.map((t) => t.text).join("\n");
+  const promptText = messages.map((m) => m.content).join("\n");
 
   // If tools are active, try to parse a tool-call envelope out of the output.
   if (useTools) {
-    const parsed = parseToolCalls(result.text, generateToolCallId);
+    const parsed = parseToolCalls(text, generateToolCallId);
     if (parsed.toolCalls.length > 0) {
       const payload: OAIChatCompletionResponse = {
         id: generateCompletionId(),
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
-        model,
+        model: model.id,
         choices: [
           {
             index: 0,
@@ -149,9 +151,9 @@ async function jsonCompletion(
         ],
         usage: {
           prompt_tokens: estimateTokens(promptText),
-          completion_tokens: estimateTokens(result.text),
+          completion_tokens: estimateTokens(text),
           total_tokens:
-            estimateTokens(promptText) + estimateTokens(result.text),
+            estimateTokens(promptText) + estimateTokens(text),
         },
       };
       return NextResponse.json(payload);
@@ -162,27 +164,27 @@ async function jsonCompletion(
     id: generateCompletionId(),
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
-    model,
+    model: model.id,
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content: result.text },
+        message: { role: "assistant", content: text },
         finish_reason: "stop",
       },
     ],
     usage: {
       prompt_tokens: estimateTokens(promptText),
-      completion_tokens: estimateTokens(result.text),
-      total_tokens: estimateTokens(promptText) + estimateTokens(result.text),
+      completion_tokens: estimateTokens(text),
+      total_tokens: estimateTokens(promptText) + estimateTokens(text),
     },
   };
   return NextResponse.json(payload);
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Split text into stream-friendly pieces. Each piece becomes one SSE content
- * delta. Whitespace runs are kept intact; very long outputs are grouped so the
- * event count stays bounded (≤ ~150 events).
+ * Split text into stream-friendly pieces for re-pacing.
  */
 function tokenizeForStream(text: string): string[] {
   const raw = text.match(/(\s+|\S+)/g);
@@ -197,37 +199,25 @@ function tokenizeForStream(text: string): string[] {
   return groups;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 /**
- * Streaming response — REAL streaming.
+ * Streaming completion.
  *
- * IMPORTANT — why this is real, not fake:
+ * - For providers that genuinely stream (nsfwlover), each upstream delta is
+ *   emitted as its own SSE event immediately — real token-by-token streaming.
+ * - For providers that don't (toolbaz), the full text arrives at once and is
+ *   re-paced into separately-flushed SSE events.
+ * - When tools are active, the full response is buffered first so a complete
+ *   tool-call envelope can be parsed before deciding between content deltas
+ *   and tool_calls deltas.
  *
- * Toolbaz's `writing.php` returns the entire completion in a single HTTP chunk
- * (verified: a 4540-byte, 600-word essay arrives in one `data` event at 0ms).
- * It is impossible to stream tokens the upstream never produced incrementally.
- *
- * What we CAN do — and do here — is stream the delivery to the client as a
- * sequence of genuinely separate, immediately-flushed SSE events (one per
- * token), rather than buffering the whole response body and writing it in one
- * go. Each chunk is written to the underlying transport and flushed with
- * `await` yielding to the event loop between writes, so the client receives
- * them as distinct network frames over time.
- *
- * Heartbeat comments (`: keep-alive`) are emitted while we wait on the
- * upstream fetch so the connection stays open through proxies. The client's
- * AbortController is honored throughout.
- *
- * When tools are active we buffer the full response before emitting, because
- * we must parse a complete tool-call envelope before deciding whether to emit
- * `tool_calls` (with finish_reason "tool_calls") or normal content deltas.
+ * Heartbeat comments keep the connection alive during any upstream wait.
  */
 async function streamCompletion(
-  model: string,
-  turns: PromptTurn[],
-  request: Request,
+  model: GatewayModel,
+  provider: ReturnType<typeof getProvider>,
+  messages: ProviderMessage[],
   useTools: boolean,
+  request: Request,
 ) {
   const id = generateCompletionId();
   const created = Math.floor(Date.now() / 1000);
@@ -242,7 +232,7 @@ async function streamCompletion(
         try {
           controller.enqueue(encoder.encode(bytes));
         } catch {
-          /* controller closed after client disconnect */
+          /* controller closed */
         }
       };
       const send = (obj: unknown) =>
@@ -255,41 +245,36 @@ async function streamCompletion(
         clearInterval(heartbeatTimer);
       };
 
-      // initial role chunk — sent immediately, before any upstream work
+      // initial role chunk
       send({
         id,
         object: "chat.completion.chunk",
         created,
-        model,
+        model: model.id,
         choices: [
           { index: 0, delta: { role: "assistant" }, finish_reason: null },
         ],
       });
 
       try {
-        const result = await complete({ model, turns, signal });
-        clearInterval(heartbeatTimer);
-
-        if (signal.aborted) {
-          cleanup();
-          controller.close();
-          return;
-        }
-
-        // ---- Tool-calling path: buffer, parse, emit tool_calls ----
         if (useTools) {
+          // ---- Tool-calling path: buffer full response, parse, emit ----
+          const result = await provider.complete({ model, messages, signal });
+          clearInterval(heartbeatTimer);
+          if (signal.aborted) {
+            cleanup();
+            controller.close();
+            return;
+          }
           const parsed = parseToolCalls(result.text, generateToolCallId);
           if (parsed.toolCalls.length > 0) {
-            // Emit each tool call as its own streaming chunk, mirroring
-            // OpenAI's streaming tool_calls shape.
             for (let i = 0; i < parsed.toolCalls.length; i++) {
               const tc: OAIToolCall = parsed.toolCalls[i];
-              // first chunk carries index + id + type + name
               send({
                 id,
                 object: "chat.completion.chunk",
                 created,
-                model,
+                model: model.id,
                 choices: [
                   {
                     index: 0,
@@ -308,23 +293,18 @@ async function streamCompletion(
                 ],
               });
               await sleep(0);
-              // stream the arguments string in pieces
-              const argChunks = chunkString(tc.function.arguments, 24);
-              for (const piece of argChunks) {
+              for (const piece of chunkString(tc.function.arguments, 24)) {
                 send({
                   id,
                   object: "chat.completion.chunk",
                   created,
-                  model,
+                  model: model.id,
                   choices: [
                     {
                       index: 0,
                       delta: {
                         tool_calls: [
-                          {
-                            index: i,
-                            function: { arguments: piece },
-                          },
+                          { index: i, function: { arguments: piece } },
                         ],
                       },
                       finish_reason: null,
@@ -334,39 +314,104 @@ async function streamCompletion(
                 await sleep(0);
               }
             }
-            // final chunk
             send({
               id,
               object: "chat.completion.chunk",
               created,
-              model,
+              model: model.id,
               choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
             });
           } else {
-            // no tool call detected — stream as normal text
             await streamText(send, parsed.text || result.text, signal, {
               id,
               created,
-              model,
+              model: model.id,
             });
             send({
               id,
               object: "chat.completion.chunk",
               created,
-              model,
+              model: model.id,
               choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
             });
           }
         } else {
-          // ---- Normal text streaming path ----
-          await streamText(send, result.text, signal, { id, created, model });
-          send({
-            id,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          });
+          // ---- Normal streaming path ----
+          // Determine if the provider genuinely streams. We detect this by
+          // checking the provider id — nsfwlover streams, others don't.
+          const realStream = model.provider === "nsfwlover";
+
+          if (realStream) {
+            // Genuine upstream streaming: emit each delta immediately.
+            let hasContent = false;
+            for await (const delta of provider.stream({
+              model,
+              messages,
+              signal,
+            })) {
+              if (signal.aborted) break;
+              if (delta) {
+                hasContent = true;
+                send({
+                  id,
+                  object: "chat.completion.chunk",
+                  created,
+                  model: model.id,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: delta },
+                      finish_reason: null,
+                    },
+                  ],
+                });
+              }
+            }
+            clearInterval(heartbeatTimer);
+            if (!hasContent) {
+              send({
+                id,
+                object: "chat.completion.chunk",
+                created,
+                model: model.id,
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content: "(empty response)" },
+                    finish_reason: null,
+                  },
+                ],
+              });
+            }
+            send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model: model.id,
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            });
+          } else {
+            // Non-streaming provider: fetch full text, then re-pace.
+            const result = await provider.complete({ model, messages, signal });
+            clearInterval(heartbeatTimer);
+            if (signal.aborted) {
+              cleanup();
+              controller.close();
+              return;
+            }
+            await streamText(send, result.text, signal, {
+              id,
+              created,
+              model: model.id,
+            });
+            send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model: model.id,
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            });
+          }
         }
       } catch (err) {
         clearInterval(heartbeatTimer);
@@ -385,7 +430,7 @@ async function streamCompletion(
           id,
           object: "chat.completion.chunk",
           created,
-          model,
+          model: model.id,
           choices: [
             {
               index: 0,
@@ -405,7 +450,7 @@ async function streamCompletion(
       }
     },
     cancel() {
-      // client disconnected — start() will notice via signal
+      // client disconnected
     },
   });
 
@@ -419,7 +464,7 @@ async function streamCompletion(
   });
 }
 
-/** Stream a text string as content deltas, yielding between each write. */
+/** Stream text as content deltas, re-pacing with yields between writes. */
 async function streamText(
   send: (obj: unknown) => void,
   text: string,
@@ -436,13 +481,10 @@ async function streamText(
       model: meta.model,
       choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
     });
-    // Yield to the event loop so each enqueue is flushed as its own write
-    // rather than being coalesced into a single buffered dump.
     await sleep(0);
   }
 }
 
-/** Split a string into fixed-size pieces. */
 function chunkString(s: string, size: number): string[] {
   if (s.length <= size) return s ? [s] : [];
   const out: string[] = [];

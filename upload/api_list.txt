@@ -1,0 +1,307 @@
+API TESTING REPORT
+==================
+All tested APIs that returned 200 OK / successful responses.
+Use these to build unlimited free automation pipelines.
+
+
+════════════════════════════════════════════════════════════════════════════════
+#1  free-ai-online.com  —  WordPress AI Chatbot (SSE Streaming)
+════════════════════════════════════════════════════════════════════════════════
+
+STATUS:  ✅ WORKS   (tested 200 OK with full SSE stream)
+TYPE:    WordPress plugin exposing a chat-submit endpoint
+AUTH:    X-WP-Nonce header + no sign-up required
+LIMITS:  Free, no API key, no rate-limit observed in tests
+
+ENDPOINT:
+  POST https://www.free-ai-online.com/wp-json/mwai-ui/v1/chats/submit
+
+HEADERS (copy-paste ready):
+  Content-Type: application/json
+  Accept: text/event-stream
+  X-WP-Nonce: 7fe63b51f5        ← this nonce works; grab fresh from main page if needed
+
+PAYLOAD SCHEMA:
+  {
+    "botId":        "Grok 4 free",          // any model name the site shows
+    "customId":     null,
+    "session":      "6a55f32b576d0",        // random session string
+    "chatId":       "on3ubuu8l58",          // random chat ID
+    "contextId":    25,                     // integer context
+    "messages": [                          // prior conversation context
+      {
+        "id":       "5dmyn1o0x2m",
+        "role":     "assistant",
+        "content":  "Hi! How can I help you?",
+        "who":      "AI: ",
+        "timestamp":1784017698729,
+        "key":      "start-1784017698729"
+      }
+    ],
+    "newMessage":   "your message here",
+    "newFileId":    null,
+    "newFileIds":   null,
+    "stream":       true
+  }
+
+RESPONSE:  text/event-stream  (SSE)
+  Each chunk looks like:
+    data: {"type":"live","data":" token"}
+  Final chunk:
+    data: {"type":"end","data":"{\"success\":true,\"reply\":\"...\",\"usage\":{...}}"}
+
+UNLIMITED FREE TIPS:
+  • Rotate the 'session' and 'chatId' values each call (random strings).
+  • Clear 'messages' array after each call so each request is stateless;
+    the backend still returns useful replies without full context.
+  • Grab a fresher X-WP-Nonce by first GET https://www.free-ai-online.com/
+    and parsing the wpApiSettings.nonce from the inline script.
+  • No signup, no captcha, no billing. Rotate if you ever hit 429.
+
+
+════════════════════════════════════════════════════════════════════════════════
+#2  nsfwlover.com  —  NSFW Character Roleplay AI (OpenAI-compatible)
+════════════════════════════════════════════════════════════════════════════════
+
+STATUS:  ✅ WORKS   (tested 200 OK with streaming SSE, NSFW content allowed)
+TYPE:    Self-hosted LLaMA-based roleplay API (llama3-8b)
+AUTH:    x-local-id header (free, no signup needed)
+LIMITS:  Free, no rate-limit, no captcha in tests
+
+ENDPOINT:
+  POST https://www.nsfwlover.com/api/openai/chat/completions
+
+HEADERS (copy-paste ready):
+  Content-Type: application/json
+  Accept: text/event-stream
+  x-local-id: gMKjZ1T0034xidSgDoJdTMfQcgkU51K6PH8t7u-SdCNqHVix6TzEmz4UPS6cDICj
+              ← generates a fresh ~60-char alphanumeric token per session
+  Origin: https://www.nsfwlover.com
+  Referer: https://www.nsfwlover.com/
+
+PAYLOAD SCHEMA:
+  {
+    "builtin":       true,
+    "char":          null,
+    "char_id":       "Linda",              // character slug
+    "session_id":    "UMM1k_MLLaLcX8Iawc41n",   // random short ID per session
+    "lang":          "en",
+    "sysprompt":     "",
+    "description":   "",
+    "input_messages": [
+      {
+        "id":    "572b99e6-857e-44eb-a7ae-f5d2f79f6d66",  // random UUID
+        "type":  "text",
+        "date":  "2026/07/14 08:46:40",
+        "role":  "assistant",            // prior AI message
+        "content": "*Linda walks into the kitchen...*"
+      },
+      {
+        "id":    "nyh67hK75Q_-p0WFS5BOQ",
+        "type":  "text",
+        "date":  "2026/07/14 08:47:49",
+        "role":  "user",                 // your last message
+        "content": "Heyy"
+      }
+    ],
+    "stream":        true,
+    "model_type":    "llama3-8b",          // PIN THIS — don't randomize
+    "isSummary":     false,
+    "charname":      "Linda",
+    "shortname":     "",
+    "username":      "Guest",
+    "session_date":  "2026/07/14 08:46:40",
+    "gender":        "Female",
+    "userGender":    "Unknown"
+  }
+
+RESPONSE:  text/event-stream  (SSE)
+  Each chunk:  data: {"choices":[{"delta":{"content":" token"}}]}
+  No [DONE] marker — stream ends when connection closes.
+
+UNLIMITED FREE TIPS:
+  • The ONLY field that must stay fixed is "model_type": "llama3-8b".
+  • Randomize EVERYTHING else freely:
+      - x-local-id:  generate a random 60-char hex/alpha string
+      - session_id:  random alphanumeric ~28 chars
+      - input_messages ids: random UUIDs / SHA hashes
+      - username, gender, userGender: pick from preset lists
+      - session_date: use a real past timestamp
+  • Keep input_messages to 2 messages (1 AI context + 1 user reply) for faster responses.
+  • No signup, no API key, no rate limit detected.
+  • This endpoint is extremely permissive — happy-path for unlimited NSFW roleplay.
+
+
+════════════════════════════════════════════════════════════════════════════════
+#3  nextpart.ai  —  Character AI Chat Platform (multi-step flow)
+════════════════════════════════════════════════════════════════════════════════
+
+STATUS:  ✅ WORKS   (login + session create confirmed 200 OK;
+                    chat/stream confirmed via provided web-app call sequence)
+TYPE:    Freemium character chat (token-gated model access)
+AUTH:    Two-step: guest_login → session-token JWT → Bearer Authorization
+LIMITS:  Free tier (guest accounts); session-token expires ~1 year;
+
+ENDPOINTS (in order):
+
+  STEP 1 — Guest Login
+  ─────────────────────────────────────────────────────────────────────────────
+  POST https://nextpart.ai/user/guest_login
+
+  HEADERS:
+    Content-Type: application/json
+    Accept: application/json, text/plain, */*
+    Origin: https://nextpart.ai
+    Referer: https://nextpart.ai/chat/lola-38282    (any model_id page works)
+    User-Agent: <Android UA>
+
+  PAYLOAD:
+    {
+      "uniq_token":    "<random MD5 hex 24 chars>",
+      "invitation_code": "",
+      "utm_source":    "",
+      "language":      "en",
+      "source":        "WEB_NSFW",
+      "device":        "Android"
+    }
+
+  RESPONSE HEADERS (save these!):
+    session-token: <JWT>     ← use this as Bearer token in next steps
+    authorization: <JWT>     ← sometimes also present
+    expirets: <epoch ms>     ← token expiry
+
+  RESPONSE BODY:
+    {"code":0,"data":{"user_id":1466687,"email":"...","username":"...","nickname":"Guest"}}
+
+
+  STEP 2 — Create Chat Session
+  ─────────────────────────────────────────────────────────────────────────────
+  POST https://nextpart.ai/model/session/create
+
+  HEADERS:
+    Content-Type: application/json
+    Authorization: Bearer <session-token from Step 1>
+    user_id: <user_id from Step 1>
+    Origin: https://nextpart.ai
+    Referer: https://nextpart.ai/chat/lola-38282
+
+  PAYLOAD:
+    {
+      "model_id":    38282,            // character / model slug
+      "greeting_pic": "",              // or the image URL the site provides
+      "language":     "en",
+      "user_id":      <user_id>,
+      "source":       "WEB_NSFW",
+      "device":       "Android"
+    }
+
+  RESPONSE BODY:
+    {
+      "code": 0,
+      "data": {
+        "session_id": 2694374,
+        "dialogs": [
+          {
+            "sentence_id": 37647759,
+            "name": "Lola",
+            "sentence": "*I spot this woman at our family reunion...*",
+            "image_url": "https://..."
+          }
+        ]
+      }
+    }
+
+
+  STEP 3 — Send Chat Message (streaming)
+  ─────────────────────────────────────────────────────────────────────────────
+  POST https://nextpart.ai/chat/submit
+
+  (This call was confirmed working from the user's web-app trace;
+   direct server-to-server may need browser-like cookies / headers.)
+
+  HEADERS captured from web-app:
+    Accept: text/event-stream
+    Authorization: Bearer <session-token>
+    user_id: <user_id>
+    session-token: <session-token>
+    Origin / Referer as above
+
+  PAYLOAD:
+    {
+      "session_id": <session_id from Step 2>,
+      "sentence_id": <sentence_id from Step 2>,
+      "content": "Hello!",
+      "language": "en",
+      "source": "WEB_NSFW",
+      "device": "Android"
+    }
+
+UNLIMITED FREE TIPS:
+  • Each uniq_token generates a brand-new guest user_id.
+    Generate with:  md5(uuid4 + timestamp + random_chars)[:24]
+  • session-token JWTs survive ~1 year (expireTs in response header).
+  • Re-use the same session-token across session creates without re-logging in.
+  • For chat/submit, ensure cookies and both Authorization + session-token headers are sent.
+  • model_id 38282 corresponds to "Lola". Search site for other model_id values.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ QUICK-START CHEAT SHEET
+════════════════════════════════════════════════════════════════════════════════
+
+API #1 — One-shot no-auth chat (fastest):
+  url:      POST https://www.free-ai-online.com/wp-json/mwai-ui/v1/chats/submit
+  headers:  X-WP-Nonce + Accept:text/event-stream
+  body:     botId + newMessage + stream:true + random session/chatId
+  returns:  SSE stream → assemble tokens → final JSON with "reply"
+
+API #2 — NSFW roleplay (most permissive):
+  url:      POST https://www.nsfwlover.com/api/openai/chat/completions
+  headers:  x-local-id + Accept:text/event-stream
+  body:     char_id + input_messages + model_type:"llama3-8b" + stream:true
+  returns:  SSE stream → OpenAI-style delta.content chunks
+  NOTE:    Randomize everything EXCEPT model_type.
+
+API #3 — Character AI with images / multi-turn:
+  flow:     guest_login → model/session/create → chat/submit
+  auth:     session-token JWT (Bearer header)
+  returns:  JSON + image_urls in session create; SSE stream in chat
+
+
+════════════════════════════════════════════════════════════════════════════════
+ AUTOMATION NOTES
+════════════════════════════════════════════════════════════════════════════════
+
+1. ROTATION STRATEGY
+   - For API #1: loop with fresh 'session' (random 12-char hex) each call.
+   - For API #2: loop with fresh 'session_id' + fresh 'x-local-id' each call.
+   - For API #3: one 'uniq_token' per guest; regenerate if 403/401.
+
+2. SSE PARSING (Python template)
+   buffer = b""
+   while chunk := resp.read(4096):
+       buffer += chunk
+       text = buffer.decode("utf-8", errors="replace")
+       lines = text.split("\n")
+       buffer = lines.pop().encode("utf-8")
+       for line in lines:
+           if line.startswith("data:"):
+               data = json.loads(line[5:].strip())
+               # API #1:  data["type"]=="live"  → data["data"] is the token
+               # API #2:  data["choices"][0]["delta"]["content"] is the token
+
+3. USER-AGENT & ORIGIN
+   Always send the full Android Chrome UA string with matching Origin and
+   Referer or some endpoints silently drop the request or return 403.
+
+4. TIMEOUTS
+   - API #1 & #2: 60-120s is safe (SSE keeps connection open until model finishes).
+   - API #3 login: 30s; session create: 30s; chat/submit: 60s+ (streaming).
+
+5. NO CAPTCHA FOUND on any of these three. If cloudflare challenges appear,
+   add a short delay (2-5s) between bulk calls or rotate IP via proxies.
+
+
+════════════════════════════════════════════════════════════════════════════════
+ END OF REPORT
+════════════════════════════════════════════════════════════════════════════════
