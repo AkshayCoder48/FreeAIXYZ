@@ -29,52 +29,89 @@ import type {
 const TOOL_CALL_FENCE_OPEN = "```tool_call";
 const TOOL_CALL_FENCE_CLOSE = "```";
 
-/** Build the system directive that teaches the model how to call tools. */
+/**
+ * Compactify a JSON Schema parameter spec into a short signature string.
+ * e.g. { userId: string*, amount: number, items: string[] }
+ *   where * marks required params.
+ */
+function compactParams(parameters: unknown): string {
+  if (!parameters || typeof parameters !== "object") return "{}";
+  const schema = parameters as Record<string, unknown>;
+  const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+  const required = new Set<string>((schema.required as string[]) ?? []);
+  const parts: string[] = [];
+  for (const [key, val] of Object.entries(props)) {
+    let type = "any";
+    if (val && typeof val === "object") {
+      const t = (val as Record<string, unknown>).type;
+      if (t === "array") {
+        const items = (val as Record<string, unknown>).items as
+          | Record<string, unknown>
+          | undefined;
+        const itemType = (items?.type as string) ?? "any";
+        type = `${itemType}[]`;
+      } else if (typeof t === "string") {
+        type = t;
+      } else if ((val as Record<string, unknown>).enum) {
+        const opts = ((val as Record<string, unknown>).enum as unknown[]) ?? [];
+        type = opts.slice(0, 4).map(String).join("|");
+        if (opts.length > 4) type += "|...";
+      }
+    }
+    parts.push(`${key}: ${type}${required.has(key) ? "*" : ""}`);
+  }
+  return `{ ${parts.join(", ")} }`;
+}
+
+/** Truncate a description to a single short line. */
+function shortDesc(desc: string | undefined, max = 100): string {
+  if (!desc) return "";
+  const one = desc.replace(/\s+/g, " ").trim();
+  if (one.length <= max) return one;
+  return one.slice(0, max - 1).trimEnd() + "…";
+}
+
+/**
+ * Build a COMPACT system directive that teaches the model how to call tools.
+ *
+ * Each tool is ONE line: `name({ params }) - description`. This keeps the
+ * prompt small even with many tools (36 tools ≈ 3KB vs 25KB with full JSON
+ * schemas), so the model actually retains the entire tool list instead of
+ * hallucinating.
+ */
 export function buildToolSystemPrompt(
   tools: OAITool[],
   toolChoice?: OAIToolChoice,
 ): string {
+  const fnTools = tools.filter((t) => t.type === "function" && t.function);
+  // Shorter descriptions when there are many tools, to keep the prompt compact.
+  const descMax = fnTools.length > 20 ? 60 : fnTools.length > 10 ? 80 : 120;
+
   const lines: string[] = [
-    "You have access to external tools. When you need to use one, output ONLY a tool-call block and nothing else. Do not explain, do not narrate — emit the block so the system can execute the tool and return the result.",
-    "",
-    "Tool-call format (output EXACTLY this, with no text before or after):",
+    "You are a tool-calling assistant. You have tools available. When a request needs one, respond with ONLY a tool_call block (no other text):",
     "```tool_call",
-    '[{"name": "<function_name>", "arguments": {<json object>}}]',
+    '[{"name":"<tool_name>","arguments":{"<param>":"<value>"}}]',
     "```",
+    "Rules: emit the block with no text before/after. Use ONLY tool names from the list below. Arguments must match the params shown (* = required). If no tool is needed, answer normally.",
     "",
-    "Rules:",
-    "- The block contains a JSON array. Each element has `name` and `arguments`.",
-    "- `arguments` MUST be a JSON object matching the function's parameters.",
-    "- If you can answer without a tool, answer normally with no block.",
-    "- Strings inside arguments must be properly escaped JSON.",
-    "",
-    "Available tools:",
+    `Tools (${fnTools.length} available):`,
   ];
 
-  for (const t of tools) {
-    if (t.type !== "function" || !t.function) continue;
+  for (const t of fnTools) {
     const f = t.function;
-    const params = f.parameters
-      ? JSON.stringify(f.parameters)
-      : '{"type":"object","properties":{}}';
-    lines.push(
-      `- name: ${f.name}`,
-      `  description: ${f.description ?? "(no description)"}`,
-      `  parameters: ${params}`,
-      "",
-    );
+    const params = compactParams(f.parameters);
+    const desc = shortDesc(f.description, descMax);
+    lines.push(`- ${f.name}(${params})${desc ? " — " + desc : ""}`);
   }
 
   if (toolChoice && typeof toolChoice === "object" && toolChoice.function) {
     lines.push(
-      `You MUST call the tool "${toolChoice.function.name}" for this request. Emit only its tool_call block.`,
+      `\nYou MUST call "${toolChoice.function.name}". Emit only its tool_call block.`,
     );
   } else if (toolChoice === "required") {
-    lines.push("You MUST call at least one tool for this request.");
+    lines.push("\nYou MUST call at least one tool for this request.");
   } else if (toolChoice === "none") {
-    lines.push("Do NOT call any tools for this request. Answer directly.");
-  } else {
-    // "auto" — model decides
+    lines.push("\nDo NOT call any tools. Answer directly.");
   }
 
   return lines.join("\n");
