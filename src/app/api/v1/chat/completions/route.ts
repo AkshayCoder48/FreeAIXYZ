@@ -350,12 +350,14 @@ async function streamCompletion(
         } else {
           // ---- Normal streaming path ----
           // Determine if the provider genuinely streams token-by-token.
-          // nsfwlover, surfsense, and jollygen all return real SSE deltas;
-          // toolbaz returns the full text in one chunk (re-paced by the gateway).
+          // nsfwlover, surfsense, jollygen, and unlimitedai all return real
+          // streaming deltas; toolbaz returns the full text in one chunk
+          // (re-paced by the gateway).
           const realStream =
             model.provider === "nsfwlover" ||
             model.provider === "surfsense" ||
-            model.provider === "jollygen";
+            model.provider === "jollygen" ||
+            model.provider === "unlimitedai";
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.

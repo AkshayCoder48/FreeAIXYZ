@@ -17,7 +17,8 @@ export type ProviderId =
   | "nsfwlover"
   | "freeaionline"
   | "surfsense"
-  | "jollygen";
+  | "jollygen"
+  | "unlimitedai";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -81,6 +82,10 @@ export const MODELS: readonly GatewayModel[] = [
 
   // ─── JollyGen provider: unrestricted NSFW roleplay, 3-msg limit rotated ──
   jg("nsfw-jollygen", "jollygen", "Unrestricted NSFW roleplay — no content filters, fresh identity per request, real token streaming", 8000),
+
+  // ─── UnlimitedAI.chat provider: uncensored reasoning, NDJSON streaming ───
+  uai("nsfw-lustre-reasoning", "chat-model-reasoning", "Uncensored reasoning model — no content filters, real token streaming, deep thinking", "nsfw", 128000),
+  uai("nsfw-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "nsfw", 128000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -206,6 +211,31 @@ function jg(
   };
 }
 
+/** UnlimitedAI.chat model helper. Uncensored, real NDJSON streaming. */
+function uai(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "unlimitedai",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true, // via prompt injection
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -265,5 +295,9 @@ export const PROVIDER_INFO: Record<
   jollygen: {
     name: "JollyGen",
     description: "Unrestricted NSFW roleplay — rotated guest identity, no content filters",
+  },
+  unlimitedai: {
+    name: "UnlimitedAI",
+    description: "Uncensored reasoning + web search, NDJSON token streaming",
   },
 };
