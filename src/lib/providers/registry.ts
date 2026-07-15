@@ -12,7 +12,12 @@
  *   - NSFW / uncensored models get an explicit "nsfw-" prefix so callers know.
  */
 
-export type ProviderId = "toolbaz" | "nsfwlover" | "freeaionline";
+export type ProviderId =
+  | "toolbaz"
+  | "nsfwlover"
+  | "freeaionline"
+  | "surfsense"
+  | "jollygen";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -69,6 +74,13 @@ export const MODELS: readonly GatewayModel[] = [
 
   // ─── free-ai-online.com provider: best-effort, may be captcha-gated ──────
   fao("grok-4-free", "Grok4_free_online", "Grok 4 (free, ad-supported WordPress frontend) — experimental, may be captcha-gated", 8000),
+
+  // ─── SurfSense provider: free no-login, real SSE streaming ───────────────
+  ss("gpt-5.4-mini", "gpt-5.4-mini-no-login", "GPT-5.4 Mini — fast, no login required, real token streaming", "professional", 128000),
+  ss("gpt-o4-mini", "gpt-o4-mini-no-login", "GPT o4 Mini — reasoning model, no login required, real token streaming", "reasoning", 128000),
+
+  // ─── JollyGen provider: unrestricted NSFW roleplay, 3-msg limit rotated ──
+  jg("nsfw-jollygen", "jollygen", "Unrestricted NSFW roleplay — no content filters, fresh identity per request, real token streaming", 8000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -145,6 +157,55 @@ function fao(
   };
 }
 
+/** SurfSense model helper. Real SSE streaming; tool support via injection. */
+function ss(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "surfsense",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+    },
+  };
+}
+
+/** JollyGen model helper. Unrestricted NSFW, real streaming, rotated identity. */
+function jg(
+  id: string,
+  upstream: string,
+  description: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "jollygen",
+    upstream,
+    description,
+    category: "nsfw",
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: false,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -196,5 +257,13 @@ export const PROVIDER_INFO: Record<
   freeaionline: {
     name: "Free-AI-Online",
     description: "Ad-supported WordPress AI frontend (experimental)",
+  },
+  surfsense: {
+    name: "SurfSense",
+    description: "Free no-login chat with real token streaming (gpt-5.4-mini, o4-mini)",
+  },
+  jollygen: {
+    name: "JollyGen",
+    description: "Unrestricted NSFW roleplay — rotated guest identity, no content filters",
   },
 };

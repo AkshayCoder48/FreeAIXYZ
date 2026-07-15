@@ -118,19 +118,45 @@ export function buildToolSystemPrompt(
 }
 
 /**
+ * Flatten OpenAI message content into plain text.
+ * - String content → returned as-is.
+ * - Array content (vision format) → text parts are joined; image parts are
+ *   noted as "[image attached]" since no free upstream supports vision yet.
+ */
+function flattenContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const p = part as Record<string, unknown>;
+      if (p.type === "text" && typeof p.text === "string") {
+        parts.push(p.text);
+      } else if (p.type === "image_url") {
+        parts.push("[image attached — vision not supported on this model]");
+      }
+    }
+    return parts.join("\n");
+  }
+  if (content === null) return "";
+  return String(content);
+}
+
+/**
  * Serialize a single message to plain text for the upstream prompt.
- * Handles assistant tool_calls and tool-result messages by rendering them as
- * readable text the model can reason over.
+ * Handles assistant tool_calls, tool-result messages, and vision-format
+ * (array) content by rendering them as readable text.
  */
 export function messageToText(m: OAIChatMessage): string | null {
+  const flat = flattenContent(m.content);
   switch (m.role) {
     case "system":
-      return m.content ?? null;
+      return flat || null;
     case "user":
-      return m.content ?? null;
+      return flat || null;
     case "assistant": {
       const parts: string[] = [];
-      if (m.content) parts.push(m.content);
+      if (flat) parts.push(flat);
       if (m.tool_calls && m.tool_calls.length > 0) {
         const calls = m.tool_calls.map((tc) => ({
           name: tc.function.name,
@@ -142,10 +168,10 @@ export function messageToText(m: OAIChatMessage): string | null {
     }
     case "tool": {
       const name = m.name ?? "tool";
-      return `[tool result for ${name}${m.tool_call_id ? ` (${m.tool_call_id})` : ""}]\n${m.content ?? ""}`;
+      return `[tool result for ${name}${m.tool_call_id ? ` (${m.tool_call_id})` : ""}]\n${flat}`;
     }
     case "function": {
-      return `[function result]\n${m.content ?? ""}`;
+      return `[function result]\n${flat}`;
     }
     default:
       return m.content ?? null;

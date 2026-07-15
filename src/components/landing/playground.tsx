@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Trash2, Bot, User, Zap, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,14 @@ async function* parseSSE(response: Response): AsyncGenerator<string> {
   }
 }
 
+const emptySubscribe = () => () => {};
+/** Returns true only on the client (after hydration), avoiding SSR/client ID mismatches in Radix. */
+function useMounted() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false);
+}
+
 export function Playground() {
+  const mounted = useMounted();
   const [model, setModel] = useState("toolbaz-v4.5-fast");
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful assistant.");
   const [stream, setStream] = useState(true);
@@ -335,23 +342,29 @@ export function Playground() {
 
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Model</Label>
-            <Select value={model} onValueChange={setModel}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PLAYGROUND_MODELS.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    <div className="flex flex-col">
-                      <span>{m.label}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {m.hint}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {mounted ? (
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAYGROUND_MODELS.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      <div className="flex flex-col">
+                        <span>{m.label}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {m.hint}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="h-9 rounded-md border border-input px-3 flex items-center text-sm text-muted-foreground">
+                {model}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

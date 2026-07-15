@@ -5,11 +5,15 @@ import type { Provider } from "./types";
 import { toolbazProvider } from "./toolbaz";
 import { nsfwloverProvider } from "./nsfwlover";
 import { freeAiOnlineProvider } from "./free-ai-online";
+import { surfSenseProvider } from "./surfsense";
+import { jollyGenProvider } from "./jollygen";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
   nsfwlover: nsfwloverProvider,
   freeaionline: freeAiOnlineProvider,
+  surfsense: surfSenseProvider,
+  jollygen: jollyGenProvider,
 };
 
 /** Get the provider instance for a given provider id. */

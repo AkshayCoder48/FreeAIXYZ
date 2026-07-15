@@ -218,8 +218,8 @@ export default function Home() {
             {/* stat row */}
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {[
-                ["21", "Models available"],
-                ["3", "Free providers"],
+                ["24", "Models available"],
+                ["5", "Free providers"],
                 ["∞", "Daily request limit"],
                 ["$0", "Cost — forever"],
               ].map(([big, small]) => (
@@ -378,7 +378,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                 All models
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {21} models across 3 free providers. Filter, search, and inspect
+                {24} models across 5 free providers. Filter, search, and inspect
                 capabilities. Live list at{" "}
                 <code className="text-emerald-400 text-xs">
                   GET /api/v1/models
@@ -386,6 +386,11 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                 .
               </p>
             </div>
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href="/models">
+                Full models page <ArrowRight className="h-4 w-4" />
+              </a>
+            </Button>
           </div>
           <ModelsShowcase />
         </section>
