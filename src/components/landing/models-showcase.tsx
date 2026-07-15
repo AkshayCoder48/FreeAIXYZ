@@ -13,6 +13,7 @@ import {
   Check,
   Cpu,
   Server,
+  Globe,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -177,6 +178,7 @@ export function ModelsShowcase() {
               <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
                 <CapIcon on={m.capabilities.streaming} icon={Zap} label="Streaming" />
                 <CapIcon on={m.capabilities.tools} icon={Wrench} label="Tool calling" />
+                <CapIcon on={m.capabilities.webSearch} icon={Globe} label="Web search" />
                 <CapIcon on={m.capabilities.systemPrompt} icon={MessageSquare} label="System prompt" />
                 <CapIcon on={m.capabilities.multiTurn} icon={Layers} label="Multi-turn" />
                 <CapIcon on={m.capabilities.vision} icon={Eye} label="Vision" />
@@ -192,6 +194,7 @@ export function ModelsShowcase() {
                 {m.capabilities.streaming && <ParamChip label="stream" />}
                 {m.capabilities.tools && <ParamChip label="tools" />}
                 {m.capabilities.tools && <ParamChip label="tool_choice" />}
+                {m.capabilities.webSearch && <ParamChip label="web_search" />}
                 {m.capabilities.systemPrompt && <ParamChip label="system" />}
                 <ParamChip label="messages" />
                 <ParamChip label="model" />
@@ -213,6 +216,7 @@ export function ModelsShowcase() {
         <span className="flex items-center gap-1.5"><Server className="h-3.5 w-3.5" /> {Object.keys(PROVIDER_INFO).length} providers</span>
         <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-emerald-400" /> streaming</span>
         <span className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5 text-emerald-400" /> tool calling</span>
+        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-emerald-400" /> web search</span>
         <span className="flex items-center gap-1.5"><Eye className="h-3.5 w-3.5 text-muted-foreground/50" /> vision (none yet)</span>
       </div>
     </div>

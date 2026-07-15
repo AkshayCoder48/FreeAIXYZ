@@ -31,6 +31,8 @@ export interface ModelCapabilities {
   multiTurn: boolean;
   /** Image / vision inputs. */
   vision: boolean;
+  /** Live web search for grounded, up-to-date answers. */
+  webSearch: boolean;
 }
 
 export interface GatewayModel {
@@ -85,7 +87,7 @@ export const MODELS: readonly GatewayModel[] = [
 
   // ─── UnlimitedAI.chat provider: uncensored reasoning, NDJSON streaming ───
   uai("nsfw-lustre-reasoning", "chat-model-reasoning", "Uncensored reasoning model — no content filters, real token streaming, deep thinking", "nsfw", 128000),
-  uai("nsfw-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "nsfw", 128000),
+  uai("nsfw-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "nsfw", 128000, true),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -109,6 +111,7 @@ function tb(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }
@@ -133,6 +136,7 @@ function nsfw(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }
@@ -158,6 +162,7 @@ function fao(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }
@@ -183,6 +188,7 @@ function ss(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }
@@ -207,6 +213,7 @@ function jg(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }
@@ -218,6 +225,7 @@ function uai(
   description: string,
   category: GatewayModel["category"],
   contextWindow: number,
+  webSearch = false,
 ): GatewayModel {
   return {
     id,
@@ -232,6 +240,7 @@ function uai(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch,
     },
   };
 }
@@ -267,6 +276,7 @@ export function resolveGatewayModel(
       systemPrompt: true,
       multiTurn: true,
       vision: false,
+      webSearch: false,
     },
   };
 }

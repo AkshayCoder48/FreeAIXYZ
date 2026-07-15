@@ -44,6 +44,8 @@ export interface OAIChatCompletionRequest {
   user?: string;
   tools?: OAITool[];
   tool_choice?: OAIToolChoice;
+  /** Enable live web search for grounded, up-to-date answers. */
+  web_search?: boolean;
   [key: string]: unknown;
 }
 
