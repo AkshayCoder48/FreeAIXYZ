@@ -8,7 +8,7 @@ import { freeAiOnlineProvider } from "./free-ai-online";
 import { surfSenseProvider } from "./surfsense";
 import { jollyGenProvider } from "./jollygen";
 import { unlimitedAiProvider } from "./unlimitedai";
-import { theOldLlmProvider } from "./theoldllm";
+import { pollinationsProvider } from "./pollinations";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
@@ -17,7 +17,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   surfsense: surfSenseProvider,
   jollygen: jollyGenProvider,
   unlimitedai: unlimitedAiProvider,
-  theoldllm: theOldLlmProvider,
+  pollinations: pollinationsProvider,
 };
 
 /** Get the provider instance for a given provider id. */
