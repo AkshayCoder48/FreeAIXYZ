@@ -219,7 +219,7 @@ export default function Home() {
             {/* stat row */}
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {[
-                ["70+", "Models available"],
+                ["120+", "Models available"],
                 ["11", "Free providers"],
                 ["∞", "Daily request limit"],
                 ["$0", "Cost — forever"],
@@ -379,7 +379,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                 All models
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {70}+ models across 11 free providers. Filter, search, and inspect
+                {120}+ models across 11 free providers. Filter, search, and inspect
                 capabilities. Live list at{" "}
                 <code className="text-emerald-400 text-xs">
                   GET /api/v1/models

@@ -4,29 +4,34 @@
  * Uses the user-provided auth token (stored in browser localStorage via the
  * /settings page, passed in the `x-lmarena-token` request header).
  *
+ * The token is a base64-encoded Supabase session JSON containing:
+ *   { access_token, refresh_token, expires_at, user, ... }
+ *
+ * We decode it and use the access_token as a Bearer header AND set the
+ * Supabase session cookie for arena.ai's Next.js API.
+ *
  * Flow:
  *   1. POST https://arena.ai/nextjs-api/stream/create-evaluation
- *      with model ID, message, and UUIDv7 session IDs
+ *      with model publicName, message, and UUIDv7 session IDs
  *   2. Response streams with prefixed lines:
  *      a0:{"text":"..."}  — content delta
- *      ag:"..."           — reasoning delta
  *
- * The token is passed from the client as `x-lmarena-token` header.
- * If no token is provided, the provider returns a clear error.
+ * Arena.ai has 413+ text models (GPT-5.x, Claude Opus 4.8, Gemini 3.1 Pro,
+ * Grok 4.3, DeepSeek V4, Qwen 3.7, Kimi K2.7, GLM 5.1, etc.)
  */
 
 import { randomBytes } from "crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
 
 const CREATE_EVALUATION = "https://arena.ai/nextjs-api/stream/create-evaluation";
+const SB_PROJECT_ID = "huogzoeqzcrdvkwtvodi";
 
 /** Generate a UUIDv7 (timestamp-based, matching LMArena's browser implementation). */
 function uuid7(): string {
   const timestampMs = Date.now();
   const randA = randomBytes(2).readUInt16BE(0) & 0x0fff;
   const randB = randomBytes(8);
-  // Set version (7) and variant (10xx)
-  randB[0] = (randB[0] & 0x3f) | 0x80; // variant
+  randB[0] = (randB[0] & 0x3f) | 0x80;
   const ts = BigInt(timestampMs) << 80n;
   const ra = BigInt(0x7000 | randA) << 64n;
   const rb = BigInt(
@@ -50,19 +55,32 @@ function parseLmaLine(line: string): string | null {
       const data = JSON.parse(trimmed.slice(3));
       if (typeof data === "string") return data;
       if (data?.text) return data.text;
-      if (typeof data === "object" && data !== null) return null; // metadata
       return null;
     } catch {
       return null;
     }
   }
-  // ag:"..." — reasoning (skip, not content)
-  // b0: — model B content (skip in direct mode)
   return null;
 }
 
+/** Decode the base64 session token and extract the access_token. */
+function decodeSessionToken(token: string): { accessToken: string; cookie: string } | null {
+  try {
+    // The token is a base64-encoded Supabase session JSON
+    const decoded = Buffer.from(token, "base64").toString("utf8");
+    const session = JSON.parse(decoded);
+    if (!session.access_token) return null;
+    // Build the Supabase auth cookie: sb-<project>-auth-token=<base64_session>
+    const cookie = `sb-${SB_PROJECT_ID}-auth-token=${token}`;
+    return { accessToken: session.access_token, cookie };
+  } catch {
+    // If it's not base64 JSON, treat it as a raw access_token
+    return { accessToken: token, cookie: `sb-${SB_PROJECT_ID}-auth-token=${token}` };
+  }
+}
+
 export const lmarenaProvider: Provider = {
-  id: "g4f", // reuse id space; actual provider tracked per-model
+  id: "lmarena",
 
   async complete(req) {
     let text = "";
@@ -73,13 +91,16 @@ export const lmarenaProvider: Provider = {
   },
 
   async *stream(req) {
-    // The auth token is passed via the request's extra params
-    // (set by the route handler from the x-lmarena-token header)
-    const token = (req as ProviderCompletionRequest & { authToken?: string }).authToken;
-    if (!token) {
+    const rawToken = (req as ProviderCompletionRequest & { authToken?: string }).authToken;
+    if (!rawToken) {
       throw new Error(
         "LMArena requires an auth token. Go to /settings and paste your arena.ai session token.",
       );
+    }
+
+    const auth = decodeSessionToken(rawToken);
+    if (!auth) {
+      throw new Error("Invalid LMArena token format. Paste the base64 session from arena.ai.");
     }
 
     // Build the evaluation request
@@ -87,7 +108,6 @@ export const lmarenaProvider: Provider = {
     const userMessageId = uuid7();
     const modelAMessageId = uuid7();
 
-    // Get the last user message as the prompt
     const lastUserMsg = [...req.messages].reverse().find((m) => m.role === "user");
     const prompt = lastUserMsg?.content || "Hello";
 
@@ -118,9 +138,10 @@ export const lmarenaProvider: Provider = {
         "Content-Type": "application/json",
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-        Cookie: `__Secure-next-auth.session-token=${token}`,
-        Origin: "https://arena.ai",
-        Referer: "https://arena.ai/",
+        "Authorization": `Bearer ${auth.accessToken}`,
+        "Cookie": auth.cookie,
+        "Origin": "https://arena.ai",
+        "Referer": "https://arena.ai/",
       },
       body: JSON.stringify(data),
       signal: req.signal,
@@ -130,7 +151,7 @@ export const lmarenaProvider: Provider = {
       const errText = await res.text().catch(() => "");
       if (res.status === 401 || res.status === 403) {
         throw new Error(
-          "LMArena token is invalid or expired. Go to /settings to update it.",
+          "LMArena token is invalid or expired. Go to /settings to update it with a fresh token.",
         );
       }
       throw new Error(`LMArena returned HTTP ${res.status}: ${errText.slice(0, 200)}`);
