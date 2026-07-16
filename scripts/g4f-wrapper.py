@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-g4f provider wrapper — one-shot mode.
+g4f provider wrapper — one-shot mode with timeout.
 Reads ONE JSON request from stdin, writes ONE JSON response, exits.
-This prevents any long-running process that could crash the parent.
 
 Request:  {"model":"...","messages":[...],"stream":true}
 Response: {"ok":true,"sse":"..."} or {"ok":false,"error":"..."}
@@ -11,14 +10,24 @@ Response: {"ok":true,"sse":"..."} or {"ok":false,"error":"..."}
 import sys
 import json
 import os
+import signal
 
+sys.path.insert(0, os.path.expanduser("~/.local/lib/python3/site-packages"))
 sys.path.insert(0, os.path.expanduser("~/.local/lib/python3.13/site-packages"))
 
 import g4f
 from g4f.client import Client
 
+# Timeout handler — kill the process if it takes too long
+def timeout_handler(signum, frame):
+    print(json.dumps({"ok": False, "error": "Request timed out (30s). The model may be unavailable — try a different one."}))
+    sys.stdout.flush()
+    sys.exit(1)
+
+signal.signal(signal.SIGALRM, timeout_handler)
+signal.alarm(30)  # 30 second timeout
+
 def main():
-    # Read one line from stdin
     line = sys.stdin.readline().strip()
     if not line:
         print(json.dumps({"ok": False, "error": "No input"}))
@@ -44,6 +53,7 @@ def main():
                 model=model,
                 messages=messages,
                 stream=True,
+                timeout=25,
             )
             sse_parts = []
             for chunk in response:
@@ -64,6 +74,7 @@ def main():
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
+                timeout=25,
             )
             content = response.choices[0].message.content or ""
             sse = (
@@ -75,6 +86,7 @@ def main():
     except Exception as e:
         result = {"ok": False, "error": str(e)[:300]}
 
+    signal.alarm(0)  # cancel timeout
     print(json.dumps(result))
     sys.stdout.flush()
 

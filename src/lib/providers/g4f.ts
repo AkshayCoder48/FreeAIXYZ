@@ -62,7 +62,7 @@ async function callG4f(
       return;
     }
 
-    const child = spawnFn("python3.13", [WRAPPER_SCRIPT], {
+    const child = spawnFn("python3", [WRAPPER_SCRIPT], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, PYTHONPATH: PYTHON_PATH },
       detached: true, // own process group — can't take down parent
