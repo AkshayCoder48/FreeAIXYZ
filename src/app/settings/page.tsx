@@ -155,16 +155,35 @@ export default function SettingsPage() {
           {/* Instructions */}
           <div className="rounded-xl border border-border/60 bg-background/40 p-4 space-y-2">
             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <AlertCircle className="h-3.5 w-3.5" /> How to get your token:
+              <AlertCircle className="h-3.5 w-3.5" /> How to get your token (3 methods):
             </p>
-            <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside ml-1">
-              <li>Visit <a href="https://arena.ai" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-0.5">arena.ai <ExternalLink className="h-3 w-3" /></a></li>
-              <li>Sign in or use the free guest mode</li>
-              <li>Open browser DevTools (F12) → Application → Cookies</li>
-              <li>Copy the <code className="text-emerald-400">__Secure-next-auth.session-token</code> value</li>
-              <li>Or: Network tab → find any API call → copy the <code className="text-emerald-400">Authorization</code> header</li>
-              <li>Paste it above and click Save</li>
-            </ol>
+            <div className="space-y-3 mt-2">
+              <div>
+                <p className="text-xs font-medium text-emerald-400">Method 1 — Full Cookie header (recommended):</p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside ml-1 mt-1">
+                  <li>Visit <a href="https://arena.ai" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-0.5">arena.ai <ExternalLink className="h-3 w-3" /></a> and sign in</li>
+                  <li>Open DevTools (F12) → Network tab</li>
+                  <li>Send a chat message on arena.ai</li>
+                  <li>Find the <code className="text-emerald-400">create-evaluation</code> request</li>
+                  <li>Copy the entire <code className="text-emerald-400">Cookie</code> header value</li>
+                  <li>Paste it above and click Save</li>
+                </ol>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-emerald-400">Method 2 — Supabase session cookie:</p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside ml-1 mt-1">
+                  <li>DevTools → Application → Cookies → arena.ai</li>
+                  <li>Copy the value of <code className="text-emerald-400">sb-huogzoeqzcrdvkwtvodi-auth-token</code></li>
+                </ol>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-emerald-400">Method 3 — Raw JWT:</p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside ml-1 mt-1">
+                  <li>Copy the <code className="text-emerald-400">Authorization</code> header from any arena.ai request</li>
+                  <li>Paste just the JWT (starts with <code className="text-emerald-400">eyJ</code>)</li>
+                </ol>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3">

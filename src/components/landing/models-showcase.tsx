@@ -144,7 +144,7 @@ export function ModelsShowcase() {
           const cat = CATEGORY_META[m.category];
           return (
             <motion.div
-              key={m.id}
+              key={`${m.provider}:${m.id}`}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(i * 0.015, 0.3) }}

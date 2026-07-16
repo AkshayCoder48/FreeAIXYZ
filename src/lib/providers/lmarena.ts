@@ -1,23 +1,14 @@
 /**
  * LMArena (arena.ai) provider.
  *
- * Uses the user-provided auth token (stored in browser localStorage via the
- * /settings page, passed in the `x-lmarena-token` request header).
+ * Uses the user-provided auth token from the /settings page.
  *
- * The token is a base64-encoded Supabase session JSON containing:
- *   { access_token, refresh_token, expires_at, user, ... }
+ * The token can be:
+ *   1. A base64-encoded Supabase session JSON (what arena.ai stores)
+ *   2. A raw JWT access_token (extracted from the session)
+ *   3. Browser cookies from arena.ai (for advanced users)
  *
- * We decode it and use the access_token as a Bearer header AND set the
- * Supabase session cookie for arena.ai's Next.js API.
- *
- * Flow:
- *   1. POST https://arena.ai/nextjs-api/stream/create-evaluation
- *      with model publicName, message, and UUIDv7 session IDs
- *   2. Response streams with prefixed lines:
- *      a0:{"text":"..."}  — content delta
- *
- * Arena.ai has 413+ text models (GPT-5.x, Claude Opus 4.8, Gemini 3.1 Pro,
- * Grok 4.3, DeepSeek V4, Qwen 3.7, Kimi K2.7, GLM 5.1, etc.)
+ * We try multiple auth methods until one works.
  */
 
 import { randomBytes } from "crypto";
@@ -26,7 +17,6 @@ import type { Provider, ProviderCompletionRequest } from "./types";
 const CREATE_EVALUATION = "https://arena.ai/nextjs-api/stream/create-evaluation";
 const SB_PROJECT_ID = "huogzoeqzcrdvkwtvodi";
 
-/** Generate a UUIDv7 (timestamp-based, matching LMArena's browser implementation). */
 function uuid7(): string {
   const timestampMs = Date.now();
   const randA = randomBytes(2).readUInt16BE(0) & 0x0fff;
@@ -34,49 +24,46 @@ function uuid7(): string {
   randB[0] = (randB[0] & 0x3f) | 0x80;
   const ts = BigInt(timestampMs) << 80n;
   const ra = BigInt(0x7000 | randA) << 64n;
-  const rb = BigInt(
-    "0x" +
-      Array.from(randB)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(""),
-  );
+  const rb = BigInt("0x" + Array.from(randB).map((b) => b.toString(16).padStart(2, "0")).join(""));
   const uuidInt = ts | ra | rb;
   const hex = uuidInt.toString(16).padStart(32, "0");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/** Parse an LMArena SSE line. Returns content delta or null. */
 function parseLmaLine(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
-  // a0:{"text":"..."} — content
   if (trimmed.startsWith("a0:")) {
     try {
       const data = JSON.parse(trimmed.slice(3));
       if (typeof data === "string") return data;
       if (data?.text) return data.text;
       return null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
   return null;
 }
 
-/** Decode the base64 session token and extract the access_token. */
-function decodeSessionToken(token: string): { accessToken: string; cookie: string } | null {
-  try {
-    // The token is a base64-encoded Supabase session JSON
-    const decoded = Buffer.from(token, "base64").toString("utf8");
-    const session = JSON.parse(decoded);
-    if (!session.access_token) return null;
-    // Build the Supabase auth cookie: sb-<project>-auth-token=<base64_session>
-    const cookie = `sb-${SB_PROJECT_ID}-auth-token=${token}`;
-    return { accessToken: session.access_token, cookie };
-  } catch {
-    // If it's not base64 JSON, treat it as a raw access_token
-    return { accessToken: token, cookie: `sb-${SB_PROJECT_ID}-auth-token=${token}` };
+/** Extract the access_token from various token formats. */
+function extractAccessToken(token: string): string | null {
+  // If it looks like a raw cookie string (contains = and ;), extract the access_token
+  if (token.includes(";") && token.includes("=")) {
+    // It's a raw cookie header — use as-is for the Cookie header
+    return null; // Signal that we should use the raw string as cookies
   }
+  // Try as base64-encoded Supabase session
+  try {
+    const decoded = Buffer.from(token, "base64").toString("utf8");
+    try {
+      const session = JSON.parse(decoded);
+      if (session.access_token) return session.access_token;
+    } catch {}
+    const accessMatch = decoded.match(/"access_token"\s*:\s*"([^"]+)"/);
+    if (accessMatch) return accessMatch[1];
+  } catch {}
+  // If it looks like a JWT (starts with eyJ), use it directly
+  if (token.startsWith("eyJ") && token.includes(".")) return token;
+  return null;
 }
 
 export const lmarenaProvider: Provider = {
@@ -84,23 +71,30 @@ export const lmarenaProvider: Provider = {
 
   async complete(req) {
     let text = "";
-    for await (const chunk of this.stream(req)) {
-      text += chunk;
-    }
+    for await (const chunk of this.stream(req)) { text += chunk; }
     return { text };
   },
 
   async *stream(req) {
     const rawToken = (req as ProviderCompletionRequest & { authToken?: string }).authToken;
-    if (!rawToken) {
+    if (!rawToken || rawToken.trim() === "") {
       throw new Error(
-        "LMArena requires an auth token. Go to /settings and paste your arena.ai session token.",
+        "LMArena requires an auth token. Go to /settings and paste your arena.ai token.",
       );
     }
 
-    const auth = decodeSessionToken(rawToken);
-    if (!auth) {
-      throw new Error("Invalid LMArena token format. Paste the base64 session from arena.ai.");
+    const accessToken = extractAccessToken(rawToken);
+
+    // If the token looks like raw cookies (contains ; and =), use them directly
+    const isRawCookies = rawToken.includes(";") && rawToken.includes("=");
+
+    if (!accessToken && !isRawCookies) {
+      throw new Error(
+        "Could not extract access token from the provided value. " +
+        "Paste either: (1) the base64 session from arena.ai cookies, " +
+        "(2) the raw JWT access_token, or " +
+        "(3) the full Cookie header from a DevTools Network request.",
+      );
     }
 
     // Build the evaluation request
@@ -110,8 +104,6 @@ export const lmarenaProvider: Provider = {
 
     const lastUserMsg = [...req.messages].reverse().find((m) => m.role === "user");
     const prompt = lastUserMsg?.content || "Hello";
-
-    // System prompt prepended if present
     const systemMsgs = req.messages.filter((m) => m.role === "system");
     const fullPrompt = systemMsgs.length > 0
       ? `${systemMsgs.map((m) => m.content).join("\n\n")}\n\n${prompt}`
@@ -122,61 +114,109 @@ export const lmarenaProvider: Provider = {
       mode: "direct-battle",
       userMessageId,
       modelAMessageId,
-      userMessage: {
-        content: fullPrompt,
-        experimental_attachments: [],
-        metadata: {},
-      },
+      userMessage: { content: fullPrompt, experimental_attachments: [], metadata: {} },
       modality: "chat",
       recaptchaV3Token: "",
       modelAId: req.model.upstream,
     };
 
-    const res = await fetch(CREATE_EVALUATION, {
-      method: "POST",
-      headers: {
+    // Try multiple auth methods — arena.ai may use different cookie formats
+    const authMethods: { cookie: string; bearer: string }[] = [];
+
+    if (isRawCookies) {
+      // Raw cookies from DevTools — use as-is
+      authMethods.push({ cookie: rawToken, bearer: "" });
+    }
+
+    if (accessToken) {
+      // Supabase cookie formats — all values must be ASCII-safe for HTTP headers
+      authMethods.push(
+        // The raw base64 token as-is (what the browser stores)
+        { cookie: `sb-${SB_PROJECT_ID}-auth-token=${rawToken}`, bearer: accessToken },
+        // Just the access token JWT
+        { cookie: `sb-${SB_PROJECT_ID}-auth-token=${accessToken}`, bearer: accessToken },
+        // NextAuth format
+        { cookie: `__Secure-next-auth.session-token=${accessToken}`, bearer: accessToken },
+        // Bearer only
+        { cookie: "", bearer: accessToken },
+      );
+    }
+
+    let lastError = "";
+    for (const auth of authMethods) {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-        "Authorization": `Bearer ${auth.accessToken}`,
-        "Cookie": auth.cookie,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         "Origin": "https://arena.ai",
         "Referer": "https://arena.ai/",
-      },
-      body: JSON.stringify(data),
-      signal: req.signal,
-    });
-
-    if (!res.ok || !res.body) {
-      const errText = await res.text().catch(() => "");
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(
-          "LMArena token is invalid or expired. Go to /settings to update it with a fresh token.",
-        );
-      }
-      throw new Error(`LMArena returned HTTP ${res.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          const delta = parseLmaLine(line);
-          if (delta) yield delta;
+      };
+      if (auth.bearer) headers["Authorization"] = `Bearer ${auth.bearer}`;
+      if (auth.cookie) {
+        try {
+          headers["Cookie"] = auth.cookie;
+        } catch {
+          continue; // Skip cookie values with invalid characters
         }
       }
-      const delta = parseLmaLine(buffer);
-      if (delta) yield delta;
-    } finally {
-      reader.releaseLock();
+
+      try {
+        const res = await fetch(CREATE_EVALUATION, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(data),
+          signal: req.signal,
+        });
+
+        if (res.ok && res.body) {
+          // Success — stream the response
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                const delta = parseLmaLine(line);
+                if (delta) yield delta;
+              }
+            }
+            const delta = parseLmaLine(buffer);
+            if (delta) yield delta;
+          } finally {
+            reader.releaseLock();
+          }
+          return; // Success — exit the generator
+        }
+
+        // Non-OK: record error and try next method
+        const errText = await res.text().catch(() => "");
+        lastError = `HTTP ${res.status}: ${errText.slice(0, 150)}`;
+        if (res.status !== 401 && res.status !== 403) {
+          // Non-auth error — don't try other methods
+          throw new Error(`LMArena returned HTTP ${res.status}: ${errText.slice(0, 200)}`);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Skip ByteString/encoding errors — try next auth method
+        if (msg.includes("ByteString") || msg.includes("greater than 255")) {
+          continue;
+        }
+        if (!msg.includes("HTTP 4")) {
+          throw e; // Non-HTTP error — rethrow
+        }
+        lastError = msg;
+      }
     }
+
+    // All auth methods failed
+    throw new Error(
+      `LMArena authentication failed (${lastError}). The token may be expired or in the wrong format. ` +
+      "Go to /settings and paste a fresh token from arena.ai. " +
+      "Tip: In arena.ai DevTools → Application → Cookies, copy the value of 'sb-huogzoeqzcrdvkwtvodi-auth-token' cookie.",
+    );
   },
 };

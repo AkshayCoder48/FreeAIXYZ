@@ -26,6 +26,7 @@ interface Message {
 
 const PLAYGROUND_MODELS = MODELS.map((m) => ({
   id: m.id,
+  key: `${m.provider}:${m.id}`,
   label: m.id,
   hint: m.description,
 }));
@@ -354,7 +355,7 @@ export function Playground() {
                 </SelectTrigger>
                 <SelectContent>
                   {PLAYGROUND_MODELS.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
+                    <SelectItem key={m.key} value={m.id}>
                       <div className="flex flex-col">
                         <span>{m.label}</span>
                         <span className="text-[10px] text-muted-foreground">
