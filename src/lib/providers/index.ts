@@ -9,6 +9,7 @@ import { surfSenseProvider } from "./surfsense";
 import { jollyGenProvider } from "./jollygen";
 import { unlimitedAiProvider } from "./unlimitedai";
 import { pollinationsProvider } from "./pollinations";
+import { g4fProvider } from "./g4f";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
@@ -18,6 +19,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   jollygen: jollyGenProvider,
   unlimitedai: unlimitedAiProvider,
   pollinations: pollinationsProvider,
+  g4f: g4fProvider,
 };
 
 /** Get the provider instance for a given provider id. */

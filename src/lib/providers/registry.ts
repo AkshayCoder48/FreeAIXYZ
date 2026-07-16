@@ -19,7 +19,8 @@ export type ProviderId =
   | "surfsense"
   | "jollygen"
   | "unlimitedai"
-  | "pollinations";
+  | "pollinations"
+  | "g4f";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -92,6 +93,27 @@ export const MODELS: readonly GatewayModel[] = [
 
   // ─── Pollinations.ai provider: free, no-auth, OpenAI-compatible SSE ──────
   pol("openai-fast", "openai-fast", "GPT-OSS 20B Reasoning — fast, no signup, real token streaming with reasoning", "reasoning", 128000, true),
+
+  // ─── g4f (GPT4Free) provider: 96+ aggregated free providers ─────────────
+  g4f("gpt-4o", "gpt-4o", "GPT-4o — OpenAI multimodal flagship (via g4f aggregator)", "professional", 128000),
+  g4f("gpt-4o-mini", "gpt-4o-mini", "GPT-4o Mini — fast, lightweight (via g4f aggregator)", "professional", 128000),
+  g4f("gpt-4.1-nano", "gpt-4.1-nano", "GPT-4.1 Nano — ultra-fast, lightweight", "professional", 128000),
+  g4f("gpt-5", "gpt-5", "GPT-5 — OpenAI's flagship model (via g4f aggregator)", "professional", 128000),
+  g4f("gpt-5-nano", "gpt-5-nano", "GPT-5 Nano — fast, lightweight GPT-5 variant", "professional", 128000),
+  g4f("gpt-5.4-nano", "gpt-5.4-nano", "GPT-5.4 Nano — latest lightweight GPT variant", "professional", 128000),
+  g4f("o3-mini", "o3-mini", "O3 Mini — OpenAI reasoning model (via g4f aggregator)", "reasoning", 200000),
+  g4f("smart", "smart", "Smart — balanced general-purpose model", "professional", 128000),
+  g4f("reasoning", "reasoning", "Reasoning — deep step-by-step thinking model", "reasoning", 128000),
+  g4f("chat", "chat", "Chat — conversational general-purpose model", "professional", 128000),
+  g4f("mistral-nemo", "mistral-nemo", "Mistral Nemo — efficient 12B model by Mistral AI", "professional", 128000),
+  g4f("command-r", "command-r", "Command R — Cohere's retrieval-augmented model", "professional", 128000),
+  g4f("command-a", "command-a", "Command A — Cohere's flagship enterprise model", "professional", 256000),
+  g4f("deepseek-coder", "deepseek-coder", "DeepSeek Coder — specialized for code generation", "professional", 128000),
+  g4f("openai", "openai", "OpenAI — general-purpose via g4f aggregator", "professional", 128000),
+  // NSFW models from g4f
+  g4f("nsfw-unmoderated-gpt", "unmoderated-gpt", "Unmoderated GPT — uncensored, no content filters (via g4f)", "nsfw", 128000),
+  g4f("nsfw-seed-rp", "seed-rp", "Seed RP — uncensored roleplay model, no content filters (via g4f)", "nsfw", 128000),
+  g4f("nsfw-plutotext", "plutotext-r3-emotional", "PlutoText R3 Emotional — uncensored emotional roleplay (via g4f)", "nsfw", 128000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -276,6 +298,32 @@ function pol(
   };
 }
 
+/** g4f (GPT4Free) model helper. Aggregates 96+ free providers via Python. */
+function g4f(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "g4f",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true, // g4f streams via Python wrapper
+      tools: true, // via prompt injection
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -344,5 +392,9 @@ export const PROVIDER_INFO: Record<
   pollinations: {
     name: "Pollinations",
     description: "Free no-auth OpenAI-compatible API with real token streaming and reasoning",
+  },
+  g4f: {
+    name: "GPT4Free",
+    description: "Aggregates 96+ free AI providers (Pollinations, OpenaiChat, HuggingFace…) — auto-retries",
   },
 };
