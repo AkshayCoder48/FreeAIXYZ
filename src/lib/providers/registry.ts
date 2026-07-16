@@ -22,7 +22,8 @@ export type ProviderId =
   | "pollinations"
   | "g4f"
   | "kilocode"
-  | "llm7";
+  | "llm7"
+  | "lmarena";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -136,6 +137,19 @@ export const MODELS: readonly GatewayModel[] = [
   l7("gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous access", "professional", 131072),
   l7("minimax-m27", "minimax-m2.7", "Minimax M2.7 — latest Minimax model, free anonymous access", "professional", 196000),
   l7("codestral-latest", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
+
+  // ─── LMArena (arena.ai) provider: requires user auth token ──────────────
+  // Models available on arena.ai — user provides their session token via /settings
+  lma("lmarena-gpt-5", "gpt-5", "GPT-5 via LMArena — OpenAI flagship (requires auth token)", "professional", 128000),
+  lma("lmarena-claude-opus-4", "claude-opus-4", "Claude Opus 4 via LMArena — Anthropic flagship (requires auth token)", "professional", 200000),
+  lma("lmarena-claude-sonnet-5", "claude-sonnet-5", "Claude Sonnet 5 via LMArena — Anthropic latest (requires auth token)", "professional", 200000),
+  lma("lmarena-gemini-2-5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro via LMArena — Google flagship (requires auth token)", "professional", 2000000),
+  lma("lmarena-grok-4", "grok-4", "Grok 4 via LMArena — xAI flagship (requires auth token)", "professional", 131000),
+  lma("lmarena-deepseek-r1", "deepseek-r1", "DeepSeek R1 via LMArena — reasoning model (requires auth token)", "reasoning", 64000),
+  lma("lmarena-qwen-3-max", "qwen-3-max", "Qwen 3 Max via LMArena — Alibaba flagship (requires auth token)", "professional", 262144),
+  lma("lmarena-llama-4-maverick", "llama-4-maverick", "Llama 4 Maverick via LMArena — Meta (requires auth token)", "professional", 1000000),
+  lma("lmarena-kimi-k2", "kimi-k2", "Kimi K2 via LMArena — Moonshot (requires auth token)", "professional", 128000),
+  lma("lmarena-gpt-4o", "gpt-4o", "GPT-4o via LMArena — OpenAI multimodal (requires auth token)", "professional", 128000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -398,6 +412,32 @@ function l7(
   };
 }
 
+/** LMArena model helper. Requires user-provided auth token (via /settings). */
+function lma(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "lmarena",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true, // arena.ai streams via SSE-like format
+      tools: true, // via prompt injection
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -478,5 +518,9 @@ export const PROVIDER_INFO: Record<
   llm7: {
     name: "LLM7.io",
     description: "Free anonymous no-key access to GPT-OSS, Minimax, Codestral",
+  },
+  lmarena: {
+    name: "LMArena",
+    description: "50+ premium models (GPT-5, Claude Opus, Gemini Pro…) — requires auth token from /settings",
   },
 };

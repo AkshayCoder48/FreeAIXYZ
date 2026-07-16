@@ -112,9 +112,14 @@ export function Playground() {
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
+      // Include LMArena token from localStorage if set (via /settings page)
+      const lmarenaToken = typeof window !== "undefined" ? localStorage.getItem("lmarena_token") || "" : "";
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(lmarenaToken ? { "x-lmarena-token": lmarenaToken } : {}),
+        },
         signal: controller.signal,
         body: JSON.stringify({
           model,

@@ -11,6 +11,8 @@ export interface ProviderCompletionRequest {
   model: GatewayModel;
   messages: ProviderMessage[];
   signal?: AbortSignal;
+  /** Optional auth token (e.g., LMArena session token from /settings). */
+  authToken?: string;
 }
 
 export interface ProviderCompletionResult {

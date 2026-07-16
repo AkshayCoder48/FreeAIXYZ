@@ -12,6 +12,7 @@ import { pollinationsProvider } from "./pollinations";
 import { g4fProvider } from "./g4f";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
+import { lmarenaProvider } from "./lmarena";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
@@ -24,6 +25,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   g4f: g4fProvider,
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
+  lmarena: lmarenaProvider,
 };
 
 /** Get the provider instance for a given provider id. */
