@@ -20,7 +20,9 @@ export type ProviderId =
   | "jollygen"
   | "unlimitedai"
   | "pollinations"
-  | "g4f";
+  | "g4f"
+  | "kilocode"
+  | "llm7";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -114,6 +116,23 @@ export const MODELS: readonly GatewayModel[] = [
   g4f("nsfw-unmoderated-gpt", "unmoderated-gpt", "Unmoderated GPT — uncensored, no content filters (via g4f)", "nsfw", 128000),
   g4f("nsfw-seed-rp", "seed-rp", "Seed RP — uncensored roleplay model, no content filters (via g4f)", "nsfw", 128000),
   g4f("nsfw-plutotext", "plutotext-r3-emotional", "PlutoText R3 Emotional — uncensored emotional roleplay (via g4f)", "nsfw", 128000),
+
+  // ─── Kilo Code provider: 10 free models, no key, real SSE ───────────────
+  kc("tencent-hy3", "tencent/hy3:free", "Tencent Hy3 — large-scale Chinese/English model", "professional", 262144),
+  kc("stepfun-flash", "stepfun/step-3.7-flash:free", "StepFun Step 3.7 Flash — fast Chinese AI model", "professional", 262144),
+  kc("nemotron-ultra", "nvidia/nemotron-3-ultra-550b-a55b:free", "NVIDIA Nemotron 3 Ultra (550B) — flagship reasoning model", "reasoning", 1000000),
+  kc("nemotron-super", "nvidia/nemotron-3-super-120b-a12b:free", "NVIDIA Nemotron 3 Super (120B) — high-performance model", "professional", 1000000),
+  kc("nemotron-nano-omni", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "NVIDIA Nemotron 3 Nano Omni (30B) — compact reasoning", "reasoning", 256000),
+  kc("nemotron-safety", "nvidia/nemotron-3.5-content-safety:free", "NVIDIA Nemotron 3.5 Content Safety — moderation model", "sfw", 128000),
+  kc("laguna-xs", "poolside/laguna-xs-2.1:free", "Poolside Laguna XS 2.1 — code-optimized model", "professional", 262144),
+  kc("laguna-m", "poolside/laguna-m.1:free", "Poolside Laguna M.1 — balanced code model", "professional", 262144),
+  kc("cohere-north-code", "cohere/north-mini-code:free", "Cohere North Mini Code — lightweight code model", "professional", 256000),
+  kc("kilo-auto-free", "kilo-auto/free", "Kilo Auto Free — auto-routes to best available free model", "professional", 262144),
+
+  // ─── LLM7.io provider: free anonymous, no key ───────────────────────────
+  l7("gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous access", "professional", 131072),
+  l7("minimax-m27", "minimax-m2.7", "Minimax M2.7 — latest Minimax model, free anonymous access", "professional", 196000),
+  l7("codestral-latest", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -324,6 +343,58 @@ function g4f(
   };
 }
 
+/** Kilo Code model helper. Free, no-auth, real SSE streaming. */
+function kc(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "kilocode",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** LLM7.io model helper. Free anonymous, no key. */
+function l7(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "llm7",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -396,5 +467,13 @@ export const PROVIDER_INFO: Record<
   g4f: {
     name: "GPT4Free",
     description: "Aggregates 96+ free AI providers (Pollinations, OpenaiChat, HuggingFace…) — auto-retries",
+  },
+  kilocode: {
+    name: "Kilo Code",
+    description: "10 free models (NVIDIA Nemotron, Tencent Hy3, Poolside…) — no key, real SSE streaming",
+  },
+  llm7: {
+    name: "LLM7.io",
+    description: "Free anonymous no-key access to GPT-OSS, Minimax, Codestral",
   },
 };

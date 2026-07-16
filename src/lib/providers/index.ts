@@ -10,6 +10,8 @@ import { jollyGenProvider } from "./jollygen";
 import { unlimitedAiProvider } from "./unlimitedai";
 import { pollinationsProvider } from "./pollinations";
 import { g4fProvider } from "./g4f";
+import { kiloCodeProvider } from "./kilocode";
+import { llm7Provider } from "./llm7";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
@@ -20,6 +22,8 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   unlimitedai: unlimitedAiProvider,
   pollinations: pollinationsProvider,
   g4f: g4fProvider,
+  kilocode: kiloCodeProvider,
+  llm7: llm7Provider,
 };
 
 /** Get the provider instance for a given provider id. */
