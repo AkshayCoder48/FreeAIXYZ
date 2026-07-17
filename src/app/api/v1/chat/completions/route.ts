@@ -85,10 +85,6 @@ export async function POST(request: Request) {
   const useTools = hasTools(body.tools) && model.capabilities.tools;
   const wantsWebSearch = body.web_search === true;
 
-  // Extract LMArena auth token from the request header (set by the client
-  // from localStorage via the /settings page)
-  const lmarenaToken = request.headers.get("x-lmarena-token") || "";
-
   // Build the provider message list. Tool system prompt is prepended when tools
   // are active so every provider sees the tool-calling instructions.
   const messages: ProviderMessage[] = [];
@@ -134,9 +130,9 @@ export async function POST(request: Request) {
   const provider = getProvider(model.provider);
 
   if (wantsStream) {
-    return streamCompletion(model, provider, messages, useTools, request, lmarenaToken);
+    return streamCompletion(model, provider, messages, useTools, request);
   }
-  return jsonCompletion(model, provider, messages, useTools, lmarenaToken);
+  return jsonCompletion(model, provider, messages, useTools);
 }
 
 /** Non-streaming completion. */
@@ -145,11 +141,11 @@ async function jsonCompletion(
   provider: ReturnType<typeof getProvider>,
   messages: ProviderMessage[],
   useTools: boolean,
-  lmarenaToken: string,
+  
 ) {
   let text: string;
   try {
-    const result = await provider.complete({ model, messages, authToken: lmarenaToken });
+    const result = await provider.complete({ model, messages });
     text = result.text;
   } catch (err) {
     return upstreamErrorResponse(err);
@@ -246,7 +242,7 @@ async function streamCompletion(
   messages: ProviderMessage[],
   useTools: boolean,
   request: Request,
-  lmarenaToken: string,
+  
 ) {
   const id = generateCompletionId();
   const created = Math.floor(Date.now() / 1000);
@@ -288,7 +284,7 @@ async function streamCompletion(
       try {
         if (useTools) {
           // ---- Tool-calling path: buffer full response, parse, emit ----
-          const result = await provider.complete({ model, messages, signal, authToken: lmarenaToken });
+          const result = await provider.complete({ model, messages, signal });
           clearInterval(heartbeatTimer);
           if (signal.aborted) {
             cleanup();
@@ -388,7 +384,6 @@ async function streamCompletion(
               model,
               messages,
               signal,
-              authToken: lmarenaToken,
             })) {
               if (signal.aborted) break;
               if (delta) {
@@ -433,7 +428,7 @@ async function streamCompletion(
             });
           } else {
             // Non-streaming provider: fetch full text, then re-pace.
-            const result = await provider.complete({ model, messages, signal, authToken: lmarenaToken });
+            const result = await provider.complete({ model, messages, signal });
             clearInterval(heartbeatTimer);
             if (signal.aborted) {
               cleanup();

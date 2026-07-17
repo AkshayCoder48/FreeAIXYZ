@@ -117,7 +117,7 @@ export const MODELS: readonly GatewayModel[] = [
   ha("heckai-stepfun-flash", "stepfun/step-3.7-flash", "StepFun 3.7 Flash — fast Chinese AI (via HeckAI)", "professional", 262144),
 
   // ─── Web Search models (search web → LLM grounded answer) ──────────────
-  ws("web-search-fast", "heckai-deepseek-v4-flash", "Web Search — searches the internet in real-time, then answers with sources (powered by DeepSeek V4 Flash)", "professional", 64000),
+  ws("web-search-fast", "heckai-gemini-3-flash", "Web Search — searches the internet in real-time, then answers with sources (powered by Gemini 3 Flash)", "professional", 1000000),
   ws("web-search-pro", "heckai-deepseek-v4-pro", "Web Search Pro — deeper search + reasoning, answers with citations (powered by DeepSeek V4 Pro)", "reasoning", 64000),
 ];
 

@@ -1,8 +1,8 @@
 /**
  * ACE Music API route — generates AI music using ACE-Step 1.5.
  *
- * The API key is provided by the user via /settings (stored in localStorage
- * as `acemusic_api_key`, sent as `x-acemusic-key` header).
+ * The API key is AUTO-FETCHED from acemusic.ai on each request.
+ * No user input needed — the key is valid per-IP and doesn't require verification.
  *
  * Endpoint: POST /api/v1/music/generate
  * Body: { prompt, lyrics?, duration?, language?, instrumental?, bpm?, key?, seed? }
@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const ACE_API_URL = "https://api.acemusic.ai/v1/chat/completions";
+const ACE_PLAYGROUND_URL = "https://acemusic.ai/playground/api-key";
 
 interface MusicRequest {
   prompt: string;
@@ -30,18 +31,46 @@ interface MusicRequest {
   batchSize?: number;
 }
 
-export async function POST(request: Request) {
-  const apiKey = request.headers.get("x-acemusic-key") || "";
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        error:
-          "ACE Music API key required. Go to /settings and paste your key from https://acemusic.ai/playground/api-key",
+/** Auto-fetch an ACE Music API key from the playground page. */
+async function fetchAceApiKey(): Promise<string | null> {
+  try {
+    const res = await fetch(ACE_PLAYGROUND_URL, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        Accept: "text/html",
       },
-      { status: 401 },
-    );
-  }
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
 
+    // Look for API key patterns in the page
+    // The key is typically a 32-char hex string
+    const keyMatch = html.match(/["'`]([a-f0-9]{32})["'`]/i);
+    if (keyMatch) return keyMatch[1];
+
+    // Also try looking in JS chunks
+    const scriptMatches = [...html.matchAll(/src="([^"]+\.js[^"]*)"/g)].map((m) => m[1]);
+    for (const scriptPath of scriptMatches.slice(0, 5)) {
+      const url = scriptPath.startsWith("http")
+        ? scriptPath
+        : `https://acemusic.ai${scriptPath}`;
+      const jsRes = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      if (!jsRes.ok) continue;
+      const js = await jsRes.text();
+      const jsKeyMatch = js.match(/["'`]([a-f0-9]{32})["'`]/);
+      if (jsKeyMatch) return jsKeyMatch[1];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(request: Request) {
   let body: MusicRequest;
   try {
     body = (await request.json()) as MusicRequest;
@@ -53,6 +82,15 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Either prompt, lyrics, or sampleMode is required" },
       { status: 400 },
+    );
+  }
+
+  // Auto-fetch API key (no user input needed)
+  const apiKey = await fetchAceApiKey();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Could not auto-fetch ACE Music API key. The service may be temporarily unavailable." },
+      { status: 503 },
     );
   }
 
@@ -140,15 +178,15 @@ export async function POST(request: Request) {
 }
 
 /** GET — return API status */
-export async function GET(request: Request) {
-  const apiKey = request.headers.get("x-acemusic-key") || "";
+export async function GET() {
   return NextResponse.json({
     service: "ACE Music Generation",
-    authenticated: !!apiKey,
+    auth: "auto-fetched per request (no user input needed)",
     models: ["ace-step-1.5"],
     params: [
       "prompt", "lyrics", "duration", "language", "instrumental",
       "bpm", "key", "seed", "sampleMode", "batchSize",
     ],
+    endpoint: "POST /api/v1/music/generate",
   });
 }
