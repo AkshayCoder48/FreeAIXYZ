@@ -219,8 +219,8 @@ export default function Home() {
             {/* stat row */}
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {[
-                ["45", "Models available"],
-                ["10", "Free providers"],
+                ["43", "Models available"],
+                ["9", "Free providers"],
                 ["∞", "Daily request limit"],
                 ["$0", "Cost — forever"],
               ].map(([big, small]) => (
@@ -379,7 +379,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                 All models
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {45} models across 10 free providers. Filter, search, and inspect
+                {43} models across 9 free providers. Filter, search, and inspect
                 capabilities. Live list at{" "}
                 <code className="text-emerald-400 text-xs">
                   GET /api/v1/models
