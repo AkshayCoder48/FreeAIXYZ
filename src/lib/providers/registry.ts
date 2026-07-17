@@ -21,7 +21,8 @@ export type ProviderId =
   | "pollinations"
   | "kilocode"
   | "llm7"
-  | "heckai";
+  | "heckai"
+  | "websearch";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -114,6 +115,10 @@ export const MODELS: readonly GatewayModel[] = [
   ha("heckai-qwen3-7-plus", "qwen/qwen3.7-plus", "Qwen 3.7 Plus — Alibaba enhanced (via HeckAI)", "professional", 262144),
   ha("heckai-minimax-m3", "minimax/minimax-m3", "Minimax M3 — Chinese AI flagship (via HeckAI)", "professional", 196000),
   ha("heckai-stepfun-flash", "stepfun/step-3.7-flash", "StepFun 3.7 Flash — fast Chinese AI (via HeckAI)", "professional", 262144),
+
+  // ─── Web Search models (search web → LLM grounded answer) ──────────────
+  ws("web-search-fast", "heckai-deepseek-v4-flash", "Web Search — searches the internet in real-time, then answers with sources (powered by DeepSeek V4 Flash)", "professional", 64000),
+  ws("web-search-pro", "heckai-deepseek-v4-pro", "Web Search Pro — deeper search + reasoning, answers with citations (powered by DeepSeek V4 Pro)", "reasoning", 64000),
 ];
 
 /** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
@@ -354,6 +359,32 @@ function ha(
   };
 }
 
+/** Web Search model helper. Uses z-ai-web-dev-sdk to search, then LLM to answer. */
+function ws(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "websearch",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: true,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -430,5 +461,9 @@ export const PROVIDER_INFO: Record<
   heckai: {
     name: "HeckAI",
     description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",
+  },
+  websearch: {
+    name: "Web Search",
+    description: "Real-time web search + LLM grounded answers with source citations",
   },
 };

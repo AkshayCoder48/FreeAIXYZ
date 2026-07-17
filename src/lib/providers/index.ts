@@ -11,6 +11,7 @@ import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
+import { webSearchProvider } from "./websearch";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
@@ -22,6 +23,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
   heckai: heckAiProvider,
+  websearch: webSearchProvider,
 };
 
 /** Get the provider instance for a given provider id. */

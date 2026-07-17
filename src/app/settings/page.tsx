@@ -43,7 +43,9 @@ function useLocalStorage(key: string, defaultValue: string = "") {
 
 export default function SettingsPage() {
   const [lmarenaToken, setLmarenaToken] = useLocalStorage("lmarena_token", "");
+  const [acemusicKey, setAcemusicKey] = useLocalStorage("acemusic_api_key", "");
   const [showToken, setShowToken] = useState(false);
+  const [showMusicKey, setShowMusicKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
@@ -55,6 +57,11 @@ export default function SettingsPage() {
   const handleClear = () => {
     setLmarenaToken("");
     toast.success("LMArena token cleared");
+  };
+
+  const handleClearMusic = () => {
+    setAcemusicKey("");
+    toast.success("ACE Music key cleared");
   };
 
   return (
@@ -190,6 +197,83 @@ export default function SettingsPage() {
             <p className="text-[11px] text-amber-400/80">
               Your token is stored only in your browser's localStorage. It's sent directly to
               arena.ai when you use LMArena models. We never log or store it server-side.
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ACE Music API Key */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="rounded-2xl border border-border bg-card/50 backdrop-blur p-6 space-y-4"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Server className="h-5 w-5 text-emerald-400" />
+                <h2 className="text-lg font-semibold">ACE Music API Key</h2>
+                <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+                  music gen
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Generate AI music with ACE-Step 1.5. Supports lyrics, style prompts,
+                instrumentals, covers, and more. Free API key from acemusic.ai.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Key className="h-3.5 w-3.5" /> API Key
+            </Label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type={showMusicKey ? "text" : "password"}
+                  value={acemusicKey}
+                  onChange={(e) => setAcemusicKey(e.target.value)}
+                  placeholder="Paste your ACE Music API key..."
+                  className="pr-10 font-mono text-sm"
+                />
+                <button
+                  onClick={() => setShowMusicKey(!showMusicKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showMusicKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <Button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5">
+                {saved ? <Check className="h-4 w-4" /> : null}
+                {saved ? "Saved" : "Save"}
+              </Button>
+            </div>
+          </div>
+
+          {acemusicKey && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="gap-1 border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+                <Check className="h-3 w-3" /> Key set
+              </Badge>
+              <Button variant="ghost" size="sm" onClick={handleClearMusic} className="text-xs text-muted-foreground">
+                Clear key
+              </Button>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-border/60 bg-background/40 p-4 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" /> How to get your key:
+            </p>
+            <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside ml-1">
+              <li>Visit <a href="https://acemusic.ai/playground/api-key" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-0.5">acemusic.ai <ExternalLink className="h-3 w-3" /></a></li>
+              <li>Sign up (free) or use guest mode</li>
+              <li>Copy your API key from the playground</li>
+              <li>Paste it above and click Save</li>
+            </ol>
+            <p className="text-[11px] text-muted-foreground/70 mt-2">
+              Then use <code className="text-emerald-400">POST /api/v1/music/generate</code> with params: prompt, lyrics, duration, language, instrumental, bpm, key, seed, sampleMode, batchSize.
             </p>
           </div>
         </motion.div>
