@@ -376,10 +376,9 @@ async function streamCompletion(
             model.provider === "jollygen" ||
             model.provider === "unlimitedai" ||
             model.provider === "pollinations" ||
-            model.provider === "g4f" ||
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
-            model.provider === "lmarena";
+            model.provider === "heckai";
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.
