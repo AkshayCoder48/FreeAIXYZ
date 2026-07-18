@@ -19,6 +19,11 @@ import { Badge } from "@/components/ui/badge";
 import { Playground } from "@/components/landing/playground";
 import { CodeExamples } from "@/components/landing/code-examples";
 import { ModelsShowcase } from "@/components/landing/models-showcase";
+import { MODELS, PROVIDER_INFO } from "@/lib/providers";
+
+// Compute live counts so the stats always match the actual registry.
+const MODEL_COUNT = MODELS.length;
+const PROVIDER_COUNT = Object.keys(PROVIDER_INFO).length;
 
 const FEATURES = [
   {
@@ -219,8 +224,8 @@ export default function Home() {
             {/* stat row */}
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
               {[
-                ["43", "Models available"],
-                ["9", "Free providers"],
+                [String(MODEL_COUNT), "Models available"],
+                [String(PROVIDER_COUNT), "Free providers"],
                 ["∞", "Daily request limit"],
                 ["$0", "Cost — forever"],
               ].map(([big, small]) => (
@@ -379,7 +384,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
                 All models
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {43} models across 9 free providers. Filter, search, and inspect
+                {MODEL_COUNT} models across {PROVIDER_COUNT} free providers. Filter, search, and inspect
                 capabilities. Live list at{" "}
                 <code className="text-emerald-400 text-xs">
                   GET /api/v1/models

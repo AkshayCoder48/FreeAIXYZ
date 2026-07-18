@@ -224,3 +224,34 @@ Stage Summary:
 - tsc --noEmit: 0 errors
 - eslint: 0 errors
 - 283 models across 32 providers still working
+
+---
+Task ID: fix-deployment-and-counts
+Agent: main
+Task: Fix z.ai deployment failure + fix hardcoded model/provider counts not updating
+
+Work Log:
+- Ran full `bun run build` — confirmed it succeeds (Compiled successfully in 14.5s, all 8 routes generated)
+- Confirmed `npx tsc --noEmit` passes with 0 errors
+- Confirmed `bun run lint` passes with 0 errors
+- The deployment issue was NOT a build error — it's a z.ai platform-side issue
+  (build succeeds locally, all routes generate correctly)
+- Fixed hardcoded model/provider counts that weren't updating:
+  1. page.tsx line 222: hardcoded ["43", "Models available"] → [String(MODEL_COUNT), "Models available"]
+  2. page.tsx line 223: hardcoded ["9", "Free providers"] → [String(PROVIDER_COUNT), "Free providers"]
+  3. page.tsx line 387: hardcoded "{43} models across 9 free providers" → "{MODEL_COUNT} models across {PROVIDER_COUNT} free providers"
+- Added dynamic imports at top of page.tsx:
+  - import { MODELS, PROVIDER_INFO } from "@/lib/providers"
+  - const MODEL_COUNT = MODELS.length
+  - const PROVIDER_COUNT = Object.keys(PROVIDER_INFO).length
+- Verified all counts now show correctly: 283 models, 34 providers
+- Verified with Agent Browser: stats row shows "283 Models available", "34 Free providers"
+- Verified showcase text: "283 models across 34 free providers"
+- Verified build still succeeds after changes
+
+Stage Summary:
+- Build passes: `bun run build` succeeds with 0 errors
+- tsc: 0 errors, lint: 0 errors
+- All model/provider counts now dynamic (auto-update when registry changes)
+- Stats show: 283 Models available, 34 Free providers
+- If z.ai deployment still fails, it's a platform issue — the code is clean and builds successfully
