@@ -366,6 +366,17 @@ async function streamCompletion(
           // nsfwlover, surfsense, jollygen, and unlimitedai all return real
           // streaming deltas; toolbaz returns the full text in one chunk
           // (re-paced by the gateway).
+          // All G4F.space owner-based provider ids route to g4fSpaceProvider
+          // which genuinely streams via SSE.
+          const G4F_PROVIDER_IDS = new Set([
+            "anesnt", "gemini-cli", "google-antigravity", "ktai",
+            "modelscope-ai", "api-airforce", "audio", "cerebras-ai",
+            "community-day-2026", "crowllm-com", "deepinfra-com",
+            "gemini-v1beta", "gen-pollinations-ai", "groq-com",
+            "kobold-llamacpp-swarm", "navy", "nectar-pollinations-ai",
+            "nvidia-com", "ollama-com", "opencode-ai-zen",
+            "perplexity", "qwen", "ollama-swarm", "easychat",
+          ]);
           const realStream =
             model.provider === "nsfwlover" ||
             model.provider === "surfsense" ||
@@ -374,7 +385,8 @@ async function streamCompletion(
             model.provider === "pollinations" ||
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
-            model.provider === "heckai";
+            model.provider === "heckai" ||
+            G4F_PROVIDER_IDS.has(model.provider);
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.

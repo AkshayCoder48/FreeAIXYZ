@@ -1,0 +1,146 @@
+[
+  {
+    "id": "nsfw-llama3-8b",
+    "provider": "helper",
+    "ok": true,
+    "latency_ms": 1582,
+    "http_status": "200",
+    "response": "*enters the dimly lit tavern, her crimson eye patch a stark contrast to her moon-pale skin as she sw",
+    "error": ""
+  },
+  {
+    "id": "nsfw-jollygen",
+    "provider": "helper",
+    "ok": true,
+    "latency_ms": 3299,
+    "http_status": "200",
+    "response": "The lone warrior's blade pulsed with the blood of his fallen king as he stared into the abyss of his",
+    "error": ""
+  },
+  {
+    "id": "nsfw-lustre-reasoning",
+    "provider": "helper",
+    "ok": true,
+    "latency_ms": 1243,
+    "http_status": "200",
+    "response": "UnlimitedAI.Chat. The warrior, bathed in the blood of a thousand fallen foes, felt only the gnawing ",
+    "error": ""
+  },
+  {
+    "id": "nsfw-lustre-search",
+    "provider": "helper",
+    "ok": true,
+    "latency_ms": 1165,
+    "http_status": "200",
+    "response": "Here's a dark fantasy story in one sentence: The warrior, whose armor was forged from the bones of s",
+    "error": ""
+  },
+  {
+    "id": "ollama-swarm-hermes-pwn",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 5450,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-nemesis-ia",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4589,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-nemesis-ia-v3",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4589,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-gpt-oss-abliterated",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4586,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-gemma-4-abliterated-26b",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4594,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-gemma-4-abliterated-12b",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4593,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-qwen3-5-abliterated-27b",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4587,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-qwen3-6-abliterated-27b",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4582,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "ollama-swarm-huihui-ai-glm-4-7-flash-abliterated",
+    "provider": "ollama-swarm",
+    "ok": false,
+    "latency_ms": 4583,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "kobold-qwen3-5-35b-a3b-uncensored-hauhaucs-aggressiv",
+    "provider": "kobold-llamacpp-swarm",
+    "ok": false,
+    "latency_ms": 4591,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "kobold-qwen3-6-35b-a3b-uncensored-hauhaucs-aggressiv",
+    "provider": "kobold-llamacpp-swarm",
+    "ok": false,
+    "latency_ms": 4597,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  },
+  {
+    "id": "api-unmoderated-gpt",
+    "provider": "api-airforce",
+    "ok": false,
+    "latency_ms": 4597,
+    "http_status": "429",
+    "response": "",
+    "error": "HTTP 429: {\"error\":{\"message\":\"G4F.space returned HTTP 429: {\\\"error\\\":{\\\"message\\\":\\\"Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign "
+  }
+]
