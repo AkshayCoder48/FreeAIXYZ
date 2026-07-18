@@ -63,7 +63,7 @@ async function fetchWithRetry(
 }
 
 export const kiloCodeProvider: Provider = {
-  id: "g4f", // reuse id space; actual provider tracked per-model
+  id: "kilocode",
 
   async complete(req) {
     let text = "";

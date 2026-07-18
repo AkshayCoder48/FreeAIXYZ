@@ -145,7 +145,7 @@ function parseSseLine(line: string): string | null {
 }
 
 export const g4fProvider: Provider = {
-  id: "g4f",
+  id: "toolbaz", // unused legacy file
 
   async complete(req) {
     let text = "";

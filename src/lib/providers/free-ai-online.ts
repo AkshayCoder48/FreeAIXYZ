@@ -70,7 +70,7 @@ function parseSseLine(line: string): { type: string; data: string } | null {
 }
 
 export const freeAiOnlineProvider: Provider = {
-  id: "freeaionline",
+  id: "toolbaz", // unused legacy file
 
   async complete(req) {
     let text = "";

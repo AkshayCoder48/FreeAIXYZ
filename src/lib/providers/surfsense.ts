@@ -45,7 +45,7 @@ function parseEvent(line: string): SurfSenseEvent | null {
 }
 
 export const surfSenseProvider: Provider = {
-  id: "freeaionline", // reuse the provider id space; actual id tracked per-model
+  id: "surfsense",
 
   async complete(req) {
     let text = "";

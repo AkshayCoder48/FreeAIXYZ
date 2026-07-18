@@ -80,8 +80,10 @@ function buildSpicyMessages(
   messages: ProviderCompletionRequest["messages"],
 ): { messagesToCreate: SpicyMessage[]; submitMessageId: number } {
   const out: SpicyMessage[] = [];
-  let nextId = 0;
-  let lastId: number | null = null;
+  // lastId is always set to 0 (system root) before any user/assistant
+  // messages are appended, so it's never null when used as a parent or
+  // returned as submitMessageId. We keep it typed as number for simplicity.
+  let lastId = 0;
 
   // SpicyWriter uses negative ids for "new" messages, starting at 0 for system.
   // We'll use: 0 = system, -1 = first user, -2 = first assistant, -3 = second user, etc.

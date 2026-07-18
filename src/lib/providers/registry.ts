@@ -25,9 +25,11 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "anesnt"
   | "api-airforce"
   | "audio"
   | "cerebras-ai"
+  | "community-day-2026"
   | "crowllm-com"
   | "deepinfra-com"
   | "easychat"
@@ -812,6 +814,10 @@ export const PROVIDER_INFO: Record<
     name: "SpicyWriter",
     description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
   },
+  "anesnt": {
+    name: "AnesNT",
+    description: "3 models (gpt-5.4, openai-fast, Spit-fires/step-3.5-flash-free) via AnesNT",
+  },
   "api-airforce": {
     name: "API.AirForce",
     description: "6 models (gpt-4o-mini, gpt-4o, claude-haiku-4.5-p2g, gemini-3.5-pro…) via API.AirForce",
@@ -823,6 +829,10 @@ export const PROVIDER_INFO: Record<
   "cerebras-ai": {
     name: "Cerebras",
     description: "2 models (gpt-oss-120b, zai-glm-4.7) via Cerebras",
+  },
+  "community-day-2026": {
+    name: "Community Day 2026",
+    description: "8 models (zai-org/GLM-5.2, deepseek-ai/DeepSeek-V4-Pro, empero-ai/Qwythos-9B-Claude-Mythos-5-1M…) via Community Day 2026",
   },
   "crowllm-com": {
     name: "CrowLLM",

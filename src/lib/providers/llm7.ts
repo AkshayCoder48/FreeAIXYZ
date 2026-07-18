@@ -27,7 +27,7 @@ function parseSseLine(line: string): string | null {
 }
 
 export const llm7Provider: Provider = {
-  id: "g4f", // reuse id space; actual provider tracked per-model
+  id: "llm7",
 
   async complete(req) {
     let text = "";

@@ -72,5 +72,5 @@ export {
   PROVIDER_INFO,
   type GatewayModel,
   type ModelCapabilities,
-  type ProviderId as ProviderIdType,
+  type ProviderId,
 } from "./registry";
