@@ -36,11 +36,47 @@ const CATEGORY_META: Record<
   reasoning: { label: "Reasoning", color: "text-violet-300 border-violet-500/30 bg-violet-500/5" },
 };
 
-const PROVIDER_COLORS: Record<ProviderId, string> = {
+const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   toolbaz: "text-amber-300",
   nsfwlover: "text-rose-300",
-  freeaionline: "text-teal-300",
+  surfsense: "text-cyan-300",
+  jollygen: "text-pink-300",
+  unlimitedai: "text-orange-300",
+  pollinations: "text-green-300",
+  kilocode: "text-violet-300",
+  llm7: "text-blue-300",
+  heckai: "text-fuchsia-300",
+  spicywriter: "text-rose-400",
+  // G4F.space providers
+  "nvidia-com": "text-emerald-300",
+  "crowllm-com": "text-lime-300",
+  "modelscope-ai": "text-teal-300",
+  qwen: "text-purple-300",
+  "api-airforce": "text-red-300",
+  "community-day-2026": "text-yellow-300",
+  "kobold-llamacpp-swarm": "text-stone-300",
+  ktai: "text-sky-300",
+  perplexity: "text-cyan-300",
+  "opencode-ai-zen": "text-green-300",
+  anesnt: "text-amber-300",
+  "gemini-cli": "text-blue-300",
+  "google-antigravity": "text-emerald-300",
+  audio: "text-rose-300",
+  "cerebras-ai": "text-orange-300",
+  "deepinfra-com": "text-violet-300",
+  "gemini-v1beta": "text-sky-300",
+  "gen-pollinations-ai": "text-green-300",
+  "groq-com": "text-fuchsia-300",
+  navy: "text-blue-300",
+  "nectar-pollinations-ai": "text-lime-300",
+  "ollama-com": "text-stone-300",
+  "ollama-swarm": "text-orange-300",
+  easychat: "text-cyan-300",
 };
+
+function providerColor(pid: ProviderId): string {
+  return PROVIDER_COLORS[pid] ?? "text-muted-foreground";
+}
 
 function formatCtx(tokens: number): string {
   if (!tokens) return "—";
@@ -155,8 +191,8 @@ export function ModelsShowcase() {
                 <div className="min-w-0">
                   <code className="text-sm font-semibold break-all">{m.id}</code>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className={cn("text-[10px] font-medium", PROVIDER_COLORS[m.provider])}>
-                      {PROVIDER_INFO[m.provider].name}
+                    <span className={cn("text-[10px] font-medium", providerColor(m.provider))}>
+                      {PROVIDER_INFO[m.provider]?.name ?? m.provider}
                     </span>
                     <span className="text-[10px] text-muted-foreground">·</span>
                     <span className="text-[10px] text-muted-foreground">

@@ -386,6 +386,7 @@ async function streamCompletion(
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
             model.provider === "heckai" ||
+            model.provider === "spicywriter" ||
             G4F_PROVIDER_IDS.has(model.provider);
 
           if (realStream) {

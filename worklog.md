@@ -126,3 +126,45 @@ Stage Summary:
 - HTML API example: complete chat widget with streaming, model selector, dark theme
 - Total models: 281 across 31 providers
 - All code tabs: cURL, Python, JavaScript, Streaming, Tools, HTML
+
+---
+Task ID: spicywriter-provider
+Agent: main
+Task: Add SpicyWriter provider (Ling 2.6 Flash + Nemo) with per-call anon id rotation
+
+Work Log:
+- Tested SpicyWriter API (https://spicywriter.com/api/conversations/new):
+  - No auth needed — uses X-Anonymous-User-Id header (anon_XXXXXX format)
+  - Each anon id gets 5 free requests → rotate new id per call = unlimited free
+  - Response format: SSE stream with metadata events + plain text deltas + {"done":true}
+  - Models: "Ling 2.6 Flash" (general) and "Nemo" (uncensored)
+  - Multi-turn supported via parent message chaining
+- Created src/lib/providers/spicywriter.ts:
+  - Generates fresh anon_XXXXXX id per request (crypto.getRandomValues)
+  - Generates W3C traceparent header per request
+  - Converts OpenAI messages → SpicyWriter format (id/parent chain)
+  - Parses SSE: skips JSON metadata, yields plain text deltas
+  - Real token-by-token streaming
+- Added to registry.ts:
+  - ProviderId: "spicywriter"
+  - 2 models: nsfw-ling-2-6-flash (Ling 2.6 Flash), nsfw-nemo (Nemo)
+  - Both category "nsfw" (auto-gets uncensored system preamble from chat route)
+  - Tools: true (supported via prompt injection)
+  - sw() helper function
+  - PROVIDER_INFO entry
+- Updated index.ts: spicywriter → spicyWriterProvider
+- Updated chat route: added spicywriter to realStream check
+- Updated models-showcase.tsx: added spicywriter color + fixed PROVIDER_COLORS
+- Recreated model-select.tsx (was lost)
+- Updated playground.tsx to use ModelSelect (was reverted to old Select)
+- Verified lint passes clean
+- Tested via API: nsfw-ling-2-6-flash returned uncensored content, nsfw-nemo returned "7" for 3+4
+- Tested via Agent Browser: model search shows both SpicyWriter models, chat returns "4" for 2+2
+
+Stage Summary:
+- SpicyWriter provider added: 2 uncensored NSFW models (Ling 2.6 Flash, Nemo)
+- Unlimited free: each call generates new anon id → bypasses 5-request limit
+- Real SSE streaming with token-by-token deltas
+- Multi-turn conversation support
+- Tool calling supported via prompt injection
+- Total models: 283 across 32 providers

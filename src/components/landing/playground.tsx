@@ -8,16 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { MODELS } from "@/lib/providers";
+import { ModelSelect } from "./model-select";
 
 interface Message {
   role: "user" | "assistant";
@@ -346,23 +340,7 @@ export function Playground() {
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Model</Label>
             {mounted ? (
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLAYGROUND_MODELS.map((m) => (
-                    <SelectItem key={m.key} value={m.id}>
-                      <div className="flex flex-col">
-                        <span>{m.label}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {m.hint}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ModelSelect value={model} onChange={setModel} />
             ) : (
               <div className="h-9 rounded-md border border-input px-3 flex items-center text-sm text-muted-foreground">
                 {model}

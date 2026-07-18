@@ -11,6 +11,7 @@ import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
+import { spicyWriterProvider } from "./spicywriter";
 import { g4fSpaceProvider } from "./g4fspace";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
@@ -23,6 +24,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
   heckai: heckAiProvider,
+  spicywriter: spicyWriterProvider,
   // G4F.space — all owner-based provider ids route to the single
   // g4fSpaceProvider instance (same endpoint, no auth).
   anesnt: g4fSpaceProvider,

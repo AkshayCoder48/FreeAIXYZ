@@ -24,6 +24,7 @@ export type ProviderId =
   | "kilocode"
   | "llm7"
   | "heckai"
+  | "spicywriter"
   | "api-airforce"
   | "audio"
   | "cerebras-ai"
@@ -138,6 +139,12 @@ export const MODELS: readonly GatewayModel[] = [
   ha("heckai-qwen3-7-plus", "qwen/qwen3.7-plus", "Qwen 3.7 Plus — Alibaba enhanced (via HeckAI)", "professional", 262144),
   ha("heckai-minimax-m3", "minimax/minimax-m3", "Minimax M3 — Chinese AI flagship (via HeckAI)", "professional", 196000),
   ha("heckai-stepfun-flash", "stepfun/step-3.7-flash", "StepFun 3.7 Flash — fast Chinese AI (via HeckAI)", "professional", 262144),
+
+  // ─── SpicyWriter provider: free anonymous NSFW/uncensored, real SSE ────
+  // Each call mints a fresh anon id (X-Anonymous-User-Id) → unlimited free.
+  // Uncensored system preamble auto-injected for nsfw-* models.
+  sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
+  sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
 
   // ─── G4F.space — 238 models across 22 providers ───
   // Each model's `provider` field is the owner-based id; g4fspace.ts handles
@@ -664,6 +671,32 @@ function ha(
 }
 
 
+/** SpicyWriter model helper. Free anonymous NSFW/uncensored, real SSE streaming. */
+function sw(
+  id: string,
+  upstream: string,
+  description: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "spicywriter",
+    upstream,
+    description,
+    category: "nsfw",
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+
 /**
  * G4F.space model helper. The first arg `providerId` is an owner-based id
  * (e.g. "nvidia-com", "crowllm-com") — the model's `provider` field is set
@@ -774,6 +807,10 @@ export const PROVIDER_INFO: Record<
   "heckai": {
     name: "HeckAI",
     description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",
+  },
+  "spicywriter": {
+    name: "SpicyWriter",
+    description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
   },
   "api-airforce": {
     name: "API.AirForce",
