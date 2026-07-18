@@ -137,14 +137,24 @@ function buildSpicyMessages(
   return { messagesToCreate: out, submitMessageId };
 }
 
-/** Parse an SSE line and return text delta or null. */
+/** Parse an SSE line and return text delta or null.
+ *
+ * IMPORTANT: SpicyWriter sends deltas like `data:  hello` where the leading
+ * spaces ARE significant — they're word separators. We must NOT trim the
+ * content, only strip the `data:` prefix and the single space after it.
+ */
 function parseSseDelta(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) return null;
-  const data = trimmed.slice(5).trim();
-  if (!data) return null;
+  // Only strip trailing whitespace/newline from the line, NOT leading
+  const rtrimmed = line.replace(/\r?\n$/, "");
+  if (!rtrimmed.startsWith("data:")) return null;
 
-  // Check for JSON control events
+  // Slice off "data:" (5 chars). The content after it may start with spaces
+  // that are significant — only strip ONE leading space (the SSE standard
+  // separator after "data:").
+  let data = rtrimmed.slice(5);
+  if (data.startsWith(" ")) data = data.slice(1); // strip exactly one space
+
+  // Check for JSON control events (these never have leading spaces)
   if (data.startsWith("{")) {
     try {
       const json = JSON.parse(data);
@@ -161,8 +171,10 @@ function parseSseDelta(line: string): string | null {
     }
   }
 
-  // Plain text delta — this is the content
-  return data;
+  // Plain text delta — return as-is, preserving leading/trailing spaces.
+  // SpicyWriter sends literal "\n" (backslash + n) for newlines — convert
+  // to actual newline characters.
+  return data.replace(/\\n/g, "\n");
 }
 
 export const spicyWriterProvider: Provider = {

@@ -168,3 +168,28 @@ Stage Summary:
 - Multi-turn conversation support
 - Tool calling supported via prompt injection
 - Total models: 283 across 32 providers
+
+---
+Task ID: fix-spicywriter-spaces
+Agent: main
+Task: Fix SpicyWriter output missing spaces between words (shitty concatenated text)
+
+Work Log:
+- Diagnosed the issue: SpicyWriter SSE deltas have leading spaces that ARE significant
+  - Raw format: "data:  breath" = content " breath" (one space = word separator)
+  - Raw format: "data: hes" = content "hes" (no space = continuation of "breat" → "breathes")
+  - Raw format: "data: \n" = literal backslash-n representing a newline
+- Fixed parseSseDelta() in spicywriter.ts:
+  - OLD: line.trim() + data.trim() → stripped ALL leading/trailing spaces → words concatenated
+  - NEW: only strip "data:" prefix + exactly ONE space (SSE standard separator)
+  - Preserve all other spaces as they are word separators
+  - Convert literal "\n" (backslash-n) to actual newline characters
+- Verified fix:
+  - nsfw-ling-2-6-flash haiku: "Silent circuits hum low,\nBinary whispers flow,\nLogic blooms, swift and sure." (proper spaces + newlines)
+  - nsfw-nemo: "Hello, world! It's a beautiful day..." (proper punctuation and spaces)
+- Lint passes clean
+
+Stage Summary:
+- SpicyWriter now outputs properly formatted text with spaces between words
+- Newlines correctly rendered as actual newlines
+- No more "shitty" concatenated output like "Serverlessdreamscapehums"
