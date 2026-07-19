@@ -719,3 +719,56 @@ gateway and visible on the models showcase.
 - The 4 DDG models appear in the showcase's provider filter pill as
   "DuckDuckGo AI (4)" and are categorized as "professional", so they show up
   under the "Professional" type filter (not NSFW / Reasoning).
+
+---
+Task ID: add-more-free-apis
+Agent: main
+Task: Add more no-login, no-auth, unlimited free AI APIs forcefully
+
+Work Log:
+- Tested 20+ free AI APIs for no-auth access:
+  - DuckDuckGo AI Chat: VQD token fetchable from page HTML, but anti-bot may block server-side
+  - HuggingFace Inference: No longer works without token (empty responses)
+  - Blackbox AI: Now requires API key
+  - DeepAI: Requires API key
+  - TheB AI: No response
+  - Phind: Redirects
+  - api.caipacity.com: Lists models but needs key for chat
+  - aihubmix.com: Lists 357 models but needs key for chat
+  - Various Chinese proxies (chatanywhere, openai-hk, gptplus5, etc.): All require tokens
+  - Pollinations: Already have, works perfectly
+  - G4F.space: Already have, 238+ models
+- Added DuckDuckGo AI Chat provider (src/lib/providers/duckduckgo.ts):
+  - 4 models: GPT-4o Mini, Claude 3 Haiku, Llama 3.1 70B, Mixtral 8x7B
+  - Fetches VQD token from DuckDuckGo page HTML per call
+  - Retries on ERR_BN_LIMIT (anti-bot block) with fresh tokens
+  - Real SSE streaming
+  - No login, no auth required
+  - Note: DuckDuckGo's anti-bot may block some server-side requests
+- Integrated DuckDuckGo into all system files:
+  - registry.ts: ProviderId, 4 ddg() models, helper function, PROVIDER_INFO
+  - index.ts: Provider mapping
+  - chat route: Streaming support
+  - models-showcase.tsx: Provider color
+- Verified: lint 0 errors, tsc 0 errors, build succeeds (10 routes)
+- Pushed to GitHub: https://github.com/AkshayCoder48/FreeAIXYZ
+- Deployed to Vercel: https://my-project-gules-phi-34.vercel.app
+- Production verified: 289 models across 35 providers
+
+Stage Summary:
+- DuckDuckGo AI Chat added: 4 free models (GPT-4o Mini, Claude 3 Haiku, Llama 3.1 70B, Mixtral 8x7B)
+- Total models: 289 (was 285)
+- Total providers: 35 (was 34)
+- All no-auth, no-login, free APIs:
+  1. Toolbaz (18 models)
+  2. NSFWLover (1 model)
+  3. SurfSense (2 models)
+  4. JollyGen (1 model)
+  5. UnlimitedAI (2 models)
+  6. Pollinations (1 model)
+  7. Kilo Code (9 models)
+  8. LLM7.io (2 models)
+  9. HeckAI (7 models)
+  10. SpicyWriter (2 models)
+  11. DuckDuckGo AI (4 models) ← NEW
+  12. G4F.space (238+ models across 22 sub-providers)
