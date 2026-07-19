@@ -323,3 +323,291 @@ Stage Summary:
 - Vercel production: https://my-project-gules-phi-34.vercel.app
 - Total: 285 models across 34 providers
 - Note: ACE Music API may still return 401 if it requires OAuth — the rotatable UUID is the best we can do without a real auth flow
+
+---
+Task ID: color-scheme
+Agent: main
+Task: Rebrand app color scheme — dark teal (#042330) bg + bright green (#2ce080) accent
+
+Work Log:
+- Updated `src/app/globals.css`:
+  - `:root` and `.dark` blocks both rewritten with the same dark-themed palette
+    (app is dark-themed, so both variants are identical)
+  - `--background: #042330` (dark teal)
+  - `--foreground: #ffffff` (white text on dark bg)
+  - `--primary: #2ce080` (bright green accent for buttons, links, highlights)
+  - `--primary-foreground: #042330` (dark text on green buttons)
+  - `--card: #0a3340`, `--popover: #0a3340` (slightly lighter teal for surfaces)
+  - `--secondary/--muted/--accent: #0d3a48` (next tier up for muted surfaces)
+  - `--muted-foreground: #9bb5c0` (cool grey for secondary text)
+  - `--border: rgba(255,255,255,0.1)`, `--input: rgba(255,255,255,0.15)`
+    (subtle white-tinted dividers that work on the dark teal)
+  - `--ring: #2ce080` (focus rings use the accent green)
+  - Sidebar vars mirror card/primary palette
+- Updated `src/app/page.tsx` (landing page cleanup):
+  - Removed `import { ModelsShowcase }` line
+  - Removed `import { MODELS, PROVIDER_INFO }` line + MODEL_COUNT / PROVIDER_COUNT consts
+  - Deleted the entire "All models" section (heading, paragraph with model count,
+    "Full models page" button, and `<ModelsShowcase />` usage)
+  - Removed "Models" entry from the top nav
+  - Hardcoded the stats row to: ∞ Daily requests, $0 Cost, 285+ Models, 34 Providers
+  - Hero "Try it now" button now `bg-[#2ce080] hover:bg-[#22b569] text-[#042330]`
+    (dark text on green button per spec)
+  - Hero gradient text → `from-[#2ce080] to-[#7ff3b3]` (green → light green)
+  - Ambient radial gradient RGB updated from emerald (16,185,129) → green (44,224,128)
+  - All `text-emerald-400` → `text-[#2ce080]`
+  - All `bg-emerald-500/10`, `/5`, `/15` → `bg-[#2ce080]/10`, `/5`, `/15`
+  - All `border-emerald-500/20`, `/30`, `/40` → `border-[#2ce080]/20`, `/30`, `/40`
+  - All `bg-emerald-500` (ping dots) → `bg-[#2ce080]`
+  - `text-emerald-500/30`, `text-emerald-500/40` → `text-[#2ce080]/30`, `/40`
+  - `from-emerald-500/[0.04]` → `from-[#2ce080]/[0.04]`
+  - Footer Models link pointed to /models route (still exists separately)
+- Updated `src/components/landing/playground.tsx`:
+  - All emerald text/bg/border classes → #2ce080 hex equivalents
+  - Send button → `bg-[#2ce080] hover:bg-[#22b569] text-[#042330]`
+    (dark text on green button)
+  - Streaming dots, bot avatar bg, settings endpoint code block all green-tinted
+- Updated `src/components/landing/code-examples.tsx`:
+  - Terminal window dot (green one) → `bg-[#2ce080]/70`
+- Updated `src/components/landing/models-showcase.tsx` (still used by /models page):
+  - SFW category color → `text-[#2ce080] border-[#2ce080]/30 bg-[#2ce080]/5`
+  - `nvidia-com` and `google-antigravity` provider colors → `text-[#2ce080]`
+  - CapIcon active state → green border/bg/text
+  - Model card hover border → `hover:border-[#2ce080]/40`
+  - Legend streaming/tools/web-search icons → `text-[#2ce080]`
+- Updated `src/app/models/page.tsx`:
+  - Radial gradient RGB → (44,224,128)
+  - Header logo bg/border/text → green hex equivalents
+  - "models live" badge → green
+  - `/api/v1` inline code, stats value, providers icon, quickstart icon → green
+- Updated `src/app/settings/page.tsx`:
+  - Radial gradient RGB → (44,224,128)
+  - Settings logo bg/border/text → green
+  - "No API keys needed" banner border/bg/check icon → green
+  - Three "automatic / no signup" badges → green
+  - Provider "active" badge → green
+  - Music Generation Server icon + endpoint code block → green
+- Layout.tsx body already uses `bg-background text-foreground`, which now resolves
+  to `#042330` / `#ffffff` via the CSS variables — no explicit change needed.
+- Verified: `bun run lint` passes with 0 errors, `npx tsc --noEmit` passes with
+  0 errors, dev server compiles cleanly (`✓ Compiled in ...`).
+- Verified: `rg emerald src/` returns 0 matches — all emerald references purged.
+
+Stage Summary:
+- App-wide rebrand to dark-teal-on-green color scheme complete
+- Background: #042330 (dark teal)  |  Text: #ffffff (white)
+- Accent: #2ce080 (bright green)   |  On-accent text: #042330 (dark teal)
+- Landing page slimmed: ModelsShowcase section + imports + counts removed,
+  stats hardcoded to ∞ / $0 / 285+ / 34
+- Files touched (7): globals.css, page.tsx, layout.tsx (no change needed),
+  playground.tsx, code-examples.tsx, models-showcase.tsx, models/page.tsx,
+  settings/page.tsx
+- Lint: clean.  tsc: clean.  Dev server: compiles & serves / on port 3000.
+
+
+---
+Task ID: docs-route
+Agent: main
+Task: Build comprehensive /docs route for FreeGPT Gateway
+
+Work Log:
+- Created `src/app/docs/page.tsx` — a client component (`"use client"`) with
+  a sticky left sidebar + scrollable right content area.
+- Sidebar nav tree (7 top-level items, 6 nested children):
+  1. Overview
+  2. Authentication
+  3. Chat Completions
+     - Basic (non-streaming)
+     - Streaming
+     - Tool Calling (non-streaming)
+     - Tool Calling (streaming)
+  4. Models
+     - List all models
+     - Filter by provider
+  5. Web Search
+  6. Music Generation
+  7. Code Examples (all languages)
+- Sidebar collapses to a mobile overlay drawer below the `lg:` breakpoint
+  (toggle button in the sticky header with Menu/X icons).
+- Each code section uses a reusable `CodeTabs` component wrapping 8 language
+  snippets in shadcn `Tabs` (with `flex-wrap h-auto` so all 8 fit on mobile):
+  cURL, Python, JavaScript, Node.js, PHP, Go, Ruby, HTML (browser widget).
+- Reused the `useOrigin` pattern from `src/components/landing/code-examples.tsx`:
+  `useSyncExternalStore(emptySubscribe, () => window.location.origin,
+  () => "https://your-host")` — guarantees the live origin hydrates cleanly
+  on the server and resolves to `window.location.origin` on the client.
+- Reusable components defined inline:
+  - `CopyButton` — ghost button + sonner toast + check/copy icons
+  - `CodeBlock` — terminal-window chrome (red/yellow/green dots), filename
+    label, dark `bg-zinc-950`, `max-h-[520px] overflow-y-auto`, CopyButton
+  - `CodeTabs` — wraps 8 language snippets in shadcn Tabs
+  - `Sidebar` — recursive render of NAV array with nested children indented
+- Snippets are functions `(origin: string) => Record<Lang, string>` so the
+  live origin URL is injected into every cURL/Python/JS/PHP/Go/Ruby example.
+- Each section has 8 complete language implementations:
+  - chatBasic: non-streaming chat with `stream: false`
+  - chatStreaming: SSE parsing — each language implements its own SSE parser
+    (Node uses native fetch + getReader + buffer-split, PHP uses
+    CURLOPT_WRITEFUNCTION, Go uses bufio.Scanner, Ruby uses Net::HTTP
+    read_body block, HTML uses ReadableStream reader)
+  - chatTools: non-streaming tool calling with `get_weather` example;
+    documents `finish_reason: "tool_calls"` + `message.tool_calls[]`
+  - chatToolsStreaming: streaming tool calls — each language accumulates
+    `tool_calls[idx].function.arguments` across deltas by `index`
+    (canonical OpenAI streaming tool-call pattern)
+  - modelsList: `GET /api/v1/models` + response JSON shape
+  - modelsFilter: group by `owned_by` (jq / dict grouping / HTML dropdown)
+  - webSearch: `POST /api/v1/search` with `{query, num}` body
+  - music: `POST /api/v1/music/generate` with full body; each language
+    decodes `audios[0].audio_base64` to MP3 file — except JavaScript which
+    plays via `new Audio("data:audio/mp3;base64,...")`
+- App color scheme respected throughout:
+  - dark `bg-background` (#042330) base
+  - white `text-foreground`
+  - green accent #2ce080 (terminal dot, badge borders, hover states,
+    inline `<code>` spans, endpoint highlights, nav hover)
+- Sticky header with "Back to home" `next/link`, logo, "API Docs" title.
+- Sticky footer with `mt-auto` (sticks to bottom on short content, gets
+  pushed down on long content per layout requirement).
+- All cards use `rounded-xl border border-border bg-card/40` consistent
+  with rest of the app.
+- Did NOT use framer-motion (settings page does) — kept docs page
+  lightweight and pure-Tailwind for fast initial render.
+
+Verification:
+- `bun run lint` → 0 errors ✅
+- `npx tsc --noEmit` → 0 errors ✅
+- `curl http://localhost:3000/docs` → HTTP 200 in ~1s ✅
+- Dev log: `GET /docs 200 in 977ms (compile: 742ms, render: 236ms)` ✅
+- Page content verified via curl — contains "FreeGPT API Docs",
+  "Chat Completions", "Tool Calling (streaming)", "Web Search",
+  "Music Generation", "On this page" ✅
+
+Stage Summary:
+- New route `/docs` live at http://localhost:3000/docs
+- Comprehensive API docs with sticky sidebar + 8-language code tabs
+- All 4 endpoints documented (chat, models, search, music)
+- All 4 chat modes documented (basic, streaming, tools, tools-streaming)
+- 64 code snippets total (8 sections × 8 languages) — all copyable
+- Mobile-responsive (sidebar collapses to overlay drawer)
+- Lint clean, tsc clean, dev server compiles in ~750ms
+
+Files changed/created:
+- `src/app/docs/page.tsx` (NEW — ~1,200 lines, client component)
+- `agent-ctx/docs-route-main.md` (NEW — this work record)
+
+
+---
+Task ID: chat-route
+Agent: main
+Task: Build full-featured /chat route (3-column chat UI with history, files, streaming, tools, music, search)
+
+Work Log:
+- Read context: previous agents built the gateway API (/api/v1/chat/completions,
+  /api/v1/models, /api/v1/search, /api/v1/music/generate) and rebranded the app
+  to dark-teal (#042330) + bright-green (#2ce080). Reused the existing
+  `ModelSelect` component from `@/components/landing/model-select`.
+- Created `src/app/chat/page.tsx` — a single client component (`"use client"`)
+  implementing a 3-column chat interface with full streaming, tool-call display,
+  music generation, web search, and AI-generated file persistence.
+
+### Layout (3-column, responsive)
+- **Header**: hamburger menu (mobile) + "Back to home" link + "FreeGPT Chat"
+  title with animated green ping dot.
+- **Left sidebar (Chat History, w-64)**:
+  - "New Chat" button (green #2ce080 bg, dark #042330 text) at top.
+  - Scrollable list of previous chats from `localStorage["freeaipt_chats"]`.
+  - Each entry: title (first message, 60-char truncated), timestamp, model,
+    delete button (visible on hover).
+  - Clicking loads the chat; current chat highlighted with green border.
+  - On mobile: drawer overlay (translate-x) with backdrop, toggled by hamburger.
+  - On md+: static, always visible.
+- **Center (Chat Area)**:
+  - Top bar: `<ModelSelect value={model} onChange={setModel} />` + status badge
+    (streaming/music/search/non-stream).
+  - Messages area (scrollable, auto-scrolls to bottom on new content).
+  - Input box at bottom: auto-growing textarea (max 160px), Enter to send,
+    Shift+Enter for newline. Send button (green) / Stop button (red) when loading.
+  - Stream toggle checkbox below input.
+- **Right sidebar (Files, w-64)**: `hidden md:flex` per spec.
+  - "Files" heading + description.
+  - Scrollable list of files from `localStorage["freeaipt_files"]`.
+  - Each file: name, language, timestamp, delete on hover.
+  - Clicking opens a modal viewer (Dialog) with copy + download buttons.
+
+### Chat features
+1. **Model selector** — uses the existing `ModelSelect` component. Default
+   model: `toolbaz-v4.5-fast` (first model in registry). Mounted guard prevents
+   Radix hydration mismatch.
+2. **Streaming** — manual SSE parser (`parseSSE` async generator):
+   - Reads `response.body.getReader()`, splits on `\n`, keeps a buffer for
+     partial frames.
+   - Parses `data:` lines, extracts `choices[0].delta.content` for text.
+   - Stops on `data: [DONE]`.
+   - Updates the optimistic assistant bubble in real time.
+3. **Tool call display** — accumulates `choices[0].delta.tool_calls` by `index`
+   across streaming deltas (OpenAI streaming tool-call format):
+   - `accumulateToolCalls()` helper merges id/name/arguments by index.
+   - Rendered as a green-bordered card (`border-[#2ce080]/50`) with a wrench
+     icon and a green badge showing ONLY the function name (no arguments,
+     no output) — exactly per spec.
+4. **Music model (`music-generate`)** — when selected, `send()` routes to
+   `sendMusic()` which calls `POST /api/v1/music/generate` with
+   `{prompt, duration: 30}`. Response audios rendered as HTML5 `<audio>`
+   players with a music-note icon in a green-bordered card.
+5. **Web search model (`web-search`)** — routes to `sendSearch()` calling
+   `POST /api/v1/search` with `{query, num: 8}`. Results rendered as a list
+   of cards (title, green URL link, snippet, external-link icon) with a
+   search-results count header.
+6. **File creation detection** — `extractCodeBlocks()` regex-parses
+   `` ```lang\ncode``` `` fences from assistant responses. Each block saved as
+   `{id, name, content, language, createdAt}` to `localStorage["freeaipt_files"]`.
+   Filename: `${language}_${timestamp}.${ext}` (e.g. `python_1234567.py`).
+   40+ language→extension mappings. Toast confirms "Saved N files".
+7. **New Chat** — clears messages + currentChatId, aborts any in-flight request.
+8. **Chat history** — auto-persists to localStorage on every message change.
+   Title = first user message (60 chars). Loaded chats restore messages + model.
+
+### Message rendering
+- User messages: right-aligned, green bg, dark text, user avatar.
+- Assistant messages: left-aligned, card bg, bot avatar (green-tinted).
+- Typing indicator: 3 bouncing green dots (shown when assistant content empty
+  and no tool/audio/search payload yet).
+- Assistant content rendered via `MessageContent` — splits on fenced code
+  blocks and renders each as a `CodeBlock` (terminal-window chrome with
+  red/yellow/green dots, language label, copy button, dark `bg-zinc-950`,
+  monospace). Inline `` `code` `` spans rendered with green text on dark bg.
+
+### Persistence
+- `freeaipt_chats` → `StoredChat[]` (`{id, title, messages, model, createdAt, updatedAt}`).
+- `freeaipt_files` → `StoredFile[]` (`{id, name, content, language, createdAt}`).
+- Both loaded on mount, saved on every change. Files capped at 100 to avoid
+  quota overflow.
+
+### Color scheme
+- Background `bg-background` (#042330 via CSS vars), text white.
+- Green accent `#2ce080` for: New Chat button, Send button, bot avatar border,
+  tool-call cards, audio player cards, file icons, active chat highlight,
+  streaming badge, inline code, model-select accents.
+- Dark text `#042330` on all green buttons/badges per spec.
+
+### Verification
+- `bun run lint` → 0 errors, 0 warnings ✅
+- `npx tsc --noEmit` → 0 errors ✅
+- `curl http://localhost:3000/chat` → HTTP 200 in ~940ms ✅
+- Dev log: `GET /chat 200 in 940ms (compile: 791ms, render: 149ms)` ✅
+- SSR HTML contains all key UI: "FreeGPT Chat", "New Chat", "Chat History",
+  "Files", "Stream tokens", "toolbaz-v4.5-fast" ✅
+
+Stage Summary:
+- New route `/chat` live at http://localhost:3000/chat
+- Full 3-column chat UI (history sidebar / chat area / files sidebar)
+- Real SSE streaming with tool-call accumulation (function-name-only display)
+- Music + web-search model routing to their dedicated API endpoints
+- AI-generated code blocks auto-saved as files with modal viewer (copy/download)
+- All chats + files persisted to localStorage
+- Mobile-responsive (left sidebar drawer, right sidebar hidden on mobile)
+- Lint clean, tsc clean, compiles in ~790ms
+
+Files changed/created:
+- `src/app/chat/page.tsx` (NEW — ~1330 lines, single client component)

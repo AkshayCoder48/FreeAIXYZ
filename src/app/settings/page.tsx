@@ -22,7 +22,7 @@ export default function SettingsPage() {
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
           backgroundImage:
-            "radial-gradient(60% 50% at 50% 0%, rgba(16,185,129,0.10), transparent 70%)",
+            "radial-gradient(60% 50% at 50% 0%, rgba(44,224,128,0.10), transparent 70%)",
         }}
       />
 
@@ -36,8 +36,8 @@ export default function SettingsPage() {
             </Button>
             <div className="h-5 w-px bg-border" />
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                <SettingsIcon className="h-4 w-4 text-emerald-400" />
+              <div className="h-7 w-7 rounded-lg bg-[#2ce080]/10 border border-[#2ce080]/30 flex items-center justify-center">
+                <SettingsIcon className="h-4 w-4 text-[#2ce080]" />
               </div>
               <span className="text-sm font-semibold">Settings</span>
             </div>
@@ -50,10 +50,10 @@ export default function SettingsPage() {
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 space-y-3"
+          className="rounded-2xl border border-[#2ce080]/30 bg-[#2ce080]/5 p-6 space-y-3"
         >
           <div className="flex items-center gap-2">
-            <Check className="h-5 w-5 text-emerald-400" />
+            <Check className="h-5 w-5 text-[#2ce080]" />
             <h2 className="text-lg font-semibold">No API keys needed!</h2>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -62,13 +62,13 @@ export default function SettingsPage() {
             management automatically. Just pick a model and start chatting.
           </p>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+            <Badge variant="outline" className="border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5">
               Web Search: automatic
             </Badge>
-            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+            <Badge variant="outline" className="border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5">
               Music Gen: automatic
             </Badge>
-            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+            <Badge variant="outline" className="border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5">
               All LLM models: no signup
             </Badge>
           </div>
@@ -104,7 +104,7 @@ export default function SettingsPage() {
                   <span className="text-xs text-muted-foreground">{p.models} models</span>
                   <Badge
                     variant="outline"
-                    className="border-emerald-500/30 text-emerald-400 bg-emerald-500/5 text-[9px]"
+                    className="border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5 text-[9px]"
                   >
                     active
                   </Badge>
@@ -122,12 +122,12 @@ export default function SettingsPage() {
           className="rounded-2xl border border-border bg-card/50 backdrop-blur p-6 space-y-3"
         >
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Server className="h-5 w-5 text-emerald-400" /> Music Generation
+            <Server className="h-5 w-5 text-[#2ce080]" /> Music Generation
           </h2>
           <p className="text-sm text-muted-foreground">
             AI music generation via ACE-Step 1.5 is available at:
           </p>
-          <code className="block text-xs text-emerald-400 bg-emerald-500/5 border border-emerald-500/15 rounded-md px-3 py-2">
+          <code className="block text-xs text-[#2ce080] bg-[#2ce080]/5 border border-[#2ce080]/15 rounded-md px-3 py-2">
             POST /api/v1/music/generate
           </code>
           <p className="text-xs text-muted-foreground">

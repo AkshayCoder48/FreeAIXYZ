@@ -477,7 +477,7 @@ export function CodeExamples() {
             <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/60 bg-zinc-900/60">
               <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#2ce080]/70" />
               <span className="ml-2 text-[11px] text-muted-foreground font-mono">
                 {k === "html" ? "index.html" : k === "search" ? "search.sh" : k === "music" ? "music.sh" : `${LABELS[k].toLowerCase()}.sh`}
               </span>
