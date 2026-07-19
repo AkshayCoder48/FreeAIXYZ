@@ -11,7 +11,7 @@
  *   - SFW-only / general models get a clean descriptive id.
  *   - NSFW / uncensored models get an explicit "nsfw-" prefix so callers know.
  *
- * Total: 281 models across 31 providers.
+ * Total: 285 models across 32 providers.
  */
 
 export type ProviderId =
@@ -25,6 +25,7 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "duckduckgo"
   | "search"
   | "music"
   | "anesnt"
@@ -149,6 +150,12 @@ export const MODELS: readonly GatewayModel[] = [
   // Uncensored system preamble auto-injected for nsfw-* models.
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+
+  // ─── DuckDuckGo AI Chat: free, no login, VQD token rotation ────
+  ddg("ddg-gpt-4o-mini", "gpt-4o-mini", "GPT-4o Mini — fast, free via DuckDuckGo AI Chat", 128000),
+  ddg("ddg-claude-3-haiku", "claude-3-haiku-20240307", "Claude 3 Haiku — fast Anthropic model via DuckDuckGo AI Chat", 200000),
+  ddg("ddg-llama-3-1-70b", "llama-3.1-70b-instant", "Llama 3.1 70B — Meta's large model via DuckDuckGo AI Chat", 131000),
+  ddg("ddg-mixtral-8x7b", "mixtral-8x7b-26134", "Mixtral 8x7B — Mistral's MoE model via DuckDuckGo AI Chat", 32000),
 
   // ─── Standalone services: web search + music generation ────────────────
   // These use separate API endpoints (not chat completions).
@@ -706,6 +713,31 @@ function sw(
   };
 }
 
+/** DuckDuckGo AI Chat model helper. Free, no login, VQD token rotation. */
+function ddg(
+  id: string,
+  upstream: string,
+  description: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "duckduckgo",
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 
 /** Standalone service model (search, music, etc.) — listed for discovery but
  * called via their own endpoints, NOT via /v1/chat/completions. */
@@ -849,6 +881,10 @@ export const PROVIDER_INFO: Record<
   "spicywriter": {
     name: "SpicyWriter",
     description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
+  },
+  "duckduckgo": {
+    name: "DuckDuckGo AI",
+    description: "4 models (GPT-4o Mini, Claude 3 Haiku, Llama 3.1 70B, Mixtral 8x7B) — free, no login, VQD token rotation",
   },
   "search": {
     name: "Web Search",

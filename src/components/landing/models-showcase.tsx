@@ -47,6 +47,7 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   llm7: "text-blue-300",
   heckai: "text-fuchsia-300",
   spicywriter: "text-rose-400",
+  duckduckgo: "text-orange-300",
   search: "text-cyan-300",
   music: "text-pink-300",
   // G4F.space providers

@@ -1,0 +1,958 @@
+     1→     1→/**
+     2→     2→ * Unified model registry.
+     3→     3→ *
+     4→     4→ * Multiple free upstream providers are aggregated behind a single
+     5→     5→ * OpenAI-compatible surface. Each model declares its provider, capabilities,
+     6→     6→ * and (for display) a description + accepted params.
+     7→     7→ *
+     8→     8→ * Naming convention:
+     9→     9→ *   - Professional models (grok, gpt, claude, gemini, deepseek, llama, o3)
+    10→    10→ *     keep their original id.
+    11→    11→ *   - SFW-only / general models get a clean descriptive id.
+    12→    12→ *   - NSFW / uncensored models get an explicit "nsfw-" prefix so callers know.
+    13→    13→ *
+    14→    14→ * Total: 281 models across 31 providers.
+    15→    15→ */
+    16→    16→
+    17→    17→export type ProviderId =
+    18→    18→  | "toolbaz"
+    19→    19→  | "nsfwlover"
+    20→    20→  | "surfsense"
+    21→    21→  | "jollygen"
+    22→    22→  | "unlimitedai"
+    23→    23→  | "pollinations"
+    24→    24→  | "kilocode"
+    25→    25→  | "llm7"
+    26→    26→  | "heckai"
+    27→    27→  | "spicywriter"
+    28→    28→  | "search"
+    29→    29→  | "music"
+    30→    30→  | "anesnt"
+    31→    31→  | "api-airforce"
+    32→    32→  | "audio"
+    33→    33→  | "cerebras-ai"
+    34→    34→  | "community-day-2026"
+    35→    35→  | "crowllm-com"
+    36→    36→  | "deepinfra-com"
+    37→    37→  | "easychat"
+    38→    38→  | "gemini-cli"
+    39→    39→  | "gemini-v1beta"
+    40→    40→  | "gen-pollinations-ai"
+    41→    41→  | "google-antigravity"
+    42→    42→  | "groq-com"
+    43→    43→  | "kobold-llamacpp-swarm"
+    44→    44→  | "ktai"
+    45→    45→  | "modelscope-ai"
+    46→    46→  | "navy"
+    47→    47→  | "nectar-pollinations-ai"
+    48→    48→  | "nvidia-com"
+    49→    49→  | "ollama-com"
+    50→    50→  | "ollama-swarm"
+    51→    51→  | "opencode-ai-zen"
+    52→    52→  | "perplexity"
+    53→    53→  | "qwen";
+    54→    54→
+    55→    55→export interface ModelCapabilities {
+    56→    56→  /** Returns token-by-token SSE deltas (true upstream streaming). */
+    57→    57→  streaming: boolean;
+    58→    58→  /** OpenAI-style function/tool calling via prompt injection. */
+    59→    59→  tools: boolean;
+    60→    60→  /** Accepts a system prompt. */
+    61→    61→  systemPrompt: boolean;
+    62→    62→  /** Multi-turn conversation history. */
+    63→    63→  multiTurn: boolean;
+    64→    64→  /** Image / vision inputs. */
+    65→    65→  vision: boolean;
+    66→    66→  /** Live web search for grounded, up-to-date answers. */
+    67→    67→  webSearch: boolean;
+    68→    68→}
+    69→    69→
+    70→    70→export interface GatewayModel {
+    71→    71→  id: string;
+    72→    72→  provider: ProviderId;
+    73→    73→  /** Upstream model id sent to the provider. */
+    74→    74→  upstream: string;
+    75→    75→  description: string;
+    76→    76→  /** Short label for chips/badges. */
+    77→    77→  category: "professional" | "sfw" | "nsfw" | "reasoning";
+    78→    78→  capabilities: ModelCapabilities;
+    79→    79→  /** Max context window (approx, in tokens). 0 = unknown. */
+    80→    80→  contextWindow: number;
+    81→    81→  /** Whether the model is currently reachable from this gateway. */
+    82→    82→  experimental?: boolean;
+    83→    83→}
+    84→    84→
+    85→    85→export const MODELS: readonly GatewayModel[] = [
+    86→    86→  // ─── Toolbaz provider: professional / SFW models ──────────────────────────
+    87→    87→  tb("toolbaz-v4.5-fast", "toolbaz-v4.5-fast", "Toolbaz v4.5 Fast — quick & balanced general model", "professional", 8000),
+    88→    88→  tb("toolbaz_v4", "toolbaz_v4", "ToolBaz v4 — general purpose", "professional", 8000),
+    89→    89→  tb("gpt-5", "gpt-5", "GPT-5", "professional", 128000),
+    90→    90→  tb("gpt-5.2", "gpt-5.2", "GPT-5.2", "professional", 128000),
+    91→    91→  tb("gpt-4o-latest", "gpt-4o-latest", "GPT-4o (latest)", "professional", 128000),
+    92→    92→  tb("gpt-oss-120b", "gpt-oss-120b", "GPT-OSS-120B — open-weight", "professional", 32000),
+    93→    93→  tb("o3-mini", "o3-mini", "o3-mini — reasoning model", "reasoning", 200000),
+    94→    94→  tb("claude-sonnet-4", "claude-sonnet-4", "Claude Sonnet 4", "professional", 200000),
+    95→    95→  tb("gemini-2.5-flash", "gemini-2.5-flash", "Gemini 2.5 Flash", "professional", 1000000),
+    96→    96→  tb("gemini-2.5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro", "professional", 2000000),
+    97→    97→  tb("gemini-3-flash", "gemini-3-flash", "Gemini 3 Flash", "professional", 1000000),
+    98→    98→  tb("gemini-3.1-flash-lite", "gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite", "professional", 1000000),
+    99→    99→  tb("deepseek-r1", "deepseek-r1", "DeepSeek R1 — reasoning", "reasoning", 64000),
+   100→   100→  tb("deepseek-v3", "deepseek-v3", "DeepSeek V3", "professional", 64000),
+   101→   101→  tb("deepseek-v3.1", "deepseek-v3.1", "DeepSeek V3.1", "professional", 64000),
+   102→   102→  tb("grok-4-fast", "grok-4-fast", "Grok 4 Fast", "professional", 131000),
+   103→   103→  tb("L3-70B-Euryale-v2.1", "L3-70B-Euryale-v2.1", "L3-70B Euryale v2.1", "sfw", 8000),
+   104→   104→  tb("midnight-rose", "midnight-rose", "Midnight Rose", "sfw", 8000),
+   105→   105→
+   106→   106→  // ─── nsfwlover.com provider: uncensored NSFW roleplay (real streaming) ────
+   107→   107→  nsfw("nsfw-llama3-8b", "llama3-8b", "Uncensored LLaMA-3 8B roleplay (sao10k/l3-lunaris-8b) — real token streaming, no content filters", 8000),
+   108→   108→
+   109→   109→  // ─── SurfSense provider: free no-login, real SSE streaming ───────────────
+   110→   110→  ss("gpt-5.4-mini", "gpt-5.4-mini-no-login", "GPT-5.4 Mini — fast, no login required, real token streaming", "professional", 128000),
+   111→   111→  ss("gpt-o4-mini", "gpt-o4-mini-no-login", "GPT o4 Mini — reasoning model, no login required, real token streaming", "reasoning", 128000),
+   112→   112→
+   113→   113→  // ─── JollyGen provider: unrestricted NSFW roleplay, 3-msg limit rotated ──
+   114→   114→  jg("nsfw-jollygen", "jollygen", "Unrestricted NSFW roleplay — no content filters, fresh identity per request, real token streaming", 8000),
+   115→   115→
+   116→   116→  // ─── UnlimitedAI.chat provider: uncensored reasoning, NDJSON streaming ───
+   117→   117→  uai("nsfw-lustre-reasoning", "chat-model-reasoning", "Uncensored reasoning model — no content filters, real token streaming, deep thinking", "nsfw", 128000),
+   118→   118→  uai("nsfw-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "nsfw", 128000, true),
+   119→   119→
+   120→   120→  // ─── Pollinations.ai provider: free, no-auth, OpenAI-compatible SSE ──────
+   121→   121→  pol("openai-fast", "openai-fast", "GPT-OSS 20B Reasoning — fast, no signup, real token streaming with reasoning", "reasoning", 128000, true),
+   122→   122→
+   123→   123→  // ─── Kilo Code provider: 9 free models, no key, real SSE (tested OK) ───
+   124→   124→  kc("tencent-hy3", "tencent/hy3:free", "Tencent Hy3 — large-scale Chinese/English model", "professional", 262144),
+   125→   125→  kc("nemotron-ultra", "nvidia/nemotron-3-ultra-550b-a55b:free", "NVIDIA Nemotron 3 Ultra (550B) — flagship reasoning model", "reasoning", 1000000),
+   126→   126→  kc("nemotron-super", "nvidia/nemotron-3-super-120b-a12b:free", "NVIDIA Nemotron 3 Super (120B) — high-performance model", "professional", 1000000),
+   127→   127→  kc("nemotron-nano-omni", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "NVIDIA Nemotron 3 Nano Omni (30B) — compact reasoning", "reasoning", 256000),
+   128→   128→  kc("nemotron-safety", "nvidia/nemotron-3.5-content-safety:free", "NVIDIA Nemotron 3.5 Content Safety — moderation model", "sfw", 128000),
+   129→   129→  kc("laguna-xs", "poolside/laguna-xs-2.1:free", "Poolside Laguna XS 2.1 — code-optimized model", "professional", 262144),
+   130→   130→  kc("laguna-m", "poolside/laguna-m.1:free", "Poolside Laguna M.1 — balanced code model", "professional", 262144),
+   131→   131→  kc("cohere-north-code", "cohere/north-mini-code:free", "Cohere North Mini Code — lightweight code model", "professional", 256000),
+   132→   132→  kc("kilo-auto-free", "kilo-auto/free", "Kilo Auto Free — auto-routes to best available free model", "professional", 262144),
+   133→   133→
+   134→   134→  // ─── LLM7.io provider: free anonymous, no key (tested OK) ───────────────
+   135→   135→  l7("gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous access", "professional", 131072),
+   136→   136→  l7("codestral-latest", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
+   137→   137→
+   138→   138→  // ─── HeckAI provider: free, no-auth, real SSE streaming ────────────────
+   139→   139→  ha("heckai-gemini-3-flash", "google/gemini-3-flash-preview", "Gemini 3 Flash Preview — Google's latest fast model (via HeckAI)", "professional", 1000000),
+   140→   140→  ha("heckai-gemini-3-1-flash-lite", "google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite — Google lightweight (via HeckAI)", "professional", 1000000),
+   141→   141→  ha("heckai-deepseek-v4-pro", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro — latest flagship (via HeckAI)", "professional", 64000),
+   142→   142→  ha("heckai-deepseek-v4-flash", "deepseek/deepseek-v4-flash", "DeepSeek V4 Flash — fast variant (via HeckAI)", "professional", 64000),
+   143→   143→  ha("heckai-qwen3-7-plus", "qwen/qwen3.7-plus", "Qwen 3.7 Plus — Alibaba enhanced (via HeckAI)", "professional", 262144),
+   144→   144→  ha("heckai-minimax-m3", "minimax/minimax-m3", "Minimax M3 — Chinese AI flagship (via HeckAI)", "professional", 196000),
+   145→   145→  ha("heckai-stepfun-flash", "stepfun/step-3.7-flash", "StepFun 3.7 Flash — fast Chinese AI (via HeckAI)", "professional", 262144),
+   146→   146→
+   147→   147→  // ─── SpicyWriter provider: free anonymous NSFW/uncensored, real SSE ────
+   148→   148→  // Each call mints a fresh anon id (X-Anonymous-User-Id) → unlimited free.
+   149→   149→  // Uncensored system preamble auto-injected for nsfw-* models.
+   150→   150→  sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
+   151→   151→  sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+   152→   152→
+   153→   153→  // ─── Standalone services: web search + music generation ────────────────
+   154→   154→  // These use separate API endpoints (not chat completions).
+   155→   155→  // See /api/v1/search and /api/v1/music/generate for the actual calls.
+   156→   156→  svc("web-search", "/api/v1/search", "DuckDuckGo web search — returns titles, URLs, and snippets. POST {query} or GET ?q=...", "search", 0),
+   157→   157→  svc("music-generate", "/api/v1/music/generate", "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST {prompt, lyrics?, duration?}", "music", 0),
+   158→   158→
+   159→   159→  // ─── G4F.space — 238 models across 22 providers ───
+   160→   160→  // Each model's `provider` field is the owner-based id; g4fspace.ts handles
+   161→   161→  // the actual HTTP request to https://g4f.space/v1/chat/completions (no auth).
+   162→   162→  // gf(providerId, id, upstream, description, ownerLabel, category, contextWindow)
+   163→   163→  // Display names have coding-ish suffixes stripped (Q4_K_M, .gguf, :latest, :cloud etc.)
+   164→   164→  // ─── GeminiCLI (GeminiCLI) — 2 models ──────────────
+   165→   165→  gf("gemini-cli", "gemini-gemini-3-flash-preview", "srv_mkopnfu316bf4ff43369:gemini-3-flash-preview", "gemini-3-flash-preview (via GeminiCLI)", "GeminiCLI", "professional", 1000000),
+   166→   166→  gf("gemini-cli", "gemini-gemini-3-1-flash-lite", "srv_mkopnfu316bf4ff43369:gemini-3.1-flash-lite", "gemini-3.1-flash-lite (via GeminiCLI)", "GeminiCLI", "professional", 1000000),
+   167→   167→
+   168→   168→  // ─── Google Antigravity (Google Antigravity) — 5 models ──────────────
+   169→   169→  gf("google-antigravity", "google-gemini-2-5-flash", "srv_mlv668eaa6d92f50ff10:gemini-2.5-flash", "gemini-2.5-flash (via Google Antigravity)", "Google Antigravity", "professional", 1000000),
+   170→   170→  gf("google-antigravity", "google-gemini-3-flash", "srv_mlv668eaa6d92f50ff10:gemini-3-flash", "gemini-3-flash (via Google Antigravity)", "Google Antigravity", "professional", 1000000),
+   171→   171→  gf("google-antigravity", "google-gemini-3-1-pro-low", "srv_mlv668eaa6d92f50ff10:gemini-3.1-pro-low", "gemini-3.1-pro-low (via Google Antigravity)", "Google Antigravity", "professional", 1000000),
+   172→   172→  gf("google-antigravity", "google-gemini-2-5-flash-lite", "srv_mlv668eaa6d92f50ff10:gemini-2.5-flash-lite", "gemini-2.5-flash-lite (via Google Antigravity)", "Google Antigravity", "professional", 1000000),
+   173→   173→  gf("google-antigravity", "google-gemini-2-5-flash-thinking", "srv_mlv668eaa6d92f50ff10:gemini-2.5-flash-thinking", "gemini-2.5-flash-thinking (via Google Antigravity)", "Google Antigravity", "reasoning", 1000000),
+   174→   174→
+   175→   175→  // ─── KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV) (KTAI) — 6 models ──────────────
+   176→   176→  gf("ktai", "ktai-deepseek-ai-deepseek-v4-flash", "srv_mp1v9cyha31b95fa8c9a:deepseek-ai/deepseek-v4-flash", "deepseek-ai/deepseek-v4-flash (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 64000),
+   177→   177→  gf("ktai", "ktai-xiaomimimo-mimo-v2-5", "srv_mp1v9cyha31b95fa8c9a:xiaomimimo/mimo-V2.5", "xiaomimimo/mimo-V2.5 (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 128000),
+   178→   178→  gf("ktai", "ktai-deepseek-ai-deepseek-v4-pro", "srv_mp1v9cyha31b95fa8c9a:deepseek-ai/deepseek-v4-pro", "deepseek-ai/deepseek-v4-pro (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 64000),
+   179→   179→  gf("ktai", "ktai-minimaxai-minimax-m2-7", "srv_mp1v9cyha31b95fa8c9a:minimaxai/minimax-m2.7", "minimaxai/minimax-m2.7 (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 196000),
+   180→   180→  gf("ktai", "ktai-openai-gpt-oss-120b", "srv_mp1v9cyha31b95fa8c9a:openai/gpt-oss-120b", "openai/gpt-oss-120b (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 128000),
+   181→   181→  gf("ktai", "ktai-openai-gpt-oss-20b", "srv_mp1v9cyha31b95fa8c9a:openai/gpt-oss-20b", "openai/gpt-oss-20b (via KTAI)", "KTAI - Free - Models  (https://discord.gg/n6B5KCN3ZV)", "professional", 128000),
+   182→   182→
+   183→   183→  // ─── Modelscope AI (Modelscope AI) — 14 models ──────────────
+   184→   184→  gf("modelscope-ai", "modelscope-zai-org-glm-5-2", "srv_mrhxbotq74ee6330d294:zai-org/GLM-5.2", "zai-org/GLM-5.2 (via Modelscope AI)", "Modelscope AI", "professional", 128000),
+   185→   185→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v3-2", "srv_mrhxbotq74ee6330d294:deepseek-ai/DeepSeek-V3.2", "deepseek-ai/DeepSeek-V3.2 (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   186→   186→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v4-flash", "srv_mrhxbotq74ee6330d294:deepseek-ai/DeepSeek-V4-Flash", "deepseek-ai/DeepSeek-V4-Flash (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   187→   187→  gf("modelscope-ai", "modelscope-qwen-qwen3-235b-a22b", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3-235B-A22B", "Qwen/Qwen3-235B-A22B (via Modelscope AI)", "Modelscope AI", "professional", 262144),
+   188→   188→  gf("modelscope-ai", "modelscope-qwen-qwen3-235b-a22b-thinking-2507", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3-235B-A22B-Thinking-2507", "Qwen/Qwen3-235B-A22B-Thinking-2507 (via Modelscope AI)", "Modelscope AI", "reasoning", 262144),
+   189→   189→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v3-1", "srv_mrhxbotq74ee6330d294:deepseek-ai/DeepSeek-V3.1", "deepseek-ai/DeepSeek-V3.1 (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   190→   190→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v3-2-exp", "srv_mrhxbotq74ee6330d294:deepseek-ai/DeepSeek-V3.2-Exp", "deepseek-ai/DeepSeek-V3.2-Exp (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   191→   191→  gf("modelscope-ai", "modelscope-qwen-qwen3-235b-a22b-instruct-2507", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3-235B-A22B-Instruct-2507", "Qwen/Qwen3-235B-A22B-Instruct-2507 (via Modelscope AI)", "Modelscope AI", "professional", 262144),
+   192→   192→  gf("modelscope-ai", "modelscope-qwen-qwen3-5-27b", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3.5-27B", "Qwen/Qwen3.5-27B (via Modelscope AI)", "Modelscope AI", "professional", 262144),
+   193→   193→  gf("modelscope-ai", "modelscope-qwen-qwen3-next-80b-a3b-instruct", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3-Next-80B-A3B-Instruct", "Qwen/Qwen3-Next-80B-A3B-Instruct (via Modelscope AI)", "Modelscope AI", "professional", 262144),
+   194→   194→  gf("modelscope-ai", "modelscope-zai-org-glm-4-7-flash", "srv_mrhxbotq74ee6330d294:zai-org/GLM-4.7-Flash", "zai-org/GLM-4.7-Flash (via Modelscope AI)", "Modelscope AI", "professional", 128000),
+   195→   195→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v4-flash-2", "srv_mrhxbotq74ee6330d294:deepseek-ai/deepseek-v4-flash", "deepseek-ai/deepseek-v4-flash (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   196→   196→  gf("modelscope-ai", "modelscope-deepseek-ai-deepseek-v4-pro", "srv_mrhxbotq74ee6330d294:deepseek-ai/DeepSeek-V4-Pro", "deepseek-ai/DeepSeek-V4-Pro (via Modelscope AI)", "Modelscope AI", "professional", 64000),
+   197→   197→  gf("modelscope-ai", "modelscope-qwen-qwen3-30b-a3b-thinking-2507", "srv_mrhxbotq74ee6330d294:Qwen/Qwen3-30B-A3B-Thinking-2507", "Qwen/Qwen3-30B-A3B-Thinking-2507 (via Modelscope AI)", "Modelscope AI", "reasoning", 262144),
+   198→   198→
+   199→   199→  // ─── api.airforce (API.AirForce) — 6 models ──────────────
+   200→   200→  gf("api-airforce", "api-gpt-4o-mini", "srv_mp3lmkuad07322459f47:gpt-4o-mini", "gpt-4o-mini (via API.AirForce)", "api.airforce", "professional", 128000),
+   201→   201→  gf("api-airforce", "api-gpt-4o", "srv_mp3lmkuad07322459f47:gpt-4o", "gpt-4o (via API.AirForce)", "api.airforce", "professional", 128000),
+   202→   202→  gf("api-airforce", "api-claude-haiku-4-5-p2g", "srv_mp3lmkuad07322459f47:claude-haiku-4.5-p2g", "claude-haiku-4.5-p2g (via API.AirForce)", "api.airforce", "professional", 128000),
+   203→   203→  gf("api-airforce", "api-gemini-3-5-pro", "srv_mp3lmkuad07322459f47:gemini-3.5-pro", "gemini-3.5-pro (via API.AirForce)", "api.airforce", "professional", 1000000),
+   204→   204→  gf("api-airforce", "api-unmoderated-gpt", "srv_mp3lmkuad07322459f47:unmoderated-gpt", "unmoderated-gpt (via API.AirForce)", "api.airforce", "nsfw", 128000),
+   205→   205→  gf("api-airforce", "api-qwen3-6-plus", "srv_mp3lmkuad07322459f47:qwen3.6-plus", "qwen3.6-plus (via API.AirForce)", "api.airforce", "professional", 262144),
+   206→   206→
+   207→   207→  // ─── audio (Audio) — 1 models ──────────────
+   208→   208→  gf("audio", "audio-gpt-audio", "srv_mkoqob5pfb6ff5ec61c2:gpt-audio", "gpt-audio (via Audio)", "audio", "professional", 128000),
+   209→   209→
+   210→   210→  // ─── cerebras.ai (Cerebras) — 2 models ──────────────
+   211→   211→  gf("cerebras-ai", "cerebras-gpt-oss-120b", "srv_mlj8gd8y789d112ec50d:gpt-oss-120b", "gpt-oss-120b (via Cerebras)", "cerebras.ai", "professional", 128000),
+   212→   212→  gf("cerebras-ai", "cerebras-zai-glm-4-7", "srv_mlj8gd8y789d112ec50d:zai-glm-4.7", "zai-glm-4.7 (via Cerebras)", "cerebras.ai", "professional", 128000),
+   213→   213→
+   214→   214→  // ─── crowllm.com (CrowLLM) — 28 models ──────────────
+   215→   215→  gf("crowllm-com", "crowllm-glm-5-2", "srv_mrgynwuz08a167112109:glm-5.2", "glm-5.2 (via CrowLLM)", "crowllm.com", "professional", 128000),
+   216→   216→  gf("crowllm-com", "crowllm-deepseek-v4-flash", "srv_mrgynwuz08a167112109:deepseek-v4-flash", "deepseek-v4-flash (via CrowLLM)", "crowllm.com", "professional", 64000),
+   217→   217→  gf("crowllm-com", "crowllm-glm-5-2-thinking", "srv_mrgynwuz08a167112109:glm-5.2-thinking", "glm-5.2-thinking (via CrowLLM)", "crowllm.com", "reasoning", 128000),
+   218→   218→  gf("crowllm-com", "crowllm-deepseek-v3", "srv_mrgynwuz08a167112109:deepseek-v3", "deepseek-v3 (via CrowLLM)", "crowllm.com", "professional", 64000),
+   219→   219→  gf("crowllm-com", "crowllm-gemma-4-31b", "srv_mrgynwuz08a167112109:gemma-4-31b", "gemma-4-31b (via CrowLLM)", "crowllm.com", "professional", 128000),
+   220→   220→  gf("crowllm-com", "crowllm-deepseek-v4-pro", "srv_mrgynwuz08a167112109:deepseek-v4-pro", "deepseek-v4-pro (via CrowLLM)", "crowllm.com", "professional", 64000),
+   221→   221→  gf("crowllm-com", "crowllm-deepseek-r1", "srv_mrgynwuz08a167112109:deepseek-r1", "deepseek-r1 (via CrowLLM)", "crowllm.com", "reasoning", 64000),
+   222→   222→  gf("crowllm-com", "crowllm-deepseek-v4-pro-thinking", "srv_mrgynwuz08a167112109:deepseek-v4-pro-thinking", "deepseek-v4-pro-thinking (via CrowLLM)", "crowllm.com", "reasoning", 64000),
+   223→   223→  gf("crowllm-com", "crowllm-grok-4-1-fast", "srv_mrgynwuz08a167112109:grok-4.1-fast", "grok-4.1-fast (via CrowLLM)", "crowllm.com", "professional", 131000),
+   224→   224→  gf("crowllm-com", "crowllm-glm-5-1", "srv_mrgynwuz08a167112109:glm-5.1", "glm-5.1 (via CrowLLM)", "crowllm.com", "professional", 128000),
+   225→   225→  gf("crowllm-com", "crowllm-grok-4-3", "srv_mrgynwuz08a167112109:grok-4.3", "grok-4.3 (via CrowLLM)", "crowllm.com", "professional", 131000),
+   226→   226→  gf("crowllm-com", "crowllm-kimi-2-6", "srv_mrgynwuz08a167112109:kimi-2.6", "kimi-2.6 (via CrowLLM)", "crowllm.com", "professional", 200000),
+   227→   227→  gf("crowllm-com", "crowllm-minimaxai-minimax-m3-mxfp8", "srv_mrgynwuz08a167112109:MiniMaxAI/MiniMax-M3-MXFP8", "MiniMaxAI/MiniMax-M3-MXFP8 (via CrowLLM)", "crowllm.com", "professional", 196000),
+   228→   228→  gf("crowllm-com", "crowllm-minimax-m3", "srv_mrgynwuz08a167112109:minimax-m3", "minimax-m3 (via CrowLLM)", "crowllm.com", "professional", 196000),
+   229→   229→  gf("crowllm-com", "crowllm-grok-4-20-fast", "srv_mrgynwuz08a167112109:grok-4.20-fast", "grok-4.20-fast (via CrowLLM)", "crowllm.com", "professional", 131000),
+   230→   230→  gf("crowllm-com", "crowllm-grok-4-20-0309-non-reasoning", "srv_mrgynwuz08a167112109:grok-4.20-0309-non-reasoning", "grok-4.20-0309-non-reasoning (via CrowLLM)", "crowllm.com", "reasoning", 131000),
+   231→   231→  gf("crowllm-com", "crowllm-zai-org-glm-5-1-fp8", "srv_mrgynwuz08a167112109:zai-org/GLM-5.1-FP8", "zai-org/GLM-5.1-FP8 (via CrowLLM)", "crowllm.com", "professional", 128000),
+   232→   232→  gf("crowllm-com", "crowllm-deepseek-v4-flash-thinking", "srv_mrgynwuz08a167112109:deepseek-v4-flash-thinking", "deepseek-v4-flash-thinking (via CrowLLM)", "crowllm.com", "reasoning", 64000),
+   233→   233→  gf("crowllm-com", "crowllm-kimi-2-6-thinking", "srv_mrgynwuz08a167112109:kimi-2.6-thinking", "kimi-2.6-thinking (via CrowLLM)", "crowllm.com", "reasoning", 200000),
+   234→   234→  gf("crowllm-com", "crowllm-glm-4-7-thinking", "srv_mrgynwuz08a167112109:glm-4.7-thinking", "glm-4.7-thinking (via CrowLLM)", "crowllm.com", "reasoning", 128000),
+   235→   235→  gf("crowllm-com", "crowllm-llama-3-1-8b-instant", "srv_mrgynwuz08a167112109:llama-3.1-8b-instant", "llama-3.1-8b-instant (via CrowLLM)", "crowllm.com", "professional", 8000),
+   236→   236→  gf("crowllm-com", "crowllm-moonshotai-kimi-k2-5", "srv_mrgynwuz08a167112109:moonshotai/Kimi-K2.5", "moonshotai/Kimi-K2.5 (via CrowLLM)", "crowllm.com", "professional", 200000),
+   237→   237→  gf("crowllm-com", "crowllm-glm-4-7-flash", "srv_mrgynwuz08a167112109:glm-4.7-flash", "glm-4.7-flash (via CrowLLM)", "crowllm.com", "professional", 128000),
+   238→   238→  gf("crowllm-com", "crowllm-glm-5-1-thinking", "srv_mrgynwuz08a167112109:glm-5.1-thinking", "glm-5.1-thinking (via CrowLLM)", "crowllm.com", "reasoning", 128000),
+   239→   239→  gf("crowllm-com", "crowllm-glm-4-6-thinking", "srv_mrgynwuz08a167112109:glm-4.6-thinking", "glm-4.6-thinking (via CrowLLM)", "crowllm.com", "reasoning", 128000),
+   240→   240→  gf("crowllm-com", "crowllm-glm-4-7", "srv_mrgynwuz08a167112109:glm-4.7", "glm-4.7 (via CrowLLM)", "crowllm.com", "professional", 128000),
+   241→   241→  gf("crowllm-com", "crowllm-gpt-oss-120b", "srv_mrgynwuz08a167112109:gpt-oss-120b", "gpt-oss-120b (via CrowLLM)", "crowllm.com", "professional", 128000),
+   242→   242→  gf("crowllm-com", "crowllm-mistral-large-latest", "srv_mrgynwuz08a167112109:mistral-large-latest", "mistral-large-latest (via CrowLLM)", "crowllm.com", "professional", 128000),
+   243→   243→
+   244→   244→  // ─── deepinfra.com (DeepInfra) — 4 models ──────────────
+   245→   245→  gf("deepinfra-com", "deepinfra-zai-org-glm-5-2", "srv_mp2huzrg06e426ad12f3:zai-org/GLM-5.2", "zai-org/GLM-5.2 (via DeepInfra)", "deepinfra.com", "professional", 128000),
+   246→   246→  gf("deepinfra-com", "deepinfra-xiaomimimo-mimo-v2-5-pro", "srv_mp2huzrg06e426ad12f3:XiaomiMiMo/MiMo-V2.5-Pro", "XiaomiMiMo/MiMo-V2.5-Pro (via DeepInfra)", "deepinfra.com", "professional", 128000),
+   247→   247→  gf("deepinfra-com", "deepinfra-deepseek-ai-deepseek-v4-flash", "srv_mp2huzrg06e426ad12f3:deepseek-ai/DeepSeek-V4-Flash", "deepseek-ai/DeepSeek-V4-Flash (via DeepInfra)", "deepinfra.com", "professional", 64000),
+   248→   248→  gf("deepinfra-com", "deepinfra-moonshotai-kimi-k2-7-code", "srv_mp2huzrg06e426ad12f3:moonshotai/Kimi-K2.7-Code", "moonshotai/Kimi-K2.7-Code (via DeepInfra)", "deepinfra.com", "professional", 200000),
+   249→   249→
+   250→   250→  // ─── gemini-v1beta (Google Gemini API) — 20 models ──────────────
+   251→   251→  gf("gemini-v1beta", "gemini-gemini-flash-lite-latest", "srv_mrgy0nmbc8a86c407f17:models/gemini-flash-lite-latest", "gemini-flash-lite-latest (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   252→   252→  gf("gemini-v1beta", "gemini-gemini-2-5-flash", "srv_mrgy0nmbc8a86c407f17:models/gemini-2.5-flash", "gemini-2.5-flash (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   253→   253→  gf("gemini-v1beta", "gemini-gemini-3-flash-preview-2", "srv_mrgy0nmbc8a86c407f17:models/gemini-3-flash-preview", "gemini-3-flash-preview (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   254→   254→  gf("gemini-v1beta", "gemini-gemini-3-1-flash-lite-2", "srv_mrgy0nmbc8a86c407f17:gemini-3.1-flash-lite", "gemini-3.1-flash-lite (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   255→   255→  gf("gemini-v1beta", "gemini-gemini-3-5-flash", "srv_mrgy0nmbc8a86c407f17:models/gemini-3.5-flash", "gemini-3.5-flash (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   256→   256→  gf("gemini-v1beta", "gemini-gemini-3-1-flash-lite-3", "srv_mrgy0nmbc8a86c407f17:models/gemini-3.1-flash-lite", "gemini-3.1-flash-lite (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   257→   257→  gf("gemini-v1beta", "gemini-gemini-3-5-flash-2", "srv_mrgy0nmbc8a86c407f17:gemini-3.5-flash", "gemini-3.5-flash (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   258→   258→  gf("gemini-v1beta", "gemini-gemini-flash-latest", "srv_mrgy0nmbc8a86c407f17:gemini-flash-latest", "gemini-flash-latest (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   259→   259→  gf("gemini-v1beta", "gemini-gemini-2-5-flash-2", "srv_mrgy0nmbc8a86c407f17:gemini-2.5-flash", "gemini-2.5-flash (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   260→   260→  gf("gemini-v1beta", "gemini-gemma-4-31b-it", "srv_mrgy0nmbc8a86c407f17:models/gemma-4-31b-it", "gemma-4-31b-it (via Google Gemini API)", "gemini-v1beta", "professional", 128000),
+   261→   261→  gf("gemini-v1beta", "gemini-gemma-4-26b-a4b-it", "srv_mrgy0nmbc8a86c407f17:models/gemma-4-26b-a4b-it", "gemma-4-26b-a4b-it (via Google Gemini API)", "gemini-v1beta", "professional", 128000),
+   262→   262→  gf("gemini-v1beta", "gemini-gemini-robotics-er-1-6-preview", "srv_mrgy0nmbc8a86c407f17:models/gemini-robotics-er-1.6-preview", "gemini-robotics-er-1.6-preview (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   263→   263→  gf("gemini-v1beta", "gemini-gemini-3-flash-preview-3", "srv_mrgy0nmbc8a86c407f17:gemini-3-flash-preview", "gemini-3-flash-preview (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   264→   264→  gf("gemini-v1beta", "gemini-gemini-2-5-flash-lite", "srv_mrgy0nmbc8a86c407f17:models/gemini-2.5-flash-lite", "gemini-2.5-flash-lite (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   265→   265→  gf("gemini-v1beta", "gemini-gemini-3-1-flash-lite-preview", "srv_mrgy0nmbc8a86c407f17:models/gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite-preview (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   266→   266→  gf("gemini-v1beta", "gemini-gemini-flash-latest-2", "srv_mrgy0nmbc8a86c407f17:models/gemini-flash-latest", "gemini-flash-latest (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   267→   267→  gf("gemini-v1beta", "gemini-gemini-2-5-flash-lite-2", "srv_mrgy0nmbc8a86c407f17:gemini-2.5-flash-lite", "gemini-2.5-flash-lite (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   268→   268→  gf("gemini-v1beta", "gemini-gemini-flash-lite-latest-2", "srv_mrgy0nmbc8a86c407f17:gemini-flash-lite-latest", "gemini-flash-lite-latest (via Google Gemini API)", "gemini-v1beta", "professional", 1000000),
+   269→   269→  gf("gemini-v1beta", "gemini-gemma-4-26b-a4b-it-2", "srv_mrgy0nmbc8a86c407f17:gemma-4-26b-a4b-it", "gemma-4-26b-a4b-it (via Google Gemini API)", "gemini-v1beta", "professional", 128000),
+   270→   270→  gf("gemini-v1beta", "gemini-gemma-4-31b-it-2", "srv_mrgy0nmbc8a86c407f17:gemma-4-31b-it", "gemma-4-31b-it (via Google Gemini API)", "gemini-v1beta", "professional", 128000),
+   271→   271→
+   272→   272→  // ─── gen.pollinations.ai (Pollinations Gen) — 11 models ──────────────
+   273→   273→  gf("gen-pollinations-ai", "gen-glm-5-2", "srv_mp5miql908c8738d71be:glm-5.2", "glm-5.2 (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   274→   274→  gf("gen-pollinations-ai", "gen-kimi-k2-6", "srv_mp5miql908c8738d71be:kimi-k2.6", "kimi-k2.6 (via Pollinations Gen)", "gen.pollinations.ai", "professional", 200000),
+   275→   275→  gf("gen-pollinations-ai", "gen-glm", "srv_mp5miql908c8738d71be:glm", "glm (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   276→   276→  gf("gen-pollinations-ai", "gen-openai-fast", "srv_mp5miql908c8738d71be:openai-fast", "openai-fast (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   277→   277→  gf("gen-pollinations-ai", "gen-spit-fires-free", "srv_mp5miql908c8738d71be:Spit-fires/free", "Spit-fires/free (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   278→   278→  gf("gen-pollinations-ai", "gen-qwen-coder", "srv_mp5miql908c8738d71be:qwen-coder", "qwen-coder (via Pollinations Gen)", "gen.pollinations.ai", "professional", 262144),
+   279→   279→  gf("gen-pollinations-ai", "gen-openai", "srv_mp5miql908c8738d71be:openai", "openai (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   280→   280→  gf("gen-pollinations-ai", "gen-grok", "srv_mp5miql908c8738d71be:grok", "grok (via Pollinations Gen)", "gen.pollinations.ai", "professional", 131000),
+   281→   281→  gf("gen-pollinations-ai", "gen-deepseek", "srv_mp5miql908c8738d71be:deepseek", "deepseek (via Pollinations Gen)", "gen.pollinations.ai", "professional", 64000),
+   282→   282→  gf("gen-pollinations-ai", "gen-mistral", "srv_mp5miql908c8738d71be:mistral", "mistral (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   283→   283→  gf("gen-pollinations-ai", "gen-gpt-5-5", "srv_mp5miql908c8738d71be:gpt-5.5", "gpt-5.5 (via Pollinations Gen)", "gen.pollinations.ai", "professional", 128000),
+   284→   284→
+   285→   285→  // ─── groq.com (Groq) — 13 models ──────────────
+   286→   286→  gf("groq-com", "groq-meta-llama-llama-4-scout-17b-16e-instruct", "srv_mkom688d57c76d8a3542:meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-scout-17b-16e-instruct (via Groq)", "groq.com", "professional", 8000),
+   287→   287→  gf("groq-com", "groq-llama-3-1-8b-instant", "srv_mkom688d57c76d8a3542:llama-3.1-8b-instant", "llama-3.1-8b-instant (via Groq)", "groq.com", "professional", 8000),
+   288→   288→  gf("groq-com", "groq-openai-gpt-oss-120b", "srv_mkom688d57c76d8a3542:openai/gpt-oss-120b", "openai/gpt-oss-120b (via Groq)", "groq.com", "professional", 128000),
+   289→   289→  gf("groq-com", "groq-openai-gpt-oss-20b", "srv_mkom688d57c76d8a3542:openai/gpt-oss-20b", "openai/gpt-oss-20b (via Groq)", "groq.com", "professional", 128000),
+   290→   290→  gf("groq-com", "groq-qwen-qwen3-32b", "srv_mkom688d57c76d8a3542:qwen/qwen3-32b", "qwen/qwen3-32b (via Groq)", "groq.com", "professional", 262144),
+   291→   291→  gf("groq-com", "groq-llama-3-3-70b-versatile", "srv_mkom688d57c76d8a3542:llama-3.3-70b-versatile", "llama-3.3-70b-versatile (via Groq)", "groq.com", "professional", 200000),
+   292→   292→  gf("groq-com", "groq-qwen-qwen3-6-27b", "srv_mkom688d57c76d8a3542:qwen/qwen3.6-27b", "qwen/qwen3.6-27b (via Groq)", "groq.com", "professional", 262144),
+   293→   293→  gf("groq-com", "groq-allam-2-7b", "srv_mkom688d57c76d8a3542:allam-2-7b", "allam-2-7b (via Groq)", "groq.com", "professional", 8000),
+   294→   294→  gf("groq-com", "groq-openai-gpt-oss-safeguard-20b", "srv_mkom688d57c76d8a3542:openai/gpt-oss-safeguard-20b", "openai/gpt-oss-safeguard-20b (via Groq)", "groq.com", "sfw", 128000),
+   295→   295→  gf("groq-com", "groq-meta-llama-llama-prompt-guard-2-22m", "srv_mkom688d57c76d8a3542:meta-llama/llama-prompt-guard-2-22m", "meta-llama/llama-prompt-guard-2-22m (via Groq)", "groq.com", "sfw", 128000),
+   296→   296→  gf("groq-com", "groq-groq-compound", "srv_mkom688d57c76d8a3542:groq/compound", "groq/compound (via Groq)", "groq.com", "professional", 128000),
+   297→   297→  gf("groq-com", "groq-meta-llama-llama-prompt-guard-2-86m", "srv_mkom688d57c76d8a3542:meta-llama/llama-prompt-guard-2-86m", "meta-llama/llama-prompt-guard-2-86m (via Groq)", "groq.com", "sfw", 128000),
+   298→   298→  gf("groq-com", "groq-groq-compound-mini", "srv_mkom688d57c76d8a3542:groq/compound-mini", "groq/compound-mini (via Groq)", "groq.com", "professional", 128000),
+   299→   299→
+   300→   300→  // ─── kobold & llama.cpp swarm (Kobold / llama.cpp) — 5 models ──────────────
+   301→   301→  gf("kobold-llamacpp-swarm", "kobold-qwen3-5-35b-a3b-uncensored-hauhaucs-aggressiv", "srv_mqjxnj9i4e35281e8d60:Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf", "Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive (via Kobold / llama.cpp)", "kobold & llama.cpp swarm", "nsfw", 262144),
+   302→   302→  gf("kobold-llamacpp-swarm", "kobold-qwen3-6-35b-a3b-uncensored-hauhaucs-aggressiv", "srv_mqjxnj9i4e35281e8d60:Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf", "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive (via Kobold / llama.cpp)", "kobold & llama.cpp swarm", "nsfw", 262144),
+   303→   303→  gf("kobold-llamacpp-swarm", "kobold-qwen3-5-9b", "srv_mqjxnj9i4e35281e8d60:Qwen3.5-9B-Q4_K_M.gguf", "Qwen3.5-9B (via Kobold / llama.cpp)", "kobold & llama.cpp swarm", "professional", 262144),
+   304→   304→  gf("kobold-llamacpp-swarm", "kobold-koboldcpp-equinox-31b", "srv_mqjxnj9i4e35281e8d60:koboldcpp/Equinox-31B-Q4_K_M", "koboldcpp/Equinox-31B (via Kobold / llama.cpp)", "kobold & llama.cpp swarm", "professional", 8000),
+   305→   305→  gf("kobold-llamacpp-swarm", "kobold-koboldcpp-thedrummer-cydonia-24b-v4-3", "srv_mqjxnj9i4e35281e8d60:koboldcpp/TheDrummer_Cydonia-24B-v4.3-Q4_K_M", "koboldcpp/TheDrummer_Cydonia-24B-v4.3 (via Kobold / llama.cpp)", "kobold & llama.cpp swarm", "professional", 8000),
+   306→   306→
+   307→   307→  // ─── navy (Navy) — 1 models ──────────────
+   308→   308→  gf("navy", "navy-glm-5-2", "srv_mrgypezt91a1a4a8ea7f:glm-5.2", "glm-5.2 (via Navy)", "navy", "professional", 128000),
+   309→   309→
+   310→   310→  // ─── nectar by pollinations.ai (Pollinations Nectar) — 10 models ──────────────
+   311→   311→  gf("nectar-pollinations-ai", "nectar-glm-5-2", "srv_mkoloq41e34074b6133e:glm-5.2", "glm-5.2 (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   312→   312→  gf("nectar-pollinations-ai", "nectar-openai-fast", "srv_mkoloq41e34074b6133e:openai-fast", "openai-fast (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   313→   313→  gf("nectar-pollinations-ai", "nectar-openai", "srv_mkoloq41e34074b6133e:openai", "openai (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   314→   314→  gf("nectar-pollinations-ai", "nectar-deepseek", "srv_mkoloq41e34074b6133e:deepseek", "deepseek (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 64000),
+   315→   315→  gf("nectar-pollinations-ai", "nectar-mistral", "srv_mkoloq41e34074b6133e:mistral", "mistral (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   316→   316→  gf("nectar-pollinations-ai", "nectar-gpt-5-5", "srv_mkoloq41e34074b6133e:gpt-5.5", "gpt-5.5 (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   317→   317→  gf("nectar-pollinations-ai", "nectar-openai-large", "srv_mkoloq41e34074b6133e:openai-large", "openai-large (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 128000),
+   318→   318→  gf("nectar-pollinations-ai", "nectar-deepseek-v4", "srv_mkoloq41e34074b6133e:deepseek-v4", "deepseek-v4 (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 64000),
+   319→   319→  gf("nectar-pollinations-ai", "nectar-grok", "srv_mkoloq41e34074b6133e:grok", "grok (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 131000),
+   320→   320→  gf("nectar-pollinations-ai", "nectar-minimax", "srv_mkoloq41e34074b6133e:minimax", "minimax (via Pollinations Nectar)", "nectar by pollinations.ai", "professional", 196000),
+   321→   321→
+   322→   322→  // ─── nvidia.com (NVIDIA NIM) — 54 models ──────────────
+   323→   323→  gf("nvidia-com", "nvidia-meta-llama-3-1-8b-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.1-8b-instruct", "meta/llama-3.1-8b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   324→   324→  gf("nvidia-com", "nvidia-nvidia-nemotron-3-nano-30b-a3b", "srv_mkombumpae45db46dcb8:nvidia/nemotron-3-nano-30b-a3b", "nvidia/nemotron-3-nano-30b-a3b (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   325→   325→  gf("nvidia-com", "nvidia-z-ai-glm-5-2", "srv_mkombumpae45db46dcb8:z-ai/glm-5.2", "z-ai/glm-5.2 (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   326→   326→  gf("nvidia-com", "nvidia-nvidia-nemotron-3-super-120b-a12b", "srv_mkombumpae45db46dcb8:nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-super-120b-a12b (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   327→   327→  gf("nvidia-com", "nvidia-deepseek-ai-deepseek-v4-pro", "srv_mkombumpae45db46dcb8:deepseek-ai/deepseek-v4-pro", "deepseek-ai/deepseek-v4-pro (via NVIDIA NIM)", "nvidia.com", "professional", 64000),
+   328→   328→  gf("nvidia-com", "nvidia-minimaxai-minimax-m2-7", "srv_mkombumpae45db46dcb8:minimaxai/minimax-m2.7", "minimaxai/minimax-m2.7 (via NVIDIA NIM)", "nvidia.com", "professional", 196000),
+   329→   329→  gf("nvidia-com", "nvidia-openai-gpt-oss-120b", "srv_mkombumpae45db46dcb8:openai/gpt-oss-120b", "openai/gpt-oss-120b (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   330→   330→  gf("nvidia-com", "nvidia-minimaxai-minimax-m3", "srv_mkombumpae45db46dcb8:minimaxai/minimax-m3", "minimaxai/minimax-m3 (via NVIDIA NIM)", "nvidia.com", "professional", 196000),
+   331→   331→  gf("nvidia-com", "nvidia-stepfun-ai-step-3-7-flash", "srv_mkombumpae45db46dcb8:stepfun-ai/step-3.7-flash", "stepfun-ai/step-3.7-flash (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   332→   332→  gf("nvidia-com", "nvidia-nvidia-nemotron-3-ultra-550b-a55b", "srv_mkombumpae45db46dcb8:nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-ultra-550b-a55b (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   333→   333→  gf("nvidia-com", "nvidia-deepseek-ai-deepseek-v4-flash", "srv_mkombumpae45db46dcb8:deepseek-ai/deepseek-v4-flash", "deepseek-ai/deepseek-v4-flash (via NVIDIA NIM)", "nvidia.com", "professional", 64000),
+   334→   334→  gf("nvidia-com", "nvidia-meta-llama-3-1-70b-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.1-70b-instruct", "meta/llama-3.1-70b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 200000),
+   335→   335→  gf("nvidia-com", "nvidia-google-diffusiongemma-26b-a4b-it", "srv_mkombumpae45db46dcb8:google/diffusiongemma-26b-a4b-it", "google/diffusiongemma-26b-a4b-it (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   336→   336→  gf("nvidia-com", "nvidia-nvidia-llama-3-1-nemotron-nano-vl-8b-v1", "srv_mkombumpae45db46dcb8:nvidia/llama-3.1-nemotron-nano-vl-8b-v1", "nvidia/llama-3.1-nemotron-nano-vl-8b-v1 (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   337→   337→  gf("nvidia-com", "nvidia-thinkingmachines-inkling", "srv_mkombumpae45db46dcb8:thinkingmachines/inkling", "thinkingmachines/inkling (via NVIDIA NIM)", "nvidia.com", "reasoning", 128000),
+   338→   338→  gf("nvidia-com", "nvidia-mistralai-mistral-medium-3-5-128b", "srv_mkombumpae45db46dcb8:mistralai/mistral-medium-3.5-128b", "mistralai/mistral-medium-3.5-128b (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   339→   339→  gf("nvidia-com", "nvidia-nvidia-llama-3-3-nemotron-super-49b-v1-5", "srv_mkombumpae45db46dcb8:nvidia/llama-3.3-nemotron-super-49b-v1.5", "nvidia/llama-3.3-nemotron-super-49b-v1.5 (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   340→   340→  gf("nvidia-com", "nvidia-meta-llama-3-2-11b-vision-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-11b-vision-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   341→   341→  gf("nvidia-com", "nvidia-nvidia-nemotron-nano-12b-v2-vl", "srv_mkombumpae45db46dcb8:nvidia/nemotron-nano-12b-v2-vl", "nvidia/nemotron-nano-12b-v2-vl (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   342→   342→  gf("nvidia-com", "nvidia-openai-gpt-oss-20b", "srv_mkombumpae45db46dcb8:openai/gpt-oss-20b", "openai/gpt-oss-20b (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   343→   343→  gf("nvidia-com", "nvidia-upstage-solar-10-7b-instruct", "srv_mkombumpae45db46dcb8:upstage/solar-10.7b-instruct", "upstage/solar-10.7b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   344→   344→  gf("nvidia-com", "nvidia-nvidia-llama-3-1-nemotron-safety-guard-8b-v3", "srv_mkombumpae45db46dcb8:nvidia/llama-3.1-nemotron-safety-guard-8b-v3", "nvidia/llama-3.1-nemotron-safety-guard-8b-v3 (via NVIDIA NIM)", "nvidia.com", "sfw", 8000),
+   345→   345→  gf("nvidia-com", "nvidia-nvidia-gliner-pii", "srv_mkombumpae45db46dcb8:nvidia/gliner-pii", "nvidia/gliner-pii (via NVIDIA NIM)", "nvidia.com", "sfw", 128000),
+   346→   346→  gf("nvidia-com", "nvidia-google-gemma-3n-e4b-it", "srv_mkombumpae45db46dcb8:google/gemma-3n-e4b-it", "google/gemma-3n-e4b-it (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   347→   347→  gf("nvidia-com", "nvidia-nvidia-llama-3-1-nemoguard-8b-content-safety", "srv_mkombumpae45db46dcb8:nvidia/llama-3.1-nemoguard-8b-content-safety", "nvidia/llama-3.1-nemoguard-8b-content-safety (via NVIDIA NIM)", "nvidia.com", "sfw", 8000),
+   348→   348→  gf("nvidia-com", "nvidia-meta-llama-3-2-90b-vision-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-90b-vision-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   349→   349→  gf("nvidia-com", "nvidia-sarvamai-sarvam-m", "srv_mkombumpae45db46dcb8:sarvamai/sarvam-m", "sarvamai/sarvam-m (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   350→   350→  gf("nvidia-com", "nvidia-qwen-qwen3-5-122b-a10b", "srv_mkombumpae45db46dcb8:qwen/qwen3.5-122b-a10b", "qwen/qwen3.5-122b-a10b (via NVIDIA NIM)", "nvidia.com", "professional", 262144),
+   351→   351→  gf("nvidia-com", "nvidia-nvidia-nvidia-nemotron-nano-9b-v2", "srv_mkombumpae45db46dcb8:nvidia/nvidia-nemotron-nano-9b-v2", "nvidia/nvidia-nemotron-nano-9b-v2 (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   352→   352→  gf("nvidia-com", "nvidia-stepfun-ai-step-3-5-flash", "srv_mkombumpae45db46dcb8:stepfun-ai/step-3.5-flash", "stepfun-ai/step-3.5-flash (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   353→   353→  gf("nvidia-com", "nvidia-meta-llama-guard-4-12b", "srv_mkombumpae45db46dcb8:meta/llama-guard-4-12b", "meta/llama-guard-4-12b (via NVIDIA NIM)", "nvidia.com", "sfw", 8000),
+   354→   354→  gf("nvidia-com", "nvidia-nvidia-nemotron-mini-4b-instruct", "srv_mkombumpae45db46dcb8:nvidia/nemotron-mini-4b-instruct", "nvidia/nemotron-mini-4b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   355→   355→  gf("nvidia-com", "nvidia-nvidia-ising-calibration-1-35b-a3b", "srv_mkombumpae45db46dcb8:nvidia/ising-calibration-1-35b-a3b", "nvidia/ising-calibration-1-35b-a3b (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   356→   356→  gf("nvidia-com", "nvidia-google-gemma-2-2b-it", "srv_mkombumpae45db46dcb8:google/gemma-2-2b-it", "google/gemma-2-2b-it (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   357→   357→  gf("nvidia-com", "nvidia-meta-llama-3-2-3b-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.2-3b-instruct", "meta/llama-3.2-3b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   358→   358→  gf("nvidia-com", "nvidia-google-gemma-3n-e2b-it", "srv_mkombumpae45db46dcb8:google/gemma-3n-e2b-it", "google/gemma-3n-e2b-it (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   359→   359→  gf("nvidia-com", "nvidia-nvidia-nemotron-3-5-content-safety", "srv_mkombumpae45db46dcb8:nvidia/nemotron-3.5-content-safety", "nvidia/nemotron-3.5-content-safety (via NVIDIA NIM)", "nvidia.com", "sfw", 128000),
+   360→   360→  gf("nvidia-com", "nvidia-nvidia-riva-translate-4b-instruct-v1-1", "srv_mkombumpae45db46dcb8:nvidia/riva-translate-4b-instruct-v1.1", "nvidia/riva-translate-4b-instruct-v1.1 (via NVIDIA NIM)", "nvidia.com", "sfw", 8000),
+   361→   361→  gf("nvidia-com", "nvidia-mistralai-mistral-nemotron", "srv_mkombumpae45db46dcb8:mistralai/mistral-nemotron", "mistralai/mistral-nemotron (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   362→   362→  gf("nvidia-com", "nvidia-nvidia-llama-3-1-nemoguard-8b-topic-control", "srv_mkombumpae45db46dcb8:nvidia/llama-3.1-nemoguard-8b-topic-control", "nvidia/llama-3.1-nemoguard-8b-topic-control (via NVIDIA NIM)", "nvidia.com", "sfw", 8000),
+   363→   363→  gf("nvidia-com", "nvidia-abacusai-dracarys-llama-3-1-70b-instruct", "srv_mkombumpae45db46dcb8:abacusai/dracarys-llama-3.1-70b-instruct", "abacusai/dracarys-llama-3.1-70b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 200000),
+   364→   364→  gf("nvidia-com", "nvidia-mistralai-mistral-small-4-119b-2603", "srv_mkombumpae45db46dcb8:mistralai/mistral-small-4-119b-2603", "mistralai/mistral-small-4-119b-2603 (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   365→   365→  gf("nvidia-com", "nvidia-poolside-laguna-xs-2-1", "srv_mkombumpae45db46dcb8:poolside/laguna-xs-2.1", "poolside/laguna-xs-2.1 (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   366→   366→  gf("nvidia-com", "nvidia-nvidia-llama-3-3-nemotron-super-49b-v1", "srv_mkombumpae45db46dcb8:nvidia/llama-3.3-nemotron-super-49b-v1", "nvidia/llama-3.3-nemotron-super-49b-v1 (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   367→   367→  gf("nvidia-com", "nvidia-meta-llama-3-3-70b-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.3-70b-instruct", "meta/llama-3.3-70b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 200000),
+   368→   368→  gf("nvidia-com", "nvidia-meta-llama-3-2-1b-instruct", "srv_mkombumpae45db46dcb8:meta/llama-3.2-1b-instruct", "meta/llama-3.2-1b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   369→   369→  gf("nvidia-com", "nvidia-qwen-qwen3-next-80b-a3b-instruct", "srv_mkombumpae45db46dcb8:qwen/qwen3-next-80b-a3b-instruct", "qwen/qwen3-next-80b-a3b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 262144),
+   370→   370→  gf("nvidia-com", "nvidia-mistralai-mistral-large-3-675b-instruct-2512", "srv_mkombumpae45db46dcb8:mistralai/mistral-large-3-675b-instruct-2512", "mistralai/mistral-large-3-675b-instruct-2512 (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   371→   371→  gf("nvidia-com", "nvidia-mistralai-mixtral-8x7b-instruct-v0-1", "srv_mkombumpae45db46dcb8:mistralai/mixtral-8x7b-instruct-v0.1", "mistralai/mixtral-8x7b-instruct-v0.1 (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   372→   372→  gf("nvidia-com", "nvidia-nvidia-nemotron-3-nano-omni-30b-a3b-reasoning", "srv_mkombumpae45db46dcb8:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning (via NVIDIA NIM)", "nvidia.com", "reasoning", 8000),
+   373→   373→  gf("nvidia-com", "nvidia-bytedance-seed-oss-36b-instruct", "srv_mkombumpae45db46dcb8:bytedance/seed-oss-36b-instruct", "bytedance/seed-oss-36b-instruct (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   374→   374→  gf("nvidia-com", "nvidia-nvidia-llama-3-1-nemotron-nano-8b-v1", "srv_mkombumpae45db46dcb8:nvidia/llama-3.1-nemotron-nano-8b-v1", "nvidia/llama-3.1-nemotron-nano-8b-v1 (via NVIDIA NIM)", "nvidia.com", "professional", 8000),
+   375→   375→  gf("nvidia-com", "nvidia-qwen-qwen3-5-397b-a17b", "srv_mkombumpae45db46dcb8:qwen/qwen3.5-397b-a17b", "qwen/qwen3.5-397b-a17b (via NVIDIA NIM)", "nvidia.com", "professional", 262144),
+   376→   376→  gf("nvidia-com", "nvidia-google-gemma-4-31b-it", "srv_mkombumpae45db46dcb8:google/gemma-4-31b-it", "google/gemma-4-31b-it (via NVIDIA NIM)", "nvidia.com", "professional", 128000),
+   377→   377→
+   378→   378→  // ─── ollama.com (Ollama) — 3 models ──────────────
+   379→   379→  gf("ollama-com", "ollama-nemotron-3-nano-30b", "srv_mrgykg8eea645e7bb006:nemotron-3-nano:30b", "nemotron-3-nano:30b (via Ollama)", "ollama.com", "professional", 128000),
+   380→   380→  gf("ollama-com", "ollama-gemma4-31b", "srv_mrgykg8eea645e7bb006:gemma4:31b", "gemma4:31b (via Ollama)", "ollama.com", "professional", 128000),
+   381→   381→  gf("ollama-com", "ollama-mistral-large-3-675b", "srv_mrgykg8eea645e7bb006:mistral-large-3:675b", "mistral-large-3:675b (via Ollama)", "ollama.com", "professional", 128000),
+   382→   382→
+   383→   383→  // ─── opencode.ai/zen (OpenCode.ai) — 2 models ──────────────
+   384→   384→  gf("opencode-ai-zen", "opencode-north-mini-code-free", "srv_mrgy2d2493c3e1dc3b74:north-mini-code-free", "north-mini-code-free (via OpenCode.ai)", "opencode.ai/zen", "professional", 128000),
+   385→   385→  gf("opencode-ai-zen", "opencode-nemotron-3-ultra-free", "srv_mrgy2d2493c3e1dc3b74:nemotron-3-ultra-free", "nemotron-3-ultra-free (via OpenCode.ai)", "opencode.ai/zen", "professional", 128000),
+   386→   386→
+   387→   387→  // ─── perplexity (Perplexity) — 1 models ──────────────
+   388→   388→  gf("perplexity", "perplexity-turbo", "srv_mkopv2kp2e0038cdf550:turbo", "turbo (via Perplexity)", "perplexity", "professional", 128000),
+   389→   389→
+   390→   390→  // ─── qwen (Qwen) — 5 models ──────────────
+   391→   391→  gf("qwen", "qwen-qwen3-7-plus", "srv_mrgymq8534d9ea96920d:qwen3.7-plus", "qwen3.7-plus (via Qwen)", "qwen", "professional", 262144),
+   392→   392→  gf("qwen", "qwen-qwen3-6-plus", "srv_mrgymq8534d9ea96920d:qwen3.6-plus", "qwen3.6-plus (via Qwen)", "qwen", "professional", 262144),
+   393→   393→  gf("qwen", "qwen-qwen3-7-max", "srv_mrgymq8534d9ea96920d:qwen3.7-max", "qwen3.7-max (via Qwen)", "qwen", "professional", 262144),
+   394→   394→  gf("qwen", "qwen-qwen3-7-max-2", "srv_mrgxthn5dfa6e2f0a5b6:qwen3.7-max", "qwen3.7-max (via Qwen)", "qwen", "professional", 262144),
+   395→   395→  gf("qwen", "qwen-qwen3-7-plus-2", "srv_mrgxthn5dfa6e2f0a5b6:qwen3.7-plus", "qwen3.7-plus (via Qwen)", "qwen", "professional", 262144),
+   396→   396→
+   397→   397→  // ─── ollama-swarm (OllamaSwarm) — 43 models (server-allowed) ──────────────
+   398→   398→  gf("ollama-swarm", "ollama-swarm-deepseek-v4-pro", "srv_mq7ktfibad45c29f3839:deepseek-v4-pro:cloud", "deepseek-v4-pro (via OllamaSwarm)", "ollama-swarm", "professional", 64000),
+   399→   399→  gf("ollama-swarm", "ollama-swarm-minimax-m2-7", "srv_mq7ktfibad45c29f3839:minimax-m2.7:cloud", "minimax-m2.7 (via OllamaSwarm)", "ollama-swarm", "professional", 196000),
+   400→   400→  gf("ollama-swarm", "ollama-swarm-minimax-m3", "srv_mq7ktfibad45c29f3839:minimax-m3:cloud", "minimax-m3 (via OllamaSwarm)", "ollama-swarm", "professional", 196000),
+   401→   401→  gf("ollama-swarm", "ollama-swarm-kimi-k2-6", "srv_mq7ktfibad45c29f3839:kimi-k2.6:cloud", "kimi-k2.6 (via OllamaSwarm)", "ollama-swarm", "professional", 200000),
+   402→   402→  gf("ollama-swarm", "ollama-swarm-deepseek-v4-flash", "srv_mq7ktfibad45c29f3839:deepseek-v4-flash:cloud", "deepseek-v4-flash (via OllamaSwarm)", "ollama-swarm", "professional", 64000),
+   403→   403→  gf("ollama-swarm", "ollama-swarm-minimax-m2-5", "srv_mq7ktfibad45c29f3839:minimax-m2.5:cloud", "minimax-m2.5 (via OllamaSwarm)", "ollama-swarm", "professional", 196000),
+   404→   404→  gf("ollama-swarm", "ollama-swarm-deepseek-v3-2", "srv_mq7ktfibad45c29f3839:deepseek-v3.2:cloud", "deepseek-v3.2 (via OllamaSwarm)", "ollama-swarm", "professional", 64000),
+   405→   405→  gf("ollama-swarm", "ollama-swarm-glm-4-7", "srv_mq7ktfibad45c29f3839:glm-4.7:cloud", "glm-4.7 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   406→   406→  gf("ollama-swarm", "ollama-swarm-glm-5-1", "srv_mq7ktfibad45c29f3839:glm-5.1:cloud", "glm-5.1 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   407→   407→  gf("ollama-swarm", "ollama-swarm-qwen3-6-27b", "srv_mq7ktfibad45c29f3839:qwen3.6:27b", "qwen3.6:27b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   408→   408→  gf("ollama-swarm", "ollama-swarm-llama3-2-3b", "srv_mq7ktfibad45c29f3839:llama3.2:3b", "llama3.2:3b (via OllamaSwarm)", "ollama-swarm", "professional", 8000),
+   409→   409→  gf("ollama-swarm", "ollama-swarm-huihui-ai-gpt-oss-abliterated", "srv_mq7ktfibad45c29f3839:huihui_ai/gpt-oss-abliterated:latest", "huihui_ai/gpt-oss-abliterated (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   410→   410→  gf("ollama-swarm", "ollama-swarm-qwen3-6", "srv_mq7ktfibad45c29f3839:qwen3.6:latest", "qwen3.6 (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   411→   411→  gf("ollama-swarm", "ollama-swarm-huihui-ai-gemma-4-abliterated-26b", "srv_mq7ktfibad45c29f3839:huihui_ai/gemma-4-abliterated:26b", "huihui_ai/gemma-4-abliterated:26b (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   412→   412→  gf("ollama-swarm", "ollama-swarm-qwen3-coder-next", "srv_mq7ktfibad45c29f3839:qwen3-coder-next:cloud", "qwen3-coder-next (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   413→   413→  gf("ollama-swarm", "ollama-swarm-huihui-ai-qwen3-5-abliterated-27b", "srv_mq7ktfibad45c29f3839:huihui_ai/qwen3.5-abliterated:27b", "huihui_ai/qwen3.5-abliterated:27b (via OllamaSwarm)", "ollama-swarm", "nsfw", 262144),
+   414→   414→  gf("ollama-swarm", "ollama-swarm-huihui-ai-qwen3-6-abliterated-27b", "srv_mq7ktfibad45c29f3839:huihui_ai/qwen3.6-abliterated:27b", "huihui_ai/qwen3.6-abliterated:27b (via OllamaSwarm)", "ollama-swarm", "nsfw", 262144),
+   415→   415→  gf("ollama-swarm", "ollama-swarm-kimi-k2-5", "srv_mq7ktfibad45c29f3839:kimi-k2.5:cloud", "kimi-k2.5 (via OllamaSwarm)", "ollama-swarm", "professional", 200000),
+   416→   416→  gf("ollama-swarm", "ollama-swarm-huihui-ai-gemma-4-abliterated-12b", "srv_mq7ktfibad45c29f3839:huihui_ai/gemma-4-abliterated:12b", "huihui_ai/gemma-4-abliterated:12b (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   417→   417→  gf("ollama-swarm", "ollama-swarm-llama3", "srv_mq7ktfibad45c29f3839:llama3:latest", "llama3 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   418→   418→  gf("ollama-swarm", "ollama-swarm-qwen3-5", "srv_mq7ktfibad45c29f3839:qwen3.5:cloud", "qwen3.5 (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   419→   419→  gf("ollama-swarm", "ollama-swarm-huihui-ai-glm-4-7-flash-abliterated", "srv_mq7ktfibad45c29f3839:huihui_ai/glm-4.7-flash-abliterated:latest", "huihui_ai/glm-4.7-flash-abliterated (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   420→   420→  gf("ollama-swarm", "ollama-swarm-mistral-medium-3-5", "srv_mq7ktfibad45c29f3839:mistral-medium-3.5:latest", "mistral-medium-3.5 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   421→   421→  gf("ollama-swarm", "ollama-swarm-qwen2-5-coder-7b", "srv_mq7ktfibad45c29f3839:qwen2.5-coder:7b", "qwen2.5-coder:7b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   422→   422→  gf("ollama-swarm", "ollama-swarm-llama3-1-8b", "srv_mq7ktfibad45c29f3839:llama3.1:8b", "llama3.1:8b (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   423→   423→  gf("ollama-swarm", "ollama-swarm-deepseek-r1-14b", "srv_mq7ktfibad45c29f3839:deepseek-r1:14b", "deepseek-r1:14b (via OllamaSwarm)", "ollama-swarm", "reasoning", 64000),
+   424→   424→  gf("ollama-swarm", "ollama-swarm-llama3-2", "srv_mq7ktfibad45c29f3839:llama3.2:latest", "llama3.2 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   425→   425→  gf("ollama-swarm", "ollama-swarm-mistral-nemo", "srv_mq7ktfibad45c29f3839:mistral-nemo:latest", "mistral-nemo (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   426→   426→  gf("ollama-swarm", "ollama-swarm-gemma4-26b", "srv_mq7ktfibad45c29f3839:gemma4:26b", "gemma4:26b (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   427→   427→  gf("ollama-swarm", "ollama-swarm-qwen3-14b", "srv_mq7ktfibad45c29f3839:qwen3:14b", "qwen3:14b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   428→   428→  gf("ollama-swarm", "ollama-swarm-phi3", "srv_mq7ktfibad45c29f3839:phi3:latest", "phi3 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   429→   429→  gf("ollama-swarm", "ollama-swarm-qwen2-5-72b", "srv_mq7ktfibad45c29f3839:qwen2.5:72b", "qwen2.5:72b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   430→   430→  gf("ollama-swarm", "ollama-swarm-qwen2-5-0-5b", "srv_mq7ktfibad45c29f3839:qwen2.5:0.5b", "qwen2.5:0.5b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   431→   431→  gf("ollama-swarm", "ollama-swarm-gpt-oss", "srv_mq7ktfibad45c29f3839:gpt-oss:latest", "gpt-oss (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   432→   432→  gf("ollama-swarm", "ollama-swarm-qwen2-5-7b", "srv_mq7ktfibad45c29f3839:qwen2.5:7b", "qwen2.5:7b (via OllamaSwarm)", "ollama-swarm", "professional", 262144),
+   433→   433→  gf("ollama-swarm", "ollama-swarm-gpt-oss-120b", "srv_mq7ktfibad45c29f3839:gpt-oss:120b", "gpt-oss:120b (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   434→   434→  gf("ollama-swarm", "ollama-swarm-tinyllama", "srv_mq7ktfibad45c29f3839:tinyllama:latest", "tinyllama (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   435→   435→  gf("ollama-swarm", "ollama-swarm-gpt-oss-20b", "srv_mq7ktfibad45c29f3839:gpt-oss:20b", "gpt-oss:20b (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   436→   436→  gf("ollama-swarm", "ollama-swarm-llama3-3", "srv_mq7ktfibad45c29f3839:llama3.3:latest", "llama3.3 (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   437→   437→  gf("ollama-swarm", "ollama-swarm-phi3-14b", "srv_mq7ktfibad45c29f3839:phi3:14b", "phi3:14b (via OllamaSwarm)", "ollama-swarm", "professional", 128000),
+   438→   438→  gf("ollama-swarm", "ollama-swarm-nemesis-ia-v3", "srv_mq7ktfibad45c29f3839:nemesis-ia-v3:latest", "nemesis-ia-v3 (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   439→   439→  gf("ollama-swarm", "ollama-swarm-nemesis-ia", "srv_mq7ktfibad45c29f3839:nemesis-ia:latest", "nemesis-ia (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   440→   440→  gf("ollama-swarm", "ollama-swarm-hermes-pwn", "srv_mq7ktfibad45c29f3839:hermes_pwn:latest", "hermes_pwn (via OllamaSwarm)", "ollama-swarm", "nsfw", 128000),
+   441→   441→
+   442→   442→  // ─── EasyChat — 2 models ──────────────
+   443→   443→  gf("easychat", "easychat-gpt-5", "gpt-5", "gpt-5 (via EasyChat)", "EasyChat", "professional", 128000),
+   444→   444→  gf("easychat", "easychat-grok-4-1-fast", "grok-4.1-fast", "grok-4.1-fast (via EasyChat)", "EasyChat", "professional", 131000),
+   445→   445→];
+   446→   446→
+   447→   447→/** Toolbaz model helper. Tool calling supported (via prompt injection); no real streaming upstream. */
+   448→   448→function tb(
+   449→   449→  id: string,
+   450→   450→  upstream: string,
+   451→   451→  description: string,
+   452→   452→  category: GatewayModel["category"],
+   453→   453→  contextWindow: number,
+   454→   454→): GatewayModel {
+   455→   455→  return {
+   456→   456→    id,
+   457→   457→    provider: "toolbaz",
+   458→   458→    upstream,
+   459→   459→    description,
+   460→   460→    category,
+   461→   461→    contextWindow,
+   462→   462→    capabilities: {
+   463→   463→      streaming: true,
+   464→   464→      tools: true,
+   465→   465→      systemPrompt: true,
+   466→   466→      multiTurn: true,
+   467→   467→      vision: false,
+   468→   468→      webSearch: false,
+   469→   469→    },
+   470→   470→  };
+   471→   471→}
+   472→   472→
+   473→   473→/** nsfwlover.com model helper. Real SSE streaming; tool support via injection. */
+   474→   474→function nsfw(
+   475→   475→  id: string,
+   476→   476→  upstream: string,
+   477→   477→  description: string,
+   478→   478→  contextWindow: number,
+   479→   479→): GatewayModel {
+   480→   480→  return {
+   481→   481→    id,
+   482→   482→    provider: "nsfwlover",
+   483→   483→    upstream,
+   484→   484→    description,
+   485→   485→    category: "nsfw",
+   486→   486→    contextWindow,
+   487→   487→    capabilities: {
+   488→   488→      streaming: true,
+   489→   489→      tools: true,
+   490→   490→      systemPrompt: true,
+   491→   491→      multiTurn: true,
+   492→   492→      vision: false,
+   493→   493→      webSearch: false,
+   494→   494→    },
+   495→   495→  };
+   496→   496→}
+   497→   497→
+   498→   498→/** SurfSense model helper. Real SSE streaming; tool support via injection. */
+   499→   499→function ss(
+   500→   500→  id: string,
+   501→   501→  upstream: string,
+   502→   502→  description: string,
+   503→   503→  category: GatewayModel["category"],
+   504→   504→  contextWindow: number,
+   505→   505→): GatewayModel {
+   506→   506→  return {
+   507→   507→    id,
+   508→   508→    provider: "surfsense",
+   509→   509→    upstream,
+   510→   510→    description,
+   511→   511→    category,
+   512→   512→    contextWindow,
+   513→   513→    capabilities: {
+   514→   514→      streaming: true,
+   515→   515→      tools: true,
+   516→   516→      systemPrompt: true,
+   517→   517→      multiTurn: true,
+   518→   518→      vision: false,
+   519→   519→      webSearch: false,
+   520→   520→    },
+   521→   521→  };
+   522→   522→}
+   523→   523→
+   524→   524→/** JollyGen model helper. Unrestricted NSFW, real streaming, rotated identity. */
+   525→   525→function jg(
+   526→   526→  id: string,
+   527→   527→  upstream: string,
+   528→   528→  description: string,
+   529→   529→  contextWindow: number,
+   530→   530→): GatewayModel {
+   531→   531→  return {
+   532→   532→    id,
+   533→   533→    provider: "jollygen",
+   534→   534→    upstream,
+   535→   535→    description,
+   536→   536→    category: "nsfw",
+   537→   537→    contextWindow,
+   538→   538→    capabilities: {
+   539→   539→      streaming: true,
+   540→   540→      tools: false,
+   541→   541→      systemPrompt: true,
+   542→   542→      multiTurn: true,
+   543→   543→      vision: false,
+   544→   544→      webSearch: false,
+   545→   545→    },
+   546→   546→  };
+   547→   547→}
+   548→   548→
+   549→   549→/** UnlimitedAI.chat model helper. Uncensored, real NDJSON streaming. */
+   550→   550→function uai(
+   551→   551→  id: string,
+   552→   552→  upstream: string,
+   553→   553→  description: string,
+   554→   554→  category: GatewayModel["category"],
+   555→   555→  contextWindow: number,
+   556→   556→  webSearch = false,
+   557→   557→): GatewayModel {
+   558→   558→  return {
+   559→   559→    id,
+   560→   560→    provider: "unlimitedai",
+   561→   561→    upstream,
+   562→   562→    description,
+   563→   563→    category,
+   564→   564→    contextWindow,
+   565→   565→    capabilities: {
+   566→   566→      streaming: true,
+   567→   567→      tools: true,
+   568→   568→      systemPrompt: true,
+   569→   569→      multiTurn: true,
+   570→   570→      vision: false,
+   571→   571→      webSearch,
+   572→   572→    },
+   573→   573→  };
+   574→   574→}
+   575→   575→
+   576→   576→/** Pollinations.ai model helper. Free, no-auth, real OpenAI SSE streaming. */
+   577→   577→function pol(
+   578→   578→  id: string,
+   579→   579→  upstream: string,
+   580→   580→  description: string,
+   581→   581→  category: GatewayModel["category"],
+   582→   582→  contextWindow: number,
+   583→   583→  reasoning = false,
+   584→   584→): GatewayModel {
+   585→   585→  return {
+   586→   586→    id,
+   587→   587→    provider: "pollinations",
+   588→   588→    upstream,
+   589→   589→    description,
+   590→   590→    category,
+   591→   591→    contextWindow,
+   592→   592→    capabilities: {
+   593→   593→      streaming: true,
+   594→   594→      tools: true,
+   595→   595→      systemPrompt: true,
+   596→   596→      multiTurn: true,
+   597→   597→      vision: false,
+   598→   598→      webSearch: false,
+   599→   599→    },
+   600→   600→  };
+   601→   601→}
+   602→   602→
+   603→   603→
+   604→   604→/** Kilo Code model helper. Free, no-auth, real SSE streaming. */
+   605→   605→function kc(
+   606→   606→  id: string,
+   607→   607→  upstream: string,
+   608→   608→  description: string,
+   609→   609→  category: GatewayModel["category"],
+   610→   610→  contextWindow: number,
+   611→   611→): GatewayModel {
+   612→   612→  return {
+   613→   613→    id,
+   614→   614→    provider: "kilocode",
+   615→   615→    upstream,
+   616→   616→    description,
+   617→   617→    category,
+   618→   618→    contextWindow,
+   619→   619→    capabilities: {
+   620→   620→      streaming: true,
+   621→   621→      tools: true,
+   622→   622→      systemPrompt: true,
+   623→   623→      multiTurn: true,
+   624→   624→      vision: false,
+   625→   625→      webSearch: false,
+   626→   626→    },
+   627→   627→  };
+   628→   628→}
+   629→   629→
+   630→   630→/** LLM7.io model helper. Free anonymous, no key. */
+   631→   631→function l7(
+   632→   632→  id: string,
+   633→   633→  upstream: string,
+   634→   634→  description: string,
+   635→   635→  category: GatewayModel["category"],
+   636→   636→  contextWindow: number,
+   637→   637→): GatewayModel {
+   638→   638→  return {
+   639→   639→    id,
+   640→   640→    provider: "llm7",
+   641→   641→    upstream,
+   642→   642→    description,
+   643→   643→    category,
+   644→   644→    contextWindow,
+   645→   645→    capabilities: {
+   646→   646→      streaming: true,
+   647→   647→      tools: true,
+   648→   648→      systemPrompt: true,
+   649→   649→      multiTurn: true,
+   650→   650→      vision: false,
+   651→   651→      webSearch: false,
+   652→   652→    },
+   653→   653→  };
+   654→   654→}
+   655→   655→
+   656→   656→
+   657→   657→/** HeckAI model helper. Free, no-auth, real SSE streaming. */
+   658→   658→function ha(
+   659→   659→  id: string,
+   660→   660→  upstream: string,
+   661→   661→  description: string,
+   662→   662→  category: GatewayModel["category"],
+   663→   663→  contextWindow: number,
+   664→   664→): GatewayModel {
+   665→   665→  return {
+   666→   666→    id,
+   667→   667→    provider: "heckai",
+   668→   668→    upstream,
+   669→   669→    description,
+   670→   670→    category,
+   671→   671→    contextWindow,
+   672→   672→    capabilities: {
+   673→   673→      streaming: true,
+   674→   674→      tools: true,
+   675→   675→      systemPrompt: true,
+   676→   676→      multiTurn: true,
+   677→   677→      vision: false,
+   678→   678→      webSearch: false,
+   679→   679→    },
+   680→   680→  };
+   681→   681→}
+   682→   682→
+   683→   683→
+   684→   684→/** SpicyWriter model helper. Free anonymous NSFW/uncensored, real SSE streaming. */
+   685→   685→function sw(
+   686→   686→  id: string,
+   687→   687→  upstream: string,
+   688→   688→  description: string,
+   689→   689→  contextWindow: number,
+   690→   690→): GatewayModel {
+   691→   691→  return {
+   692→   692→    id,
+   693→   693→    provider: "spicywriter",
+   694→   694→    upstream,
+   695→   695→    description,
+   696→   696→    category: "nsfw",
+   697→   697→    contextWindow,
+   698→   698→    capabilities: {
+   699→   699→      streaming: true,
+   700→   700→      tools: true,
+   701→   701→      systemPrompt: true,
+   702→   702→      multiTurn: true,
+   703→   703→      vision: false,
+   704→   704→      webSearch: false,
+   705→   705→    },
+   706→   706→  };
+   707→   707→}
+   708→   708→
+   709→   709→
+   710→   710→/** Standalone service model (search, music, etc.) — listed for discovery but
+   711→   711→ * called via their own endpoints, NOT via /v1/chat/completions. */
+   712→   712→function svc(
+   713→   713→  id: string,
+   714→   714→  upstream: string,
+   715→   715→  description: string,
+   716→   716→  provider: "search" | "music",
+   717→   717→  contextWindow: number,
+   718→   718→): GatewayModel {
+   719→   719→  return {
+   720→   720→    id,
+   721→   721→    provider,
+   722→   722→    upstream,
+   723→   723→    description,
+   724→   724→    category: "professional",
+   725→   725→    contextWindow,
+   726→   726→    capabilities: {
+   727→   727→      streaming: false,
+   728→   728→      tools: false,
+   729→   729→      systemPrompt: false,
+   730→   730→      multiTurn: false,
+   731→   731→      vision: false,
+   732→   732→      webSearch: provider === "search",
+   733→   733→    },
+   734→   734→  };
+   735→   735→}
+   736→   736→
+   737→   737→
+   738→   738→/**
+   739→   739→ * G4F.space model helper. The first arg `providerId` is an owner-based id
+   740→   740→ * (e.g. "nvidia-com", "crowllm-com") — the model's `provider` field is set
+   741→   741→ * to this value so callers see the real upstream owner. All such ids are
+   742→   742→ * backed by the single g4fSpaceProvider instance in providers/index.ts
+   743→   743→ * (same endpoint, no auth). The `ownerLabel` arg is the cleaned `owned_by`
+   744→   744→ * string from the g4f.space /v1/models endpoint, kept for display.
+   745→   745→ */
+   746→   746→function gf(
+   747→   747→  providerId: ProviderId,
+   748→   748→  id: string,
+   749→   749→  upstream: string,
+   750→   750→  description: string,
+   751→   751→  ownerLabel: string,
+   752→   752→  category: GatewayModel["category"],
+   753→   753→  contextWindow: number,
+   754→   754→): GatewayModel {
+   755→   755→  return {
+   756→   756→    id,
+   757→   757→    provider: providerId,
+   758→   758→    upstream,
+   759→   759→    description,
+   760→   760→    category,
+   761→   761→    contextWindow,
+   762→   762→    capabilities: {
+   763→   763→      streaming: true,
+   764→   764→      tools: true,
+   765→   765→      systemPrompt: true,
+   766→   766→      multiTurn: true,
+   767→   767→      vision: false,
+   768→   768→      webSearch: false,
+   769→   769→    },
+   770→   770→  };
+   771→   771→}
+   772→   772→
+   773→   773→/** Find a model by id (case-insensitive). Returns undefined if not found. */
+   774→   774→export function findModel(id: string | undefined): GatewayModel | undefined {
+   775→   775→  if (!id) return undefined;
+   776→   776→  const lower = id.toLowerCase();
+   777→   777→  return MODELS.find((m) => m.id.toLowerCase() === lower);
+   778→   778→}
+   779→   779→
+   780→   780→/** The default model used when a request omits `model`. */
+   781→   781→export const DEFAULT_MODEL_ID = "toolbaz-v4.5-fast";
+   782→   782→
+   783→   783→/** Resolve a requested model id. Falls back to the default if unknown. */
+   784→   784→export function resolveGatewayModel(
+   785→   785→  requested: string | undefined,
+   786→   786→): GatewayModel {
+   787→   787→  const found = findModel(requested);
+   788→   788→  if (found) return found;
+   789→   789→  const id = requested && requested.trim() ? requested.trim() : DEFAULT_MODEL_ID;
+   790→   790→  return {
+   791→   791→    id,
+   792→   792→    provider: "toolbaz",
+   793→   793→    upstream: id,
+   794→   794→    description: "Unknown model (passed through to Toolbaz)",
+   795→   795→    category: "professional",
+   796→   796→    contextWindow: 0,
+   797→   797→    capabilities: {
+   798→   798→      streaming: true,
+   799→   799→      tools: true,
+   800→   800→      systemPrompt: true,
+   801→   801→      multiTurn: true,
+   802→   802→      vision: false,
+   803→   803→      webSearch: false,
+   804→   804→    },
+   805→   805→  };
+   806→   806→}
+   807→   807→
+   808→   808→/** Provider display metadata. */
+   809→   809→export const PROVIDER_INFO: Record<
+   810→   810→  ProviderId,
+   811→   811→  { name: string; description: string }
+   812→   812→> = {
+   813→   813→  "toolbaz": {
+   814→   814→    name: "Toolbaz",
+   815→   815→    description: "Free multi-model aggregator (gpt-5, claude, gemini, grok, deepseek…)",
+   816→   816→  },
+   817→   817→  "nsfwlover": {
+   818→   818→    name: "NSFWLover",
+   819→   819→    description: "Uncensored LLaMA-3 roleplay engine with real token streaming",
+   820→   820→  },
+   821→   821→  "surfsense": {
+   822→   822→    name: "SurfSense",
+   823→   823→    description: "Free no-login chat with real token streaming (gpt-5.4-mini, o4-mini)",
+   824→   824→  },
+   825→   825→  "jollygen": {
+   826→   826→    name: "JollyGen",
+   827→   827→    description: "Unrestricted NSFW roleplay — rotated guest identity, no content filters",
+   828→   828→  },
+   829→   829→  "unlimitedai": {
+   830→   830→    name: "UnlimitedAI",
+   831→   831→    description: "Uncensored reasoning + web search, NDJSON token streaming",
+   832→   832→  },
+   833→   833→  "pollinations": {
+   834→   834→    name: "Pollinations",
+   835→   835→    description: "Free no-auth OpenAI-compatible API with real token streaming and reasoning",
+   836→   836→  },
+   837→   837→  "kilocode": {
+   838→   838→    name: "Kilo Code",
+   839→   839→    description: "10 free models (NVIDIA Nemotron, Tencent Hy3, Poolside…) — no key, real SSE streaming",
+   840→   840→  },
+   841→   841→  "llm7": {
+   842→   842→    name: "LLM7.io",
+   843→   843→    description: "Free anonymous no-key access to GPT-OSS, Minimax, Codestral",
+   844→   844→  },
+   845→   845→  "heckai": {
+   846→   846→    name: "HeckAI",
+   847→   847→    description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",
+   848→   848→  },
+   849→   849→  "spicywriter": {
+   850→   850→    name: "SpicyWriter",
+   851→   851→    description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
+   852→   852→  },
+   853→   853→  "search": {
+   854→   854→    name: "Web Search",
+   855→   855→    description: "DuckDuckGo web search — returns titles, URLs, snippets. POST /api/v1/search {query}",
+   856→   856→  },
+   857→   857→  "music": {
+   858→   858→    name: "Music Generation",
+   859→   859→    description: "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST /api/v1/music/generate",
+   860→   860→  },
+   861→   861→  "anesnt": {
+   862→   862→    name: "AnesNT",
+   863→   863→    description: "3 models (gpt-5.4, openai-fast, Spit-fires/step-3.5-flash-free) via AnesNT",
+   864→   864→  },
+   865→   865→  "api-airforce": {
+   866→   866→    name: "API.AirForce",
+   867→   867→    description: "6 models (gpt-4o-mini, gpt-4o, claude-haiku-4.5-p2g, gemini-3.5-pro…) via API.AirForce",
+   868→   868→  },
+   869→   869→  "audio": {
+   870→   870→    name: "Audio",
+   871→   871→    description: "1 models (gpt-audio) via Audio",
+   872→   872→  },
+   873→   873→  "cerebras-ai": {
+   874→   874→    name: "Cerebras",
+   875→   875→    description: "2 models (gpt-oss-120b, zai-glm-4.7) via Cerebras",
+   876→   876→  },
+   877→   877→  "community-day-2026": {
+   878→   878→    name: "Community Day 2026",
+   879→   879→    description: "8 models (zai-org/GLM-5.2, deepseek-ai/DeepSeek-V4-Pro, empero-ai/Qwythos-9B-Claude-Mythos-5-1M…) via Community Day 2026",
+   880→   880→  },
+   881→   881→  "crowllm-com": {
+   882→   882→    name: "CrowLLM",
+   883→   883→    description: "28 models (glm-5.2, deepseek-v4-flash, glm-5.2-thinking, deepseek-v3…) via CrowLLM",
+   884→   884→  },
+   885→   885→  "deepinfra-com": {
+   886→   886→    name: "DeepInfra",
+   887→   887→    description: "4 models (zai-org/GLM-5.2, XiaomiMiMo/MiMo-V2.5-Pro, deepseek-ai/DeepSeek-V4-Flash, moonshotai/Kimi-K2.7-Code) via DeepInfra",
+   888→   888→  },
+   889→   889→  "easychat": {
+   890→   890→    name: "EasyChat",
+   891→   891→    description: "2 models (gpt-5, grok-4.1-fast) via EasyChat",
+   892→   892→  },
+   893→   893→  "gemini-cli": {
+   894→   894→    name: "GeminiCLI",
+   895→   895→    description: "2 models (gemini-3-flash-preview, gemini-3.1-flash-lite) via GeminiCLI",
+   896→   896→  },
+   897→   897→  "gemini-v1beta": {
+   898→   898→    name: "Google Gemini API",
+   899→   899→    description: "20 models (gemini-flash-lite-latest, gemini-2.5-flash, gemini-3-flash-preview, gemini-3.1-flash-lite…) via Google Gemini API",
+   900→   900→  },
+   901→   901→  "gen-pollinations-ai": {
+   902→   902→    name: "Pollinations Gen",
+   903→   903→    description: "11 models (glm-5.2, kimi-k2.6, glm, openai-fast…) via Pollinations Gen",
+   904→   904→  },
+   905→   905→  "google-antigravity": {
+   906→   906→    name: "Google Antigravity",
+   907→   907→    description: "5 models (gemini-2.5-flash, gemini-3-flash, gemini-3.1-pro-low, gemini-2.5-flash-lite…) via Google Antigravity",
+   908→   908→  },
+   909→   909→  "groq-com": {
+   910→   910→    name: "Groq",
+   911→   911→    description: "13 models (meta-llama/llama-4-scout-17b-16e-instruct, llama-3.1-8b-instant, openai/gpt-oss-120b, openai/gpt-oss-20b…) via Groq",
+   912→   912→  },
+   913→   913→  "kobold-llamacpp-swarm": {
+   914→   914→    name: "Kobold / llama.cpp",
+   915→   915→    description: "5 models (Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive, Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive, Qwen3.5-9B, koboldcpp/Equinox-31B…) via Kobold / llama.cpp",
+   916→   916→  },
+   917→   917→  "ktai": {
+   918→   918→    name: "KTAI",
+   919→   919→    description: "6 models (deepseek-ai/deepseek-v4-flash, xiaomimimo/mimo-V2.5, deepseek-ai/deepseek-v4-pro, minimaxai/minimax-m2.7…) via KTAI",
+   920→   920→  },
+   921→   921→  "modelscope-ai": {
+   922→   922→    name: "Modelscope AI",
+   923→   923→    description: "14 models (zai-org/GLM-5.2, deepseek-ai/DeepSeek-V3.2, deepseek-ai/DeepSeek-V4-Flash, Qwen/Qwen3-235B-A22B…) via Modelscope AI",
+   924→   924→  },
+   925→   925→  "navy": {
+   926→   926→    name: "Navy",
+   927→   927→    description: "1 models (glm-5.2) via Navy",
+   928→   928→  },
+   929→   929→  "nectar-pollinations-ai": {
+   930→   930→    name: "Pollinations Nectar",
+   931→   931→    description: "10 models (glm-5.2, openai-fast, openai, deepseek…) via Pollinations Nectar",
+   932→   932→  },
+   933→   933→  "nvidia-com": {
+   934→   934→    name: "NVIDIA NIM",
+   935→   935→    description: "54 models (meta/llama-3.1-8b-instruct, nvidia/nemotron-3-nano-30b-a3b, z-ai/glm-5.2, nvidia/nemotron-3-super-120b-a12b…) via NVIDIA NIM",
+   936→   936→  },
+   937→   937→  "ollama-com": {
+   938→   938→    name: "Ollama",
+   939→   939→    description: "3 models (nemotron-3-nano:30b, gemma4:31b, mistral-large-3:675b) via Ollama",
+   940→   940→  },
+   941→   941→  "ollama-swarm": {
+   942→   942→    name: "OllamaSwarm",
+   943→   943→    description: "43 models (deepseek-v4-pro, minimax-m2.7…) via OllamaSwarm",
+   944→   944→  },
+   945→   945→  "opencode-ai-zen": {
+   946→   946→    name: "OpenCode.ai",
+   947→   947→    description: "2 models (north-mini-code-free, nemotron-3-ultra-free) via OpenCode.ai",
+   948→   948→  },
+   949→   949→  "perplexity": {
+   950→   950→    name: "Perplexity",
+   951→   951→    description: "1 models (turbo) via Perplexity",
+   952→   952→  },
+   953→   953→  "qwen": {
+   954→   954→    name: "Qwen",
+   955→   955→    description: "5 models (qwen3.7-plus, qwen3.6-plus, qwen3.7-max, qwen3.7-max…) via Qwen",
+   956→   956→  },
+   957→   957→};
+   958→   958→

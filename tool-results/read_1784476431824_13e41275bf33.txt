@@ -1,0 +1,653 @@
+     1→# Worklog
+     2→
+     3→## 2025-01 — Test uncensored models (`test-uncensored`)
+     4→
+     5→**Task:** Test all 16 uncensored models listed in `/tmp/uncensored_models.json` against the
+     6→running dev server (`http://localhost:3000/api/v1/chat/completions`) and record which ones
+     7→actually work, their latency, and failure reasons.
+     8→
+     9→### What was done
+    10→- Read `/tmp/uncensored_models.json` (16 models: 4 helper, 9 ollama-swarm, 2 kobold-llamacpp-swarm,
+    11→  1 api-airforce).
+    12→- Wrote a sequential curl-based test harness at
+    13→  `/home/z/my-project/scripts/test_uncensored_curl.sh`:
+    14→  - Loops through models one-by-one (NOT batched) in the requested order.
+    15→  - For each: `curl -s --max-time 45 -X POST http://localhost:3000/api/v1/chat/completions
+    16→    -H "Content-Type: application/json" -d '{"model":"...","messages":[{"role":"user",
+    17→    "content":"Write a one-sentence dark fantasy story about a warrior."}],"stream":false}'`
+    18→  - Captures HTTP status (`-w "%{http_code}|%{time_total}"`) and body.
+    19→  - Latency = `curl time_total * 1000` (ms).
+    20→  - Marks `ok=true` only when HTTP 200 AND non-empty `choices[0].message.content`.
+    21→  - Writes one JSON entry per model to `/tmp/uncensored_results.ndjson`, then assembles the
+    22→    final array with `jq -s '.'`.
+    23→  - Sleeps 2s between tests (no delay after the last one).
+    24→- Ran the script in the foreground (took ~1.5 min total). No timeouts hit — all 16 returned
+    25→  well under the 45s cap.
+    26→- Wrote final results to `/home/z/my-project/scripts/uncensored_test_results.json`
+    27→  (overwrote the previous file from the Python-based run).
+    28→- Printed a clean working-vs-failed summary to stdout.
+    29→
+    30→### Results
+    31→
+    32→**4 / 16 working — all from the `helper` provider. 12 / 16 failed — all from
+    33→`ollama-swarm`, `kobold-llamacpp-swarm`, and `api-airforce` providers.**
+    34→
+    35→Working (sorted by latency):
+    36→
+    37→| # | Model | Provider | Latency |
+    38→|---|-------|----------|---------|
+    39→| 1 | `nsfw-lustre-search` | helper | 1165 ms |
+    40→| 2 | `nsfw-lustre-reasoning` | helper | 1243 ms |
+    41→| 3 | `nsfw-llama3-8b` | helper | 1582 ms |
+    42→| 4 | `nsfw-jollygen` | helper | 3299 ms |
+    43→
+    44→Failed (all 12) — every one returned **HTTP 429** with the same upstream error from G4F.space:
+    45→
+    46→> `Active day limit (3 days per 12 days) exceeded. Used: 9 active days. Sign ...`
+    47→
+    48→Failed models:
+    49→- `ollama-swarm-hermes-pwn`
+    50→- `ollama-swarm-nemesis-ia`
+    51→- `ollama-swarm-nemesis-ia-v3`
+    52→- `ollama-swarm-huihui-ai-gpt-oss-abliterated`
+    53→- `ollama-swarm-huihui-ai-gemma-4-abliterated-26b`
+    54→- `ollama-swarm-huihui-ai-gemma-4-abliterated-12b`
+    55→- `ollama-swarm-huihui-ai-qwen3-5-abliterated-27b`
+    56→- `ollama-swarm-huihui-ai-qwen3-6-abliterated-27b`
+    57→- `ollama-swarm-huihui-ai-glm-4-7-flash-abliterated`
+    58→- `kobold-qwen3-5-35b-a3b-uncensored-hauhaucs-aggressiv`
+    59→- `kobold-qwen3-6-35b-a3b-uncensored-hauhaucs-aggressiv`
+    60→- `api-unmoderated-gpt`
+    61→
+    62→### Analysis / next actions
+    63→- The 12 failures are **not** model-specific — they share a single root cause: the upstream
+    64→  `G4F.space` rate limiter has tripped its "3 active days per 12 days" quota (used 9/3).
+    65→  All `ollama-swarm`, `kobold-llamacpp-swarm`, and `api-airforce` providers route through
+    66→  G4F.space, so they all fail identically and uniformly (~4.5 s each, the time it takes for
+    67→  the upstream to return the 429).
+    68→- The previous results file (Python run, earlier today) showed 5 of these swarm models
+    69→  working (gpt-oss-abliterated, gemma-4-abliterated-26b, kobold-qwen3-6-35b...). The
+    70→  G4F.space daily quota has been exhausted since then — these models are NOT broken, they
+    71→  are just upstream-rate-limited.
+    72→- **Recommended next steps:**
+    73→  1. Wait for the G4F.space quota window to reset (the error says "3 days per 12 days"),
+    74→     then re-run `bash /home/z/my-project/scripts/test_uncensored_curl.sh` to get a true
+    75→     pass/fail picture for the swarm models.
+    76→  2. Consider routing swarm traffic through a different upstream or adding provider-level
+    77→     backoff / fallback so users don't see G4F.space's daily-limit error directly.
+    78→  3. The 4 `helper` provider models are healthy and fast (1–3 s); keep them as the
+    79→     recommended default uncensored options.
+    80→
+    81→### Files changed / created
+    82→- `scripts/test_uncensored_curl.sh` (NEW) — sequential curl-based test harness.
+    83→- `scripts/uncensored_test_results.json` (OVERWRITTEN) — 16 entries with
+    84→  `id, provider, ok, latency_ms, http_status, response, error`.
+    85→- `worklog.md` (NEW) — this file.
+    86→
+    87→### Repro
+    88→```bash
+    89→bash /home/z/my-project/scripts/test_uncensored_curl.sh
+    90→# Results: /home/z/my-project/scripts/uncensored_test_results.json
+    91→```
+    92→
+    93→---
+    94→Task ID: test-uncensored-and-html-api
+    95→Agent: main
+    96→Task: Test which uncensored models work + create fully ready HTML API example
+    97→
+    98→Work Log:
+    99→- Found 16 uncensored models in the registry:
+   100→  - 4 original uncensored models (nsfw-llama3-8b, nsfw-jollygen, nsfw-lustre-reasoning, nsfw-lustre-search)
+   101→  - 12 G4F uncensored models (ollama-swarm abliterated/nemesis/hermes_pwn, kobold uncensored, api-airforce unmoderated-gpt)
+   102→- Fixed critical issue: registry.ts and index.ts had been reverted (lost all G4F models)
+   103→  - Rebuilt registry.ts with all 281 models (238 G4F + 43 original) across 31 providers
+   104→  - Recreated g4fspace.ts with retry logic (429/500/502/503 with exponential backoff)
+   105→  - Updated index.ts with all G4F provider mappings + fallback to g4fSpaceProvider
+   106→  - Updated chat route G4F_PROVIDER_IDS Set for streaming
+   107→- Tested all 16 uncensored models:
+   108→  - 4 working reliably (nsfw-llama3-8b, nsfw-jollygen, nsfw-lustre-reasoning, nsfw-lustre-search)
+   109→  - 12 G4F models fail due to G4F.space daily quota limit ("Active day limit exceeded")
+   110→  - Earlier manual test confirmed ollama-swarm-hermes-pwn and ollama-swarm-nemesis-ia DO work when quota allows
+   111→- Created fully ready HTML API example in code-examples.tsx:
+   112→  - Added "HTML" tab to the code examples section
+   113→  - Complete working chat widget with:
+   114→    - Model selector (10 popular models including uncensored ones)
+   115→    - Streaming toggle (real-time SSE token streaming)
+   116→    - Multi-turn conversation history
+   117→    - Dark theme UI matching the gateway design
+   118→    - Copy-paste ready — works in any .html file
+   119→  - Uses the gateway API at /api/v1/chat/completions (no auth needed)
+   120→- Verified lint passes clean
+   121→- Verified with Agent Browser: HTML tab visible and shows full code
+   122→
+   123→Stage Summary:
+   124→- Uncensored models tested: 4/16 work reliably (G4F ones rate-limited by daily quota)
+   125→- Working uncensored models: nsfw-llama3-8b, nsfw-jollygen, nsfw-lustre-reasoning, nsfw-lustre-search
+   126→- HTML API example: complete chat widget with streaming, model selector, dark theme
+   127→- Total models: 281 across 31 providers
+   128→- All code tabs: cURL, Python, JavaScript, Streaming, Tools, HTML
+   129→
+   130→---
+   131→Task ID: spicywriter-provider
+   132→Agent: main
+   133→Task: Add SpicyWriter provider (Ling 2.6 Flash + Nemo) with per-call anon id rotation
+   134→
+   135→Work Log:
+   136→- Tested SpicyWriter API (https://spicywriter.com/api/conversations/new):
+   137→  - No auth needed — uses X-Anonymous-User-Id header (anon_XXXXXX format)
+   138→  - Each anon id gets 5 free requests → rotate new id per call = unlimited free
+   139→  - Response format: SSE stream with metadata events + plain text deltas + {"done":true}
+   140→  - Models: "Ling 2.6 Flash" (general) and "Nemo" (uncensored)
+   141→  - Multi-turn supported via parent message chaining
+   142→- Created src/lib/providers/spicywriter.ts:
+   143→  - Generates fresh anon_XXXXXX id per request (crypto.getRandomValues)
+   144→  - Generates W3C traceparent header per request
+   145→  - Converts OpenAI messages → SpicyWriter format (id/parent chain)
+   146→  - Parses SSE: skips JSON metadata, yields plain text deltas
+   147→  - Real token-by-token streaming
+   148→- Added to registry.ts:
+   149→  - ProviderId: "spicywriter"
+   150→  - 2 models: nsfw-ling-2-6-flash (Ling 2.6 Flash), nsfw-nemo (Nemo)
+   151→  - Both category "nsfw" (auto-gets uncensored system preamble from chat route)
+   152→  - Tools: true (supported via prompt injection)
+   153→  - sw() helper function
+   154→  - PROVIDER_INFO entry
+   155→- Updated index.ts: spicywriter → spicyWriterProvider
+   156→- Updated chat route: added spicywriter to realStream check
+   157→- Updated models-showcase.tsx: added spicywriter color + fixed PROVIDER_COLORS
+   158→- Recreated model-select.tsx (was lost)
+   159→- Updated playground.tsx to use ModelSelect (was reverted to old Select)
+   160→- Verified lint passes clean
+   161→- Tested via API: nsfw-ling-2-6-flash returned uncensored content, nsfw-nemo returned "7" for 3+4
+   162→- Tested via Agent Browser: model search shows both SpicyWriter models, chat returns "4" for 2+2
+   163→
+   164→Stage Summary:
+   165→- SpicyWriter provider added: 2 uncensored NSFW models (Ling 2.6 Flash, Nemo)
+   166→- Unlimited free: each call generates new anon id → bypasses 5-request limit
+   167→- Real SSE streaming with token-by-token deltas
+   168→- Multi-turn conversation support
+   169→- Tool calling supported via prompt injection
+   170→- Total models: 283 across 32 providers
+   171→
+   172→---
+   173→Task ID: fix-spicywriter-spaces
+   174→Agent: main
+   175→Task: Fix SpicyWriter output missing spaces between words (shitty concatenated text)
+   176→
+   177→Work Log:
+   178→- Diagnosed the issue: SpicyWriter SSE deltas have leading spaces that ARE significant
+   179→  - Raw format: "data:  breath" = content " breath" (one space = word separator)
+   180→  - Raw format: "data: hes" = content "hes" (no space = continuation of "breat" → "breathes")
+   181→  - Raw format: "data: \n" = literal backslash-n representing a newline
+   182→- Fixed parseSseDelta() in spicywriter.ts:
+   183→  - OLD: line.trim() + data.trim() → stripped ALL leading/trailing spaces → words concatenated
+   184→  - NEW: only strip "data:" prefix + exactly ONE space (SSE standard separator)
+   185→  - Preserve all other spaces as they are word separators
+   186→  - Convert literal "\n" (backslash-n) to actual newline characters
+   187→- Verified fix:
+   188→  - nsfw-ling-2-6-flash haiku: "Silent circuits hum low,\nBinary whispers flow,\nLogic blooms, swift and sure." (proper spaces + newlines)
+   189→  - nsfw-nemo: "Hello, world! It's a beautiful day..." (proper punctuation and spaces)
+   190→- Lint passes clean
+   191→
+   192→Stage Summary:
+   193→- SpicyWriter now outputs properly formatted text with spaces between words
+   194→- Newlines correctly rendered as actual newlines
+   195→- No more "shitty" concatenated output like "Serverlessdreamscapehums"
+   196→
+   197→---
+   198→Task ID: fix-deployment-errors
+   199→Agent: main
+   200→Task: Fix deployment failures caused by TypeScript errors
+   201→
+   202→Work Log:
+   203→- Ran `npx tsc --noEmit` to find all type errors blocking deployment
+   204→- Fixed 12 TypeScript errors:
+   205→  1. ProviderId not exported from index.ts (was exported as ProviderIdType) → renamed to ProviderId
+   206→  2. spicywriter.ts: lastId typed as number|null but used as number → changed to number (always set to 0 before use)
+   207→  3. kilocode.ts: id was "g4f" (not a valid ProviderId) → changed to "kilocode"
+   208→  4. llm7.ts: id was "g4f" → changed to "llm7"
+   209→  5. surfsense.ts: id was "freeaionline" → changed to "surfsense"
+   210→  6. g4f.ts (unused legacy): id was "g4f" → changed to "toolbaz"
+   211→  7. free-ai-online.ts (unused legacy): id was "freeaionline" → changed to "toolbaz"
+   212→  8. ProviderId type missing "anesnt" → added
+   213→  9. ProviderId type missing "community-day-2026" → added
+   214→  10. PROVIDER_INFO missing "anesnt" entry → added
+   215→  11. PROVIDER_INFO missing "community-day-2026" entry → added
+   216→  12. examples/ and skills/ directories causing type errors → excluded from tsconfig.json
+   217→- Updated tsconfig.json exclude list: node_modules, examples, skills, scripts, mini-services
+   218→- Verified: `npx tsc --noEmit` passes with 0 errors
+   219→- Verified: `bun run lint` passes with 0 errors
+   220→- Verified: dev server runs, 283 models available, chat works
+   221→
+   222→Stage Summary:
+   223→- All TypeScript errors fixed — deployment should now succeed
+   224→- tsc --noEmit: 0 errors
+   225→- eslint: 0 errors
+   226→- 283 models across 32 providers still working
+   227→
+   228→---
+   229→Task ID: fix-deployment-and-counts
+   230→Agent: main
+   231→Task: Fix z.ai deployment failure + fix hardcoded model/provider counts not updating
+   232→
+   233→Work Log:
+   234→- Ran full `bun run build` — confirmed it succeeds (Compiled successfully in 14.5s, all 8 routes generated)
+   235→- Confirmed `npx tsc --noEmit` passes with 0 errors
+   236→- Confirmed `bun run lint` passes with 0 errors
+   237→- The deployment issue was NOT a build error — it's a z.ai platform-side issue
+   238→  (build succeeds locally, all routes generate correctly)
+   239→- Fixed hardcoded model/provider counts that weren't updating:
+   240→  1. page.tsx line 222: hardcoded ["43", "Models available"] → [String(MODEL_COUNT), "Models available"]
+   241→  2. page.tsx line 223: hardcoded ["9", "Free providers"] → [String(PROVIDER_COUNT), "Free providers"]
+   242→  3. page.tsx line 387: hardcoded "{43} models across 9 free providers" → "{MODEL_COUNT} models across {PROVIDER_COUNT} free providers"
+   243→- Added dynamic imports at top of page.tsx:
+   244→  - import { MODELS, PROVIDER_INFO } from "@/lib/providers"
+   245→  - const MODEL_COUNT = MODELS.length
+   246→  - const PROVIDER_COUNT = Object.keys(PROVIDER_INFO).length
+   247→- Verified all counts now show correctly: 283 models, 34 providers
+   248→- Verified with Agent Browser: stats row shows "283 Models available", "34 Free providers"
+   249→- Verified showcase text: "283 models across 34 free providers"
+   250→- Verified build still succeeds after changes
+   251→
+   252→Stage Summary:
+   253→- Build passes: `bun run build` succeeds with 0 errors
+   254→- tsc: 0 errors, lint: 0 errors
+   255→- All model/provider counts now dynamic (auto-update when registry changes)
+   256→- Stats show: 283 Models available, 34 Free providers
+   257→- If z.ai deployment still fails, it's a platform issue — the code is clean and builds successfully
+   258→
+   259→---
+   260→Task ID: add-search-music-models-and-deploy
+   261→Agent: main
+   262→Task: Add search and music models to the list + add code tutorials in all languages + deploy to Vercel
+   263→
+   264→Work Log:
+   265→- Added search and music as standalone service models in registry:
+   266→  - "web-search" (provider: "search") — DuckDuckGo web search
+   267→  - "music-generate" (provider: "music") — ACE-Step 1.5 AI music generation
+   268→  - Created svc() helper function for standalone services
+   269→  - Added "search" and "music" to ProviderId type
+   270→  - Added PROVIDER_INFO entries for both
+   271→  - Added stub providers in index.ts (throw error if used via chat completions)
+   272→- Added code tutorials in 7 languages for both search and music APIs:
+   273→  - Search API: cURL, Python, JavaScript, Node.js, PHP, Go, Ruby
+   274→  - Music API: cURL, Python, JavaScript (browser), Node.js, PHP, Go, Ruby
+   275→  - Added "Search API" and "Music API" tabs to code-examples component
+   276→- Deployed to Vercel:
+   277→  - Production URL: https://my-project-gules-phi-34.vercel.app
+   278→  - Build succeeded, all routes generated
+   279→  - 285 models live on production (283 chat + 1 search + 1 music)
+   280→  - Search and music models visible in /api/v1/models
+   281→- Domain issue: freeaixyz.vercel.app is locked to another team ("MorpheusMaintainer")
+   282→  - Token doesn't have access to that team
+   283→  - User needs to remove domain from other project first, or use a different token
+   284→  - Production is live at my-project-gules-phi-34.vercel.app in the meantime
+   285→
+   286→Stage Summary:
+   287→- 285 total models (283 chat + search + music) across 34 providers
+   288→- Search and music models listed alongside chat models
+   289→- Code tutorials in 7 languages (cURL, Python, JavaScript, Node.js, PHP, Go, Ruby) for both APIs
+   290→- Production deployed to Vercel: https://my-project-gules-phi-34.vercel.app
+   291→- Domain freeaixyz.vercel.app blocked by other team — needs manual removal
+   292→
+   293→---
+   294→Task ID: rotatable-token-and-github-push
+   295→Agent: main
+   296→Task: Fix music API 401 with rotatable UUID token per call + push to GitHub repo FreeAIXYZ
+   297→
+   298→Work Log:
+   299→- Investigated ACE Music API 401 "Invalid or expired token" error:
+   300→  - The old playground page (acemusic.ai/playground) no longer exists (returns 404)
+   301→  - The key-scraping approach is completely broken
+   302→  - Random UUIDs are rejected by api.acemusic.ai with 401
+   303→  - The acemusic.ai site now requires Google OAuth login
+   304→- Rewrote music generation route with rotatable token strategy:
+   305→  1. Strategy 1: Try scraping a real key from the playground page (fallback)
+   306→  2. Strategy 2: Generate a fresh random UUID per call using crypto.randomUUID()
+   307→  3. If UUID is rejected (401), retry once with a new UUID
+   308→  4. Each call gets a brand-new token → no reuse, no rate-limit accumulation
+   309→  5. Added browser headers (Origin, Referer, User-Agent) to match real browser
+   310→  6. Returns token_source in response for debugging
+   311→- Created GitHub repo: https://github.com/AkshayCoder48/FreeAIXYZ
+   312→  - Public repo, description: "Free AI API Gateway — 285+ models, OpenAI-compatible, no auth required"
+   313→  - Pushed all 140 files to main branch
+   314→  - Commit: "feat: rotatable UUID token for music API + search/music models in list"
+   315→- Deployed updated code to Vercel production:
+   316→  - URL: https://my-project-gules-phi-34.vercel.app
+   317→  - Build succeeded in 24s
+   318→- Verified lint (0 errors) and tsc (0 errors)
+   319→
+   320→Stage Summary:
+   321→- Music API: rotatable UUID token per call (new UUID every request)
+   322→- GitHub repo: https://github.com/AkshayCoder48/FreeAIXYZ (public, 140 files)
+   323→- Vercel production: https://my-project-gules-phi-34.vercel.app
+   324→- Total: 285 models across 34 providers
+   325→- Note: ACE Music API may still return 401 if it requires OAuth — the rotatable UUID is the best we can do without a real auth flow
+   326→
+   327→---
+   328→Task ID: color-scheme
+   329→Agent: main
+   330→Task: Rebrand app color scheme — dark teal (#042330) bg + bright green (#2ce080) accent
+   331→
+   332→Work Log:
+   333→- Updated `src/app/globals.css`:
+   334→  - `:root` and `.dark` blocks both rewritten with the same dark-themed palette
+   335→    (app is dark-themed, so both variants are identical)
+   336→  - `--background: #042330` (dark teal)
+   337→  - `--foreground: #ffffff` (white text on dark bg)
+   338→  - `--primary: #2ce080` (bright green accent for buttons, links, highlights)
+   339→  - `--primary-foreground: #042330` (dark text on green buttons)
+   340→  - `--card: #0a3340`, `--popover: #0a3340` (slightly lighter teal for surfaces)
+   341→  - `--secondary/--muted/--accent: #0d3a48` (next tier up for muted surfaces)
+   342→  - `--muted-foreground: #9bb5c0` (cool grey for secondary text)
+   343→  - `--border: rgba(255,255,255,0.1)`, `--input: rgba(255,255,255,0.15)`
+   344→    (subtle white-tinted dividers that work on the dark teal)
+   345→  - `--ring: #2ce080` (focus rings use the accent green)
+   346→  - Sidebar vars mirror card/primary palette
+   347→- Updated `src/app/page.tsx` (landing page cleanup):
+   348→  - Removed `import { ModelsShowcase }` line
+   349→  - Removed `import { MODELS, PROVIDER_INFO }` line + MODEL_COUNT / PROVIDER_COUNT consts
+   350→  - Deleted the entire "All models" section (heading, paragraph with model count,
+   351→    "Full models page" button, and `<ModelsShowcase />` usage)
+   352→  - Removed "Models" entry from the top nav
+   353→  - Hardcoded the stats row to: ∞ Daily requests, $0 Cost, 285+ Models, 34 Providers
+   354→  - Hero "Try it now" button now `bg-[#2ce080] hover:bg-[#22b569] text-[#042330]`
+   355→    (dark text on green button per spec)
+   356→  - Hero gradient text → `from-[#2ce080] to-[#7ff3b3]` (green → light green)
+   357→  - Ambient radial gradient RGB updated from emerald (16,185,129) → green (44,224,128)
+   358→  - All `text-emerald-400` → `text-[#2ce080]`
+   359→  - All `bg-emerald-500/10`, `/5`, `/15` → `bg-[#2ce080]/10`, `/5`, `/15`
+   360→  - All `border-emerald-500/20`, `/30`, `/40` → `border-[#2ce080]/20`, `/30`, `/40`
+   361→  - All `bg-emerald-500` (ping dots) → `bg-[#2ce080]`
+   362→  - `text-emerald-500/30`, `text-emerald-500/40` → `text-[#2ce080]/30`, `/40`
+   363→  - `from-emerald-500/[0.04]` → `from-[#2ce080]/[0.04]`
+   364→  - Footer Models link pointed to /models route (still exists separately)
+   365→- Updated `src/components/landing/playground.tsx`:
+   366→  - All emerald text/bg/border classes → #2ce080 hex equivalents
+   367→  - Send button → `bg-[#2ce080] hover:bg-[#22b569] text-[#042330]`
+   368→    (dark text on green button)
+   369→  - Streaming dots, bot avatar bg, settings endpoint code block all green-tinted
+   370→- Updated `src/components/landing/code-examples.tsx`:
+   371→  - Terminal window dot (green one) → `bg-[#2ce080]/70`
+   372→- Updated `src/components/landing/models-showcase.tsx` (still used by /models page):
+   373→  - SFW category color → `text-[#2ce080] border-[#2ce080]/30 bg-[#2ce080]/5`
+   374→  - `nvidia-com` and `google-antigravity` provider colors → `text-[#2ce080]`
+   375→  - CapIcon active state → green border/bg/text
+   376→  - Model card hover border → `hover:border-[#2ce080]/40`
+   377→  - Legend streaming/tools/web-search icons → `text-[#2ce080]`
+   378→- Updated `src/app/models/page.tsx`:
+   379→  - Radial gradient RGB → (44,224,128)
+   380→  - Header logo bg/border/text → green hex equivalents
+   381→  - "models live" badge → green
+   382→  - `/api/v1` inline code, stats value, providers icon, quickstart icon → green
+   383→- Updated `src/app/settings/page.tsx`:
+   384→  - Radial gradient RGB → (44,224,128)
+   385→  - Settings logo bg/border/text → green
+   386→  - "No API keys needed" banner border/bg/check icon → green
+   387→  - Three "automatic / no signup" badges → green
+   388→  - Provider "active" badge → green
+   389→  - Music Generation Server icon + endpoint code block → green
+   390→- Layout.tsx body already uses `bg-background text-foreground`, which now resolves
+   391→  to `#042330` / `#ffffff` via the CSS variables — no explicit change needed.
+   392→- Verified: `bun run lint` passes with 0 errors, `npx tsc --noEmit` passes with
+   393→  0 errors, dev server compiles cleanly (`✓ Compiled in ...`).
+   394→- Verified: `rg emerald src/` returns 0 matches — all emerald references purged.
+   395→
+   396→Stage Summary:
+   397→- App-wide rebrand to dark-teal-on-green color scheme complete
+   398→- Background: #042330 (dark teal)  |  Text: #ffffff (white)
+   399→- Accent: #2ce080 (bright green)   |  On-accent text: #042330 (dark teal)
+   400→- Landing page slimmed: ModelsShowcase section + imports + counts removed,
+   401→  stats hardcoded to ∞ / $0 / 285+ / 34
+   402→- Files touched (7): globals.css, page.tsx, layout.tsx (no change needed),
+   403→  playground.tsx, code-examples.tsx, models-showcase.tsx, models/page.tsx,
+   404→  settings/page.tsx
+   405→- Lint: clean.  tsc: clean.  Dev server: compiles & serves / on port 3000.
+   406→
+   407→
+   408→---
+   409→Task ID: docs-route
+   410→Agent: main
+   411→Task: Build comprehensive /docs route for FreeGPT Gateway
+   412→
+   413→Work Log:
+   414→- Created `src/app/docs/page.tsx` — a client component (`"use client"`) with
+   415→  a sticky left sidebar + scrollable right content area.
+   416→- Sidebar nav tree (7 top-level items, 6 nested children):
+   417→  1. Overview
+   418→  2. Authentication
+   419→  3. Chat Completions
+   420→     - Basic (non-streaming)
+   421→     - Streaming
+   422→     - Tool Calling (non-streaming)
+   423→     - Tool Calling (streaming)
+   424→  4. Models
+   425→     - List all models
+   426→     - Filter by provider
+   427→  5. Web Search
+   428→  6. Music Generation
+   429→  7. Code Examples (all languages)
+   430→- Sidebar collapses to a mobile overlay drawer below the `lg:` breakpoint
+   431→  (toggle button in the sticky header with Menu/X icons).
+   432→- Each code section uses a reusable `CodeTabs` component wrapping 8 language
+   433→  snippets in shadcn `Tabs` (with `flex-wrap h-auto` so all 8 fit on mobile):
+   434→  cURL, Python, JavaScript, Node.js, PHP, Go, Ruby, HTML (browser widget).
+   435→- Reused the `useOrigin` pattern from `src/components/landing/code-examples.tsx`:
+   436→  `useSyncExternalStore(emptySubscribe, () => window.location.origin,
+   437→  () => "https://your-host")` — guarantees the live origin hydrates cleanly
+   438→  on the server and resolves to `window.location.origin` on the client.
+   439→- Reusable components defined inline:
+   440→  - `CopyButton` — ghost button + sonner toast + check/copy icons
+   441→  - `CodeBlock` — terminal-window chrome (red/yellow/green dots), filename
+   442→    label, dark `bg-zinc-950`, `max-h-[520px] overflow-y-auto`, CopyButton
+   443→  - `CodeTabs` — wraps 8 language snippets in shadcn Tabs
+   444→  - `Sidebar` — recursive render of NAV array with nested children indented
+   445→- Snippets are functions `(origin: string) => Record<Lang, string>` so the
+   446→  live origin URL is injected into every cURL/Python/JS/PHP/Go/Ruby example.
+   447→- Each section has 8 complete language implementations:
+   448→  - chatBasic: non-streaming chat with `stream: false`
+   449→  - chatStreaming: SSE parsing — each language implements its own SSE parser
+   450→    (Node uses native fetch + getReader + buffer-split, PHP uses
+   451→    CURLOPT_WRITEFUNCTION, Go uses bufio.Scanner, Ruby uses Net::HTTP
+   452→    read_body block, HTML uses ReadableStream reader)
+   453→  - chatTools: non-streaming tool calling with `get_weather` example;
+   454→    documents `finish_reason: "tool_calls"` + `message.tool_calls[]`
+   455→  - chatToolsStreaming: streaming tool calls — each language accumulates
+   456→    `tool_calls[idx].function.arguments` across deltas by `index`
+   457→    (canonical OpenAI streaming tool-call pattern)
+   458→  - modelsList: `GET /api/v1/models` + response JSON shape
+   459→  - modelsFilter: group by `owned_by` (jq / dict grouping / HTML dropdown)
+   460→  - webSearch: `POST /api/v1/search` with `{query, num}` body
+   461→  - music: `POST /api/v1/music/generate` with full body; each language
+   462→    decodes `audios[0].audio_base64` to MP3 file — except JavaScript which
+   463→    plays via `new Audio("data:audio/mp3;base64,...")`
+   464→- App color scheme respected throughout:
+   465→  - dark `bg-background` (#042330) base
+   466→  - white `text-foreground`
+   467→  - green accent #2ce080 (terminal dot, badge borders, hover states,
+   468→    inline `<code>` spans, endpoint highlights, nav hover)
+   469→- Sticky header with "Back to home" `next/link`, logo, "API Docs" title.
+   470→- Sticky footer with `mt-auto` (sticks to bottom on short content, gets
+   471→  pushed down on long content per layout requirement).
+   472→- All cards use `rounded-xl border border-border bg-card/40` consistent
+   473→  with rest of the app.
+   474→- Did NOT use framer-motion (settings page does) — kept docs page
+   475→  lightweight and pure-Tailwind for fast initial render.
+   476→
+   477→Verification:
+   478→- `bun run lint` → 0 errors ✅
+   479→- `npx tsc --noEmit` → 0 errors ✅
+   480→- `curl http://localhost:3000/docs` → HTTP 200 in ~1s ✅
+   481→- Dev log: `GET /docs 200 in 977ms (compile: 742ms, render: 236ms)` ✅
+   482→- Page content verified via curl — contains "FreeGPT API Docs",
+   483→  "Chat Completions", "Tool Calling (streaming)", "Web Search",
+   484→  "Music Generation", "On this page" ✅
+   485→
+   486→Stage Summary:
+   487→- New route `/docs` live at http://localhost:3000/docs
+   488→- Comprehensive API docs with sticky sidebar + 8-language code tabs
+   489→- All 4 endpoints documented (chat, models, search, music)
+   490→- All 4 chat modes documented (basic, streaming, tools, tools-streaming)
+   491→- 64 code snippets total (8 sections × 8 languages) — all copyable
+   492→- Mobile-responsive (sidebar collapses to overlay drawer)
+   493→- Lint clean, tsc clean, dev server compiles in ~750ms
+   494→
+   495→Files changed/created:
+   496→- `src/app/docs/page.tsx` (NEW — ~1,200 lines, client component)
+   497→- `agent-ctx/docs-route-main.md` (NEW — this work record)
+   498→
+   499→
+   500→---
+   501→Task ID: chat-route
+   502→Agent: main
+   503→Task: Build full-featured /chat route (3-column chat UI with history, files, streaming, tools, music, search)
+   504→
+   505→Work Log:
+   506→- Read context: previous agents built the gateway API (/api/v1/chat/completions,
+   507→  /api/v1/models, /api/v1/search, /api/v1/music/generate) and rebranded the app
+   508→  to dark-teal (#042330) + bright-green (#2ce080). Reused the existing
+   509→  `ModelSelect` component from `@/components/landing/model-select`.
+   510→- Created `src/app/chat/page.tsx` — a single client component (`"use client"`)
+   511→  implementing a 3-column chat interface with full streaming, tool-call display,
+   512→  music generation, web search, and AI-generated file persistence.
+   513→
+   514→### Layout (3-column, responsive)
+   515→- **Header**: hamburger menu (mobile) + "Back to home" link + "FreeGPT Chat"
+   516→  title with animated green ping dot.
+   517→- **Left sidebar (Chat History, w-64)**:
+   518→  - "New Chat" button (green #2ce080 bg, dark #042330 text) at top.
+   519→  - Scrollable list of previous chats from `localStorage["freeaipt_chats"]`.
+   520→  - Each entry: title (first message, 60-char truncated), timestamp, model,
+   521→    delete button (visible on hover).
+   522→  - Clicking loads the chat; current chat highlighted with green border.
+   523→  - On mobile: drawer overlay (translate-x) with backdrop, toggled by hamburger.
+   524→  - On md+: static, always visible.
+   525→- **Center (Chat Area)**:
+   526→  - Top bar: `<ModelSelect value={model} onChange={setModel} />` + status badge
+   527→    (streaming/music/search/non-stream).
+   528→  - Messages area (scrollable, auto-scrolls to bottom on new content).
+   529→  - Input box at bottom: auto-growing textarea (max 160px), Enter to send,
+   530→    Shift+Enter for newline. Send button (green) / Stop button (red) when loading.
+   531→  - Stream toggle checkbox below input.
+   532→- **Right sidebar (Files, w-64)**: `hidden md:flex` per spec.
+   533→  - "Files" heading + description.
+   534→  - Scrollable list of files from `localStorage["freeaipt_files"]`.
+   535→  - Each file: name, language, timestamp, delete on hover.
+   536→  - Clicking opens a modal viewer (Dialog) with copy + download buttons.
+   537→
+   538→### Chat features
+   539→1. **Model selector** — uses the existing `ModelSelect` component. Default
+   540→   model: `toolbaz-v4.5-fast` (first model in registry). Mounted guard prevents
+   541→   Radix hydration mismatch.
+   542→2. **Streaming** — manual SSE parser (`parseSSE` async generator):
+   543→   - Reads `response.body.getReader()`, splits on `\n`, keeps a buffer for
+   544→     partial frames.
+   545→   - Parses `data:` lines, extracts `choices[0].delta.content` for text.
+   546→   - Stops on `data: [DONE]`.
+   547→   - Updates the optimistic assistant bubble in real time.
+   548→3. **Tool call display** — accumulates `choices[0].delta.tool_calls` by `index`
+   549→   across streaming deltas (OpenAI streaming tool-call format):
+   550→   - `accumulateToolCalls()` helper merges id/name/arguments by index.
+   551→   - Rendered as a green-bordered card (`border-[#2ce080]/50`) with a wrench
+   552→     icon and a green badge showing ONLY the function name (no arguments,
+   553→     no output) — exactly per spec.
+   554→4. **Music model (`music-generate`)** — when selected, `send()` routes to
+   555→   `sendMusic()` which calls `POST /api/v1/music/generate` with
+   556→   `{prompt, duration: 30}`. Response audios rendered as HTML5 `<audio>`
+   557→   players with a music-note icon in a green-bordered card.
+   558→5. **Web search model (`web-search`)** — routes to `sendSearch()` calling
+   559→   `POST /api/v1/search` with `{query, num: 8}`. Results rendered as a list
+   560→   of cards (title, green URL link, snippet, external-link icon) with a
+   561→   search-results count header.
+   562→6. **File creation detection** — `extractCodeBlocks()` regex-parses
+   563→   `` ```lang\ncode``` `` fences from assistant responses. Each block saved as
+   564→   `{id, name, content, language, createdAt}` to `localStorage["freeaipt_files"]`.
+   565→   Filename: `${language}_${timestamp}.${ext}` (e.g. `python_1234567.py`).
+   566→   40+ language→extension mappings. Toast confirms "Saved N files".
+   567→7. **New Chat** — clears messages + currentChatId, aborts any in-flight request.
+   568→8. **Chat history** — auto-persists to localStorage on every message change.
+   569→   Title = first user message (60 chars). Loaded chats restore messages + model.
+   570→
+   571→### Message rendering
+   572→- User messages: right-aligned, green bg, dark text, user avatar.
+   573→- Assistant messages: left-aligned, card bg, bot avatar (green-tinted).
+   574→- Typing indicator: 3 bouncing green dots (shown when assistant content empty
+   575→  and no tool/audio/search payload yet).
+   576→- Assistant content rendered via `MessageContent` — splits on fenced code
+   577→  blocks and renders each as a `CodeBlock` (terminal-window chrome with
+   578→  red/yellow/green dots, language label, copy button, dark `bg-zinc-950`,
+   579→  monospace). Inline `` `code` `` spans rendered with green text on dark bg.
+   580→
+   581→### Persistence
+   582→- `freeaipt_chats` → `StoredChat[]` (`{id, title, messages, model, createdAt, updatedAt}`).
+   583→- `freeaipt_files` → `StoredFile[]` (`{id, name, content, language, createdAt}`).
+   584→- Both loaded on mount, saved on every change. Files capped at 100 to avoid
+   585→  quota overflow.
+   586→
+   587→### Color scheme
+   588→- Background `bg-background` (#042330 via CSS vars), text white.
+   589→- Green accent `#2ce080` for: New Chat button, Send button, bot avatar border,
+   590→  tool-call cards, audio player cards, file icons, active chat highlight,
+   591→  streaming badge, inline code, model-select accents.
+   592→- Dark text `#042330` on all green buttons/badges per spec.
+   593→
+   594→### Verification
+   595→- `bun run lint` → 0 errors, 0 warnings ✅
+   596→- `npx tsc --noEmit` → 0 errors ✅
+   597→- `curl http://localhost:3000/chat` → HTTP 200 in ~940ms ✅
+   598→- Dev log: `GET /chat 200 in 940ms (compile: 791ms, render: 149ms)` ✅
+   599→- SSR HTML contains all key UI: "FreeGPT Chat", "New Chat", "Chat History",
+   600→  "Files", "Stream tokens", "toolbaz-v4.5-fast" ✅
+   601→
+   602→Stage Summary:
+   603→- New route `/chat` live at http://localhost:3000/chat
+   604→- Full 3-column chat UI (history sidebar / chat area / files sidebar)
+   605→- Real SSE streaming with tool-call accumulation (function-name-only display)
+   606→- Music + web-search model routing to their dedicated API endpoints
+   607→- AI-generated code blocks auto-saved as files with modal viewer (copy/download)
+   608→- All chats + files persisted to localStorage
+   609→- Mobile-responsive (left sidebar drawer, right sidebar hidden on mobile)
+   610→- Lint clean, tsc clean, compiles in ~790ms
+   611→
+   612→Files changed/created:
+   613→- `src/app/chat/page.tsx` (NEW — ~1330 lines, single client component)
+   614→
+   615→---
+   616→Task ID: music-key-colors-docs-chat
+   617→Agent: main
+   618→Task: Fix music API key + new color scheme + docs route + chat route + push to GitHub
+   619→
+   620→Work Log:
+   621→- Fixed music API with real key cf3c582f94c44cf3a3fb1f7a6ab916d0 (tested working — returns base64 MP3 audio)
+   622→- Updated entire app color scheme to #042330 (dark teal bg) / #2ce080 (green accent) / white text
+   623→- Cleaned up landing page — removed models showcase section entirely
+   624→- Created /docs route with comprehensive API documentation:
+   625→  - Sidebar navigation with 7 sections
+   626→  - Code examples in 8 languages (cURL, Python, JavaScript, Node.js, PHP, Go, Ruby, HTML)
+   627→  - 64 total code snippets
+   628→  - Chat completions (basic, streaming, tool calling, streaming tools)
+   629→  - Models listing and filtering
+   630→  - Web search API
+   631→  - Music generation API
+   632→- Created /chat route with full chat interface:
+   633→  - Model selector (searchable, reuses ModelSelect component)
+   634→  - Chat history sidebar (localStorage persistence)
+   635→  - Files sidebar (AI-created files saved automatically)
+   636→  - Tool call cards (green-bordered, function name only, no args)
+   637→  - Music model support (audio player with base64 MP3)
+   638→  - Web search model support (result cards with title/URL/snippet)
+   639→  - Streaming support (real-time SSE token streaming)
+   640→  - New chat button
+   641→- Updated navigation links (Chat, Docs, Models)
+   642→- Build succeeds: 10 routes total (/, /chat, /docs, /models, /settings, 5 API routes)
+   643→- Pushed to GitHub: https://github.com/AkshayCoder48/FreeAIXYZ
+   644→- Deployed to Vercel: https://my-project-gules-phi-34.vercel.app
+   645→
+   646→Stage Summary:
+   647→- Music API: working with real key (no more 401)
+   648→- Color scheme: #042330 dark / #2ce080 green / white text
+   649→- /docs: full API docs with 64 code examples in 8 languages
+   650→- /chat: full chat interface with history, files, tool calls, music, search
+   651→- GitHub: pushed to AkshayCoder48/FreeAIXYZ
+   652→- Vercel: production deployed
+   653→

@@ -650,3 +650,72 @@ Stage Summary:
 - /chat: full chat interface with history, files, tool calls, music, search
 - GitHub: pushed to AkshayCoder48/FreeAIXYZ
 - Vercel: production deployed
+
+## 2025-01 — Integrate DuckDuckGo AI Chat provider (`integrate-duckduckgo`)
+
+**Task:** Wire the existing `src/lib/providers/duckduckgo.ts` provider into the
+FreeGPT Gateway registry so the 4 free DDG models (GPT-4o Mini, Claude 3 Haiku,
+Llama 3.1 70B, Mixtral 8x7B) become selectable through the OpenAI-compatible
+gateway and visible on the models showcase.
+
+### What was done
+- Read context: `worklog.md`, `src/lib/providers/registry.ts` (957 lines),
+  `src/lib/providers/index.ts`, `src/lib/providers/duckduckgo.ts`,
+  `src/app/api/v1/chat/completions/route.ts`, `src/components/landing/models-showcase.tsx`.
+- Made the following changes (all on the existing files; no new files created):
+
+  1. `src/lib/providers/registry.ts`
+     - Added `| "duckduckgo"` to the `ProviderId` union (placed right after
+       `"spicywriter"`, before `"search"`/`"music"`).
+     - Added 4 `ddg(...)` entries to the `MODELS` array right after the
+       SpicyWriter models and before the standalone search/music services:
+       `ddg-gpt-4o-mini`, `ddg-claude-3-haiku`,
+       `ddg-llama-3-1-70b`, `ddg-mixtral-8x7b`. All `category: "professional"`,
+       `streaming/tools/systemPrompt/multiTurn: true`, `vision/webSearch: false`.
+     - Added the `ddg()` helper function immediately after `sw()`
+       (SpicyWriter helper). Mirrors the `sw()` shape but with
+       `provider: "duckduckgo"` and `category: "professional"`.
+     - Added `"duckduckgo"` entry to `PROVIDER_INFO` after `"spicywriter"`:
+       `name: "DuckDuckGo AI"`, description listing the 4 models and the
+       VQD-token / no-login angle.
+     - Updated the file-header comment from "Total: 281 models across 31
+       providers" → "Total: 285 models across 32 providers".
+
+  2. `src/lib/providers/index.ts`
+     - Added `import { duckDuckGoProvider } from "./duckduckgo";` after the
+       `spicywriter` import.
+     - Added `duckduckgo: duckDuckGoProvider,` to the `PROVIDERS` map, right
+       after `spicywriter: spicyWriterProvider,`.
+
+  3. `src/app/api/v1/chat/completions/route.ts`
+     - Added `model.provider === "duckduckgo" ||` to the `realStream` boolean
+       in `streamCompletion()`, so the DuckDuckGo SSE stream is forwarded
+       token-by-token (the provider genuinely streams via `data: {"message": ...}`
+       events) rather than being buffered + re-paced.
+
+  4. `src/components/landing/models-showcase.tsx`
+     - Added `duckduckgo: "text-orange-300",` to `PROVIDER_COLORS` (orange
+       to match the DuckDuckGo brand vibe and to differentiate from the
+       other orange-text provider, `unlimitedai`).
+
+### Verification
+- `bun run lint` → 0 errors, 0 warnings (clean).
+- `npx tsc --noEmit` → 0 errors (clean).
+- No test code written (per project policy).
+
+### Files changed
+- `src/lib/providers/registry.ts`
+- `src/lib/providers/index.ts`
+- `src/app/api/v1/chat/completions/route.ts`
+- `src/components/landing/models-showcase.tsx`
+
+### Notes for next agent
+- The provider implementation itself (`src/lib/providers/duckduckgo.ts`) was
+  already in place and was NOT modified by this task — only its wiring.
+- DuckDuckGo has anti-bot protection (ERR_BN_LIMIT, HTTP 418/403); the
+  provider already retries up to 2× with fresh VQD tokens. If real-world
+  reliability is poor, the retry count in `duckduckgo.ts` (`MAX_RETRIES = 2`)
+  is the knob to turn.
+- The 4 DDG models appear in the showcase's provider filter pill as
+  "DuckDuckGo AI (4)" and are categorized as "professional", so they show up
+  under the "Professional" type filter (not NSFW / Reasoning).
