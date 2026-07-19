@@ -14,6 +14,19 @@ import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
 import { g4fSpaceProvider } from "./g4fspace";
 
+// Stub providers for standalone services (search/music). These are listed in
+// the model registry for discovery but called via their own API endpoints,
+// not via /v1/chat/completions. The stub just throws if someone tries to chat.
+const stubProvider: Provider = {
+  id: "toolbaz",
+  async complete() {
+    throw new Error("This is a standalone service. Use the dedicated API endpoint instead.");
+  },
+  async *stream() {
+    throw new Error("This is a standalone service. Use the dedicated API endpoint instead.");
+  },
+};
+
 export const PROVIDERS: Record<ProviderId, Provider> = {
   toolbaz: toolbazProvider,
   nsfwlover: nsfwloverProvider,
@@ -25,6 +38,8 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   llm7: llm7Provider,
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
+  search: stubProvider,
+  music: stubProvider,
   // G4F.space — all owner-based provider ids route to the single
   // g4fSpaceProvider instance (same endpoint, no auth).
   anesnt: g4fSpaceProvider,

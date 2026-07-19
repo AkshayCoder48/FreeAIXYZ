@@ -255,3 +255,37 @@ Stage Summary:
 - All model/provider counts now dynamic (auto-update when registry changes)
 - Stats show: 283 Models available, 34 Free providers
 - If z.ai deployment still fails, it's a platform issue — the code is clean and builds successfully
+
+---
+Task ID: add-search-music-models-and-deploy
+Agent: main
+Task: Add search and music models to the list + add code tutorials in all languages + deploy to Vercel
+
+Work Log:
+- Added search and music as standalone service models in registry:
+  - "web-search" (provider: "search") — DuckDuckGo web search
+  - "music-generate" (provider: "music") — ACE-Step 1.5 AI music generation
+  - Created svc() helper function for standalone services
+  - Added "search" and "music" to ProviderId type
+  - Added PROVIDER_INFO entries for both
+  - Added stub providers in index.ts (throw error if used via chat completions)
+- Added code tutorials in 7 languages for both search and music APIs:
+  - Search API: cURL, Python, JavaScript, Node.js, PHP, Go, Ruby
+  - Music API: cURL, Python, JavaScript (browser), Node.js, PHP, Go, Ruby
+  - Added "Search API" and "Music API" tabs to code-examples component
+- Deployed to Vercel:
+  - Production URL: https://my-project-gules-phi-34.vercel.app
+  - Build succeeded, all routes generated
+  - 285 models live on production (283 chat + 1 search + 1 music)
+  - Search and music models visible in /api/v1/models
+- Domain issue: freeaixyz.vercel.app is locked to another team ("MorpheusMaintainer")
+  - Token doesn't have access to that team
+  - User needs to remove domain from other project first, or use a different token
+  - Production is live at my-project-gules-phi-34.vercel.app in the meantime
+
+Stage Summary:
+- 285 total models (283 chat + search + music) across 34 providers
+- Search and music models listed alongside chat models
+- Code tutorials in 7 languages (cURL, Python, JavaScript, Node.js, PHP, Go, Ruby) for both APIs
+- Production deployed to Vercel: https://my-project-gules-phi-34.vercel.app
+- Domain freeaixyz.vercel.app blocked by other team — needs manual removal

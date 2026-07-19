@@ -281,6 +281,170 @@ curl ${origin}/api/v1/chat/completions \\
   </script>
 </body>
 </html>`,
+  search: `# ─── Web Search API ───
+# POST /api/v1/search  { "query": "...", "num": 8 }
+# GET  /api/v1/search?q=...&num=8
+
+# cURL
+curl ${origin}/api/v1/search \\
+  -H "Content-Type: application/json" \\
+  -d '{"query": "best AI frameworks 2025", "num": 5}'
+
+# Python (requests)
+import requests
+res = requests.post("${origin}/api/v1/search",
+    json={"query": "best AI frameworks 2025", "num": 5})
+for r in res.json()["results"]:
+    print(r["title"], r["url"])
+
+# JavaScript (fetch)
+const res = await fetch("${origin}/api/v1/search", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({query: "best AI frameworks 2025", num: 5}),
+});
+const {results} = await res.json();
+results.forEach(r => console.log(r.title, r.url));
+
+# Node.js
+const https = require("https");
+const data = JSON.stringify({query: "best AI frameworks 2025", num: 5});
+const req = https.request("${origin}/api/v1/search", {
+  method: "POST",
+  headers: {"Content-Type": "application/json", "Content-Length": data.length},
+}, (res) => {
+  let body = "";
+  res.on("data", (c) => body += c);
+  res.on("end", () => console.log(JSON.parse(body)));
+});
+req.write(data);
+req.end();
+
+# PHP
+<?php
+$ch = curl_init("${origin}/api/v1/search");
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["query" => "best AI frameworks 2025", "num" => 5]));
+curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$response = json_decode(curl_exec($ch), true);
+foreach ($response["results"] as $r) {
+    echo $r["title"] . " - " . $r["url"] . "\\n";
+}
+
+# Go
+package main
+import ("bytes"; "encoding/json"; "fmt"; "net/http")
+func main() {
+    body, _ := json.Marshal(map[string]interface{}{"query": "best AI frameworks 2025", "num": 5})
+    res, _ := http.Post("${origin}/api/v1/search", "application/json", bytes.NewBuffer(body))
+    defer res.Body.Close()
+    var data map[string]interface{}
+    json.NewDecoder(res.Body).Decode(&data)
+    for _, r := range data["results"].([]interface{}) {
+        m := r.(map[string]interface{})
+        fmt.Println(m["title"], m["url"])
+    }
+}
+
+# Ruby
+require 'net/http'
+require 'json'
+uri = URI("${origin}/api/v1/search")
+res = Net::HTTP.post(uri, {query: "best AI frameworks 2025", num: 5}.to_json, "Content-Type" => "application/json")
+JSON.parse(res.body)["results"].each { |r| puts r["title"] }`,
+  music: `# ─── Music Generation API ───
+# POST /api/v1/music/generate
+# Body: { prompt, lyrics?, duration?, language?, instrumental?, bpm?, key? }
+# Returns: { success, audios: [{audio_base64, format}] }
+
+# cURL (saves MP3 to file)
+curl ${origin}/api/v1/music/generate \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt": "upbeat electronic dance", "duration": 30}' | \\
+  python3 -c "import json,sys,base64; d=json.load(sys.stdin); open('music.mp3','wb').write(base64.b64decode(d['audios'][0]['audio_base64']))"
+
+# Python
+import requests, base64
+res = requests.post("${origin}/api/v1/music/generate", json={
+    "prompt": "lo-fi hip hop with piano",
+    "lyrics": "In the quiet of the night...",
+    "duration": 30,
+    "instrumental": False,
+})
+data = res.json()
+if data["success"]:
+    audio = base64.b64decode(data["audios"][0]["audio_base64"])
+    with open("song.mp3", "wb") as f:
+        f.write(audio)
+    print("Saved song.mp3")
+
+# JavaScript (browser — plays audio directly)
+const res = await fetch("${origin}/api/v1/music/generate", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({prompt: "upbeat electronic dance", duration: 30}),
+});
+const data = await res.json();
+if (data.success) {
+  const audio = new Audio("data:audio/mp3;base64," + data.audios[0].audio_base64);
+  audio.play();
+}
+
+# Node.js (saves to file)
+const fs = require("fs");
+const res = await fetch("${origin}/api/v1/music/generate", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({prompt: "ambient chill", duration: 60}),
+});
+const data = await res.json();
+if (data.success) {
+  fs.writeFileSync("music.mp3", Buffer.from(data.audios[0].audio_base64, "base64"));
+  console.log("Saved music.mp3");
+}
+
+# PHP
+<?php
+$ch = curl_init("${origin}/api/v1/music/generate");
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["prompt" => "jazz piano", "duration" => 30]));
+curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$data = json_decode(curl_exec($ch), true);
+if ($data["success"]) {
+    file_put_contents("music.mp3", base64_decode($data["audios"][0]["audio_base64"]));
+    echo "Saved music.mp3";
+}
+
+# Go
+package main
+import ("bytes"; "encoding/json"; "encoding/base64"; "fmt"; "net/http"; "os")
+func main() {
+    body, _ := json.Marshal(map[string]interface{}{"prompt": "rock guitar", "duration": 30})
+    res, _ := http.Post("${origin}/api/v1/music/generate", "application/json", bytes.NewBuffer(body))
+    defer res.Body.Close()
+    var data map[string]interface{}
+    json.NewDecoder(res.Body).Decode(&data)
+    if data["success"].(bool) {
+        audios := data["audios"].([]interface{})[0].(map[string]interface{})
+        audio, _ := base64.StdEncoding.DecodeString(audios["audio_base64"].(string))
+        os.WriteFile("music.mp3", audio, 0644)
+        fmt.Println("Saved music.mp3")
+    }
+}
+
+# Ruby
+require 'net/http'
+require 'json'
+require 'base64'
+uri = URI("${origin}/api/v1/music/generate")
+res = Net::HTTP.post(uri, {prompt: "classical violin", duration: 30}.to_json, "Content-Type" => "application/json")
+data = JSON.parse(res.body)
+if data["success"]
+  File.write("music.mp3", Base64.decode64(data["audios"][0]["audio_base64"]), mode: "wb")
+  puts "Saved music.mp3"
+end`,
 });
 
 const LABELS: Record<string, string> = {
@@ -290,6 +454,8 @@ const LABELS: Record<string, string> = {
   stream: "Streaming",
   tools: "Tools",
   html: "HTML",
+  search: "Search API",
+  music: "Music API",
 };
 
 export function CodeExamples() {
@@ -313,7 +479,7 @@ export function CodeExamples() {
               <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
               <span className="ml-2 text-[11px] text-muted-foreground font-mono">
-                {k === "html" ? "index.html" : `${LABELS[k].toLowerCase()}.sh`}
+                {k === "html" ? "index.html" : k === "search" ? "search.sh" : k === "music" ? "music.sh" : `${LABELS[k].toLowerCase()}.sh`}
               </span>
             </div>
             <pre className="overflow-x-auto p-4 text-[12.5px] leading-relaxed text-zinc-200 font-mono">

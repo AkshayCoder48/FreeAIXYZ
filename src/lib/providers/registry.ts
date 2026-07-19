@@ -25,6 +25,8 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "search"
+  | "music"
   | "anesnt"
   | "api-airforce"
   | "audio"
@@ -147,6 +149,12 @@ export const MODELS: readonly GatewayModel[] = [
   // Uncensored system preamble auto-injected for nsfw-* models.
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+
+  // ─── Standalone services: web search + music generation ────────────────
+  // These use separate API endpoints (not chat completions).
+  // See /api/v1/search and /api/v1/music/generate for the actual calls.
+  svc("web-search", "/api/v1/search", "DuckDuckGo web search — returns titles, URLs, and snippets. POST {query} or GET ?q=...", "search", 0),
+  svc("music-generate", "/api/v1/music/generate", "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST {prompt, lyrics?, duration?}", "music", 0),
 
   // ─── G4F.space — 238 models across 22 providers ───
   // Each model's `provider` field is the owner-based id; g4fspace.ts handles
@@ -699,6 +707,34 @@ function sw(
 }
 
 
+/** Standalone service model (search, music, etc.) — listed for discovery but
+ * called via their own endpoints, NOT via /v1/chat/completions. */
+function svc(
+  id: string,
+  upstream: string,
+  description: string,
+  provider: "search" | "music",
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider,
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    capabilities: {
+      streaming: false,
+      tools: false,
+      systemPrompt: false,
+      multiTurn: false,
+      vision: false,
+      webSearch: provider === "search",
+    },
+  };
+}
+
+
 /**
  * G4F.space model helper. The first arg `providerId` is an owner-based id
  * (e.g. "nvidia-com", "crowllm-com") — the model's `provider` field is set
@@ -813,6 +849,14 @@ export const PROVIDER_INFO: Record<
   "spicywriter": {
     name: "SpicyWriter",
     description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
+  },
+  "search": {
+    name: "Web Search",
+    description: "DuckDuckGo web search — returns titles, URLs, snippets. POST /api/v1/search {query}",
+  },
+  "music": {
+    name: "Music Generation",
+    description: "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST /api/v1/music/generate",
   },
   "anesnt": {
     name: "AnesNT",
