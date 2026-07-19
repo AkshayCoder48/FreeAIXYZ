@@ -376,6 +376,9 @@ async function streamCompletion(
             "kobold-llamacpp-swarm", "navy", "nectar-pollinations-ai",
             "nvidia-com", "ollama-com", "opencode-ai-zen",
             "perplexity", "qwen", "ollama-swarm", "easychat",
+            "anyprovider", "bfl-flux", "huggingspace", "openaifm",
+            "opera-aria", "perplexity-g4f", "pollinations-g4f",
+            "pollinations-image", "qwen-chat", "wewordle", "yqcloud",
           ]);
           const realStream =
             model.provider === "nsfwlover" ||
@@ -387,7 +390,6 @@ async function streamCompletion(
             model.provider === "llm7" ||
             model.provider === "heckai" ||
             model.provider === "spicywriter" ||
-            model.provider === "duckduckgo" ||
             G4F_PROVIDER_IDS.has(model.provider);
 
           if (realStream) {

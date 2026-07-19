@@ -12,7 +12,6 @@ import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
-import { duckDuckGoProvider } from "./duckduckgo";
 import { g4fSpaceProvider } from "./g4fspace";
 
 // Stub providers for standalone services (search/music). These are listed in
@@ -39,7 +38,6 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   llm7: llm7Provider,
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
-  duckduckgo: duckDuckGoProvider,
   search: stubProvider,
   music: stubProvider,
   // G4F.space — all owner-based provider ids route to the single
@@ -68,6 +66,17 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   qwen: g4fSpaceProvider,
   "ollama-swarm": g4fSpaceProvider,
   easychat: g4fSpaceProvider,
+  anyprovider: g4fSpaceProvider,
+  "bfl-flux": g4fSpaceProvider,
+  huggingspace: g4fSpaceProvider,
+  openaifm: g4fSpaceProvider,
+  "opera-aria": g4fSpaceProvider,
+  "perplexity-g4f": g4fSpaceProvider,
+  "pollinations-g4f": g4fSpaceProvider,
+  "pollinations-image": g4fSpaceProvider,
+  "qwen-chat": g4fSpaceProvider,
+  wewordle: g4fSpaceProvider,
+  yqcloud: g4fSpaceProvider,
 };
 
 /** Get the provider instance for a given provider id. */

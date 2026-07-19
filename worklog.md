@@ -772,3 +772,153 @@ Stage Summary:
   10. SpicyWriter (2 models)
   11. DuckDuckGo AI (4 models) ← NEW
   12. G4F.space (238+ models across 22 sub-providers)
+
+## 2025-01 — Remove DuckDuckGo provider (`remove-duckduckgo`)
+
+**Task:** Strip all references to the DuckDuckGo AI Chat provider from the
+FreeGPT Gateway (it had poor reliability due to anti-bot protection). Remove the
+4 `ddg-*` models, the `ddg()` helper, the provider's registry/index entries, the
+real-stream branch, the showcase color, and delete the provider file itself.
+
+### What was done
+- Read `worklog.md` for context (saw the prior `integrate-duckduckgo` entry that
+  added this provider) and confirmed the 6 change targets.
+
+- `src/lib/providers/registry.ts`
+  - Removed `| "duckduckgo"` from the `ProviderId` union (was between
+    `"spicywriter"` and `"search"`).
+  - Removed the 4 `ddg(...)` entries from `MODELS` plus their preceding
+    `// ─── DuckDuckGo AI Chat ────` section comment.
+  - Removed the entire `ddg()` helper function (the 23-line block right after
+    the `sw()` SpicyWriter helper, ending before the `svc()` helper).
+  - Removed the `"duckduckgo": { name: "DuckDuckGo AI", description: ... }`
+    entry from `PROVIDER_INFO` (was between `"spicywriter"` and `"search"`).
+
+- `src/lib/providers/index.ts`
+  - Removed `import { duckDuckGoProvider } from "./duckduckgo";`.
+  - Removed `duckduckgo: duckDuckGoProvider,` from the `PROVIDERS` map.
+
+- `src/app/api/v1/chat/completions/route.ts`
+  - Removed `model.provider === "duckduckgo" ||` from the `realStream`
+    boolean in `streamCompletion()` (now falls through to the G4F check,
+    so DDG is no longer treated as a real-stream provider).
+
+- `src/components/landing/models-showcase.tsx`
+  - Removed `duckduckgo: "text-orange-300",` from `PROVIDER_COLORS`.
+
+- Deleted `src/lib/providers/duckduckgo.ts` (the provider implementation:
+  VQD-token fetch + SSE chat against `duckduckgo.com/duckchat/v1/chat`).
+
+### Verification
+- `bun run lint` → 0 errors (eslint . clean).
+- `npx tsc --noEmit` → exit 0, 0 errors.
+
+### Notes / deliberately left alone
+- The standalone **web search** service (`svc("web-search", ...)` in registry
+  with `provider: "search"`, backed by `src/app/api/v1/search/route.ts` hitting
+  `html.duckduckgo.com/html/`) is **not** the duckduckgo AI Chat provider and
+  was intentionally kept intact. Its description strings still mention
+  "DuckDuckGo web search" — that is the search-engine product, not the
+  removed AI Chat provider.
+- The file-header comment in `registry.ts` still says "Total: 285 models across
+  32 providers"; after this removal the count is 281 models / 31 providers.
+  Not bumped per the task scope (the task only specified the 6 listed edits),
+  but flagging here so a follow-up can reconcile the count.
+- No changes to `worklog.md` prior entries; this entry is appended only.
+
+Stage Summary:
+- DuckDuckGo AI Chat provider fully removed (4 models + provider file + all
+  wiring across registry/index/route/showcase).
+- Net delta: -4 models, -1 provider.
+
+---
+
+## 2025-01 — Integrate 11 new G4F providers (`integrate-g4f-providers`)
+
+**Task:** Wire 11 new G4F.space-based provider IDs (already added to
+`src/lib/providers/registry.ts` with 114 new models) into the gateway's
+PROVIDERS map, G4F_PROVIDER_IDS streaming set, and showcase color map.
+
+### Context
+The 11 new provider IDs use the G4F.space API (single endpoint, no auth) with
+the `Provider:Model` format (e.g. `AnyProvider:gpt-4o`, `Qwen:qwen3.7-max`).
+They were already registered in `registry.ts` (both in the `ProviderId` union,
+in `MODELS` via the `gf()` helper, and in `PROVIDER_INFO`) but not yet routed
+through `g4fSpaceProvider` in the rest of the codebase.
+
+New provider IDs (11):
+`anyprovider`, `bfl-flux`, `huggingspace`, `openaifm`, `opera-aria`,
+`perplexity-g4f`, `pollinations-g4f`, `pollinations-image`, `qwen-chat`,
+`wewordle`, `yqcloud`.
+
+### What was done
+- Read `worklog.md` for context (saw the prior `remove-duckduckgo` entry as
+  the most recent change, plus the `test-uncensored` entry that documents how
+  G4F.space routing/owners work).
+- Confirmed via `Grep` that `registry.ts` already contained all 11 new IDs
+  in the `ProviderId` union, in `MODELS`, and in `PROVIDER_INFO` — no
+  registry edits were needed.
+
+- `src/lib/providers/index.ts`
+  - Added 11 new entries to the `PROVIDERS` map, each mapping to
+    `g4fSpaceProvider`, appended right after the existing
+    `easychat: g4fSpaceProvider,` line (preserving the G4F.space block
+    grouping). Entries use bareword keys where the id is a valid identifier
+    (`anyprovider`, `huggingspace`, `openaifm`, `wewordle`, `yqcloud`) and
+    quoted string keys everywhere else (`"bfl-flux"`, `"opera-aria"`,
+    `"perplexity-g4f"`, `"pollinations-g4f"`, `"pollinations-image"`,
+    `"qwen-chat"`).
+
+- `src/app/api/v1/chat/completions/route.ts`
+  - Added the same 11 IDs to the `G4F_PROVIDER_IDS` Set inside
+    `streamCompletion()` (the Set that decides whether a provider gets
+    genuine upstream SSE streaming vs. the buffer-and-re-pace path).
+    Appended after the existing `"easychat"` entry, three IDs per line to
+    match the existing line-wrapping style.
+
+- `src/components/landing/models-showcase.tsx`
+  - Added 11 new entries to `PROVIDER_COLORS` (Partial<Record<ProviderId,
+    string>>) with the exact Tailwind color classes specified in the task:
+    `anyprovider` → purple, `bfl-flux` → orange, `huggingspace` → yellow,
+    `openaifm` → cyan, `opera-aria` → red, `perplexity-g4f` → teal,
+    `pollinations-g4f` → green, `pollinations-image` → lime, `qwen-chat`
+    → blue, `wewordle` → pink, `yqcloud` → amber (all `-300` shade).
+    Appended after the existing `easychat` entry.
+
+### Verification
+- `bun run lint` → 0 errors (`eslint .` clean, no output beyond the
+  `$ eslint .` banner).
+- `npx tsc --noEmit` → exit 0, 0 errors (no output).
+
+### Files changed
+- `src/lib/providers/index.ts` (+11 lines in `PROVIDERS`).
+- `src/app/api/v1/chat/completions/route.ts` (+2 lines in
+  `G4F_PROVIDER_IDS`).
+- `src/components/landing/models-showcase.tsx` (+11 lines in
+  `PROVIDER_COLORS`).
+- `worklog.md` (this entry appended).
+
+### Notes / deliberately left alone
+- No edits to `src/lib/providers/registry.ts` — the 114 models and 11
+  `PROVIDER_INFO` entries were already in place per the task description.
+- The existing `getProvider()` fallback in `index.ts` already routes
+  unknown G4F owner ids to `g4fSpaceProvider`, so the 11 explicit entries
+  are technically redundant for runtime dispatch but are required for
+  type-safety (`PROVIDERS: Record<ProviderId, Provider>` is exhaustive
+  over the `ProviderId` union — without these entries `tsc` would fail
+  with "Property 'X' is missing in type").
+- `PROVIDER_COLORS` is a `Partial<Record<...>>` so it's strictly
+  cosmetic, but every new provider now has a distinct tailwind color so
+  the showcase grid shows them with their assigned hue instead of the
+  muted-foreground default.
+- The file-header comment in `registry.ts` (and the showcase legend's
+  `{Object.keys(PROVIDER_INFO).length} providers` count) will auto-update
+  to reflect the new totals (281 → 395 models, 31 → 42 providers) since
+  they're computed at runtime — no manual count bump needed.
+
+Stage Summary:
+- All 11 new G4F providers fully wired: PROVIDERS map, G4F streaming
+  set, and showcase color map.
+- Net delta: +11 providers, +114 models (already in registry; this task
+  added only the routing/showcase wiring).
+- Lint + tsc both clean.

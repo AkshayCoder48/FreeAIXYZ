@@ -47,7 +47,6 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   llm7: "text-blue-300",
   heckai: "text-fuchsia-300",
   spicywriter: "text-rose-400",
-  duckduckgo: "text-orange-300",
   search: "text-cyan-300",
   music: "text-pink-300",
   // G4F.space providers
@@ -75,6 +74,17 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   "ollama-com": "text-stone-300",
   "ollama-swarm": "text-orange-300",
   easychat: "text-cyan-300",
+  anyprovider: "text-purple-300",
+  "bfl-flux": "text-orange-300",
+  huggingspace: "text-yellow-300",
+  openaifm: "text-cyan-300",
+  "opera-aria": "text-red-300",
+  "perplexity-g4f": "text-teal-300",
+  "pollinations-g4f": "text-green-300",
+  "pollinations-image": "text-lime-300",
+  "qwen-chat": "text-blue-300",
+  wewordle: "text-pink-300",
+  yqcloud: "text-amber-300",
 };
 
 function providerColor(pid: ProviderId): string {

@@ -25,7 +25,17 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
-  | "duckduckgo"
+  | "anyprovider"
+  | "bfl-flux"
+  | "huggingspace"
+  | "openaifm"
+  | "opera-aria"
+  | "perplexity-g4f"
+  | "pollinations-g4f"
+  | "pollinations-image"
+  | "qwen-chat"
+  | "wewordle"
+  | "yqcloud"
   | "search"
   | "music"
   | "anesnt"
@@ -151,17 +161,150 @@ export const MODELS: readonly GatewayModel[] = [
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
 
-  // ─── DuckDuckGo AI Chat: free, no login, VQD token rotation ────
-  ddg("ddg-gpt-4o-mini", "gpt-4o-mini", "GPT-4o Mini — fast, free via DuckDuckGo AI Chat", 128000),
-  ddg("ddg-claude-3-haiku", "claude-3-haiku-20240307", "Claude 3 Haiku — fast Anthropic model via DuckDuckGo AI Chat", 200000),
-  ddg("ddg-llama-3-1-70b", "llama-3.1-70b-instant", "Llama 3.1 70B — Meta's large model via DuckDuckGo AI Chat", 131000),
-  ddg("ddg-mixtral-8x7b", "mixtral-8x7b-26134", "Mixtral 8x7B — Mistral's MoE model via DuckDuckGo AI Chat", 32000),
-
   // ─── Standalone services: web search + music generation ────────────────
   // These use separate API endpoints (not chat completions).
   // See /api/v1/search and /api/v1/music/generate for the actual calls.
   svc("web-search", "/api/v1/search", "DuckDuckGo web search — returns titles, URLs, and snippets. POST {query} or GET ?q=...", "search", 0),
   svc("music-generate", "/api/v1/music/generate", "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST {prompt, lyrics?, duration?}", "music", 0),
+
+  // ─── G4F-working: 114 models across 11 providers ───
+  // These are confirmed-working no-auth providers from g4f-working (daily updated)
+  // Accessed via G4F.space API with Provider:Model format
+  // ─── AnyProvider (AnyProvider) — 46 models ──────────────
+  gf("anyprovider", "anyprovider-gpt-4o-mini-tts", "AnyProvider:gpt-4o-mini-tts", "gpt-4o-mini-tts (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-4-1-nano", "AnyProvider:gpt-4.1-nano", "gpt-4.1-nano (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-smart", "AnyProvider:smart", "smart (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-4o", "AnyProvider:gpt-4o", "gpt-4o (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-reasoning", "AnyProvider:reasoning", "reasoning (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-4", "AnyProvider:gpt-4", "gpt-4 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-study", "AnyProvider:study", "study (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-image", "AnyProvider:gpt-image", "gpt-image (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-search", "AnyProvider:search", "search (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r", "AnyProvider:command-r", "command-r (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-a", "AnyProvider:command-a", "command-a (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r-plus", "AnyProvider:command-r-plus", "command-r-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r7b", "AnyProvider:command-r7b", "command-r7b (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-deepseek-r1", "AnyProvider:deepseek-r1", "deepseek-r1 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-aria", "AnyProvider:aria", "aria (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-r1-1776", "AnyProvider:r1-1776", "r1-1776 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-sd-3-5-large", "AnyProvider:sd-3.5-large", "sd-3.5-large (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-openai-fast", "AnyProvider:openai-fast", "openai-fast (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-openai", "AnyProvider:openai", "openai (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-chat", "AnyProvider:chat", "chat (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-nova", "AnyProvider:nova", "nova (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-perplexity", "AnyProvider:perplexity", "perplexity (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-sana", "AnyProvider:sana", "sana (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-6-27b", "AnyProvider:qwen-3.6-27b", "qwen-3.6-27b (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-7-plus", "AnyProvider:qwen-3.7-plus", "qwen-3.7-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-7-max", "AnyProvider:qwen-3.7-max", "qwen-3.7-max (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-6-max", "AnyProvider:qwen-3.6-max", "qwen-3.6-max (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-5-plus", "AnyProvider:qwen-3.5-plus", "qwen-3.5-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-omni-flash", "AnyProvider:qwen-3-omni-flash", "qwen-3-omni-flash (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-5-flash", "AnyProvider:qwen-3.5-flash", "qwen-3.5-flash (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-plus", "AnyProvider:qwen-plus", "qwen-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-5-omni-plus", "AnyProvider:qwen-3.5-omni-plus", "qwen-3.5-omni-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-5-omni-flash", "AnyProvider:qwen-3.5-omni-flash", "qwen-3.5-omni-flash (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-coder-plus", "AnyProvider:qwen-3-coder-plus", "qwen-3-coder-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-max", "AnyProvider:qwen-3-max", "qwen-3-max (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-6-35b-a3b", "AnyProvider:qwen-3.6-35b-a3b", "qwen-3.6-35b-a3b (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-5-397b-a17b", "AnyProvider:qwen-3.5-397b-a17b", "qwen-3.5-397b-a17b (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-qwen-3-vl-plus", "AnyProvider:qwen-3-vl-plus", "qwen-3-vl-plus (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r-plus24", "AnyProvider:command-r-plus24", "command-r-plus24 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-5-nano", "AnyProvider:gpt-5-nano", "gpt-5-nano (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-gpt-5-4-nano", "AnyProvider:gpt-5.4-nano", "gpt-5.4-nano (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r7b24", "AnyProvider:command-r7b24", "command-r7b24 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r24", "AnyProvider:command-r24", "command-r24 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-r7b-arabic25", "AnyProvider:command-r7b-arabic25", "command-r7b-arabic25 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-command-a25", "AnyProvider:command-a25", "command-a25 (via AnyProvider)", "AnyProvider", "professional", 128000),
+  gf("anyprovider", "anyprovider-pplx-pro", "AnyProvider:pplx_pro", "pplx_pro (via AnyProvider)", "AnyProvider", "professional", 128000),
+
+  // ─── BlackForestLabs_Flux1Dev (BlackForest Labs Flux) — 1 models ──────────────
+  gf("bfl-flux", "bfl-flux-dev", "BlackForestLabs_Flux1Dev:flux-dev", "flux-dev (via BlackForest Labs Flux)", "BlackForestLabs_Flux1Dev", "professional", 128000),
+
+  // ─── HuggingSpace (HuggingFace Space) — 7 models ──────────────
+  gf("huggingspace", "huggingspace-command-a-03-2025", "HuggingSpace:command-a-03-2025", "command-a-03-2025 (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-r-plus-08-2024", "HuggingSpace:command-r-plus-08-2024", "command-r-plus-08-2024 (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-a", "HuggingSpace:command-a", "command-a (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-r7b-arabic-02-2025", "HuggingSpace:command-r7b-arabic-02-2025", "command-r7b-arabic-02-2025 (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-r-08-2024", "HuggingSpace:command-r-08-2024", "command-r-08-2024 (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-r7b-12-2024", "HuggingSpace:command-r7b-12-2024", "command-r7b-12-2024 (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+  gf("huggingspace", "huggingspace-command-r", "HuggingSpace:command-r", "command-r (via HuggingFace Space)", "HuggingSpace", "professional", 128000),
+
+  // ─── OpenAIFM (OpenAI.fm) — 17 models ──────────────
+  gf("openaifm", "openaifm-ballad", "OpenAIFM:ballad", "ballad (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-scientific-style", "OpenAIFM:scientific_style", "scientific_style (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-ash", "OpenAIFM:ash", "ash (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-calm", "OpenAIFM:calm", "calm (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-coral", "OpenAIFM:coral", "coral (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-alloy", "OpenAIFM:alloy", "alloy (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-friendly", "OpenAIFM:friendly", "friendly (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-noir-detective", "OpenAIFM:noir_detective", "noir_detective (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-cowboy", "OpenAIFM:cowboy", "cowboy (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-patient-teacher", "OpenAIFM:patient_teacher", "patient_teacher (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-sage", "OpenAIFM:sage", "sage (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-fable", "OpenAIFM:fable", "fable (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-onyx", "OpenAIFM:onyx", "onyx (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-shimmer", "OpenAIFM:shimmer", "shimmer (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-nova", "OpenAIFM:nova", "nova (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-verse", "OpenAIFM:verse", "verse (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+  gf("openaifm", "openaifm-echo", "OpenAIFM:echo", "echo (via OpenAI.fm)", "OpenAIFM", "professional", 128000),
+
+  // ─── OperaAria (Opera Aria) — 1 models ──────────────
+  gf("opera-aria", "opera-aria", "OperaAria:aria", "aria (via Opera Aria)", "OperaAria", "professional", 128000),
+
+  // ─── Perplexity (Perplexity) — 13 models ──────────────
+  gf("perplexity-g4f", "perplexity-auto", "Perplexity:auto", "auto (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-o3pro", "Perplexity:o3pro", "o3pro (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-pplx-alpha", "Perplexity:pplx_alpha", "pplx_alpha (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-pplx-pro-upgraded", "Perplexity:pplx_pro_upgraded", "pplx_pro_upgraded (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-gpt5-thinking", "Perplexity:gpt5_thinking", "gpt5_thinking (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-claude45sonnet", "Perplexity:claude45sonnet", "claude45sonnet (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-experimental", "Perplexity:experimental", "experimental (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-gpt41", "Perplexity:gpt41", "gpt41 (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-claude37sonnetthinking", "Perplexity:claude37sonnetthinking", "claude37sonnetthinking (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-gemini2flash", "Perplexity:gemini2flash", "gemini2flash (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-claude40opusthinking", "Perplexity:claude40opusthinking", "claude40opusthinking (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-o4mini", "Perplexity:o4mini", "o4mini (via Perplexity)", "Perplexity", "professional", 128000),
+  gf("perplexity-g4f", "perplexity-pplx-reasoning", "Perplexity:pplx_reasoning", "pplx_reasoning (via Perplexity)", "Perplexity", "professional", 128000),
+
+  // ─── Pollinations (Pollinations) — 4 models ──────────────
+  gf("pollinations-g4f", "pollinations-openai-fast", "Pollinations:openai-fast", "openai-fast (via Pollinations)", "Pollinations", "professional", 128000),
+  gf("pollinations-g4f", "pollinations-openai", "Pollinations:openai", "openai (via Pollinations)", "Pollinations", "professional", 128000),
+  gf("pollinations-g4f", "pollinations-gpt-oss", "Pollinations:gpt-oss", "gpt-oss (via Pollinations)", "Pollinations", "professional", 128000),
+  gf("pollinations-g4f", "pollinations-sana", "Pollinations:sana", "sana (via Pollinations)", "Pollinations", "professional", 128000),
+
+  // ─── PollinationsImage (Pollinations Image) — 1 models ──────────────
+  gf("pollinations-image", "pollinations-sana-2", "PollinationsImage:sana", "sana (via Pollinations Image)", "PollinationsImage", "professional", 128000),
+
+  // ─── Qwen (Qwen Chat) — 16 models ──────────────
+  gf("qwen-chat", "qwen-qwen3-5-flash", "Qwen:qwen3.5-flash", "qwen3.5-flash (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-6-27b", "Qwen:qwen3.6-27b", "qwen3.6-27b (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-6-plus", "Qwen:qwen3.6-plus", "qwen3.6-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-6-35b-a3b", "Qwen:qwen3.6-35b-a3b", "qwen3.6-35b-a3b (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-7-max", "Qwen:qwen3.7-max", "qwen3.7-max (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-7-plus", "Qwen:qwen3.7-plus", "qwen3.7-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-5-plus", "Qwen:qwen3.5-plus", "qwen3.5-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-5-omni-plus", "Qwen:qwen3.5-omni-plus", "qwen3.5-omni-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-6-max-preview", "Qwen:qwen3.6-max-preview", "qwen3.6-max-preview (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-5-397b-a17b", "Qwen:qwen3.5-397b-a17b", "qwen3.5-397b-a17b (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-omni-flash-2025-12-01", "Qwen:qwen3-omni-flash-2025-12-01", "qwen3-omni-flash-2025-12-01 (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-5-omni-flash", "Qwen:qwen3.5-omni-flash", "qwen3.5-omni-flash (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-coder-plus", "Qwen:qwen3-coder-plus", "qwen3-coder-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen-plus-2025-07-28", "Qwen:qwen-plus-2025-07-28", "qwen-plus-2025-07-28 (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-max-2026-01-23", "Qwen:qwen3-max-2026-01-23", "qwen3-max-2026-01-23 (via Qwen Chat)", "Qwen", "professional", 128000),
+  gf("qwen-chat", "qwen-qwen3-vl-plus", "Qwen:qwen3-vl-plus", "qwen3-vl-plus (via Qwen Chat)", "Qwen", "professional", 128000),
+
+  // ─── WeWordle (WeWordle) — 7 models ──────────────
+  gf("wewordle", "wewordle-gpt-4o-mini", "WeWordle:gpt-4o-mini", "gpt-4o-mini (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-gpt-4o", "WeWordle:gpt-4o", "gpt-4o (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-gpt-4", "WeWordle:gpt-4", "gpt-4 (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-v3", "WeWordle:v3", "v3 (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-deepseek", "WeWordle:deepseek", "deepseek (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-deepseek-reasoner", "WeWordle:deepseek-reasoner", "deepseek-reasoner (via WeWordle)", "WeWordle", "professional", 128000),
+  gf("wewordle", "wewordle-deepseek-r1", "WeWordle:deepseek-r1", "deepseek-r1 (via WeWordle)", "WeWordle", "professional", 128000),
+
+  // ─── Yqcloud (Yqcloud) — 1 models ──────────────
+  gf("yqcloud", "yqcloud-gpt-4", "Yqcloud:gpt-4", "gpt-4 (via Yqcloud)", "Yqcloud", "professional", 128000),
 
   // ─── G4F.space — 238 models across 22 providers ───
   // Each model's `provider` field is the owner-based id; g4fspace.ts handles
@@ -713,32 +856,6 @@ function sw(
   };
 }
 
-/** DuckDuckGo AI Chat model helper. Free, no login, VQD token rotation. */
-function ddg(
-  id: string,
-  upstream: string,
-  description: string,
-  contextWindow: number,
-): GatewayModel {
-  return {
-    id,
-    provider: "duckduckgo",
-    upstream,
-    description,
-    category: "professional",
-    contextWindow,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
-    },
-  };
-}
-
-
 /** Standalone service model (search, music, etc.) — listed for discovery but
  * called via their own endpoints, NOT via /v1/chat/completions. */
 function svc(
@@ -882,9 +999,49 @@ export const PROVIDER_INFO: Record<
     name: "SpicyWriter",
     description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",
   },
-  "duckduckgo": {
-    name: "DuckDuckGo AI",
-    description: "4 models (GPT-4o Mini, Claude 3 Haiku, Llama 3.1 70B, Mixtral 8x7B) — free, no login, VQD token rotation",
+  "anyprovider": {
+    name: "AnyProvider",
+    description: "46 models (gpt-4o-mini-tts, gpt-4.1-nano, smart, gpt-4o…) via AnyProvider (G4F)",
+  },
+  "bfl-flux": {
+    name: "BlackForest Labs Flux",
+    description: "1 models (flux-dev) via BlackForest Labs Flux (G4F)",
+  },
+  "huggingspace": {
+    name: "HuggingFace Space",
+    description: "7 models (command-a-03-2025, command-r-plus-08-2024, command-a, command-r7b-arabic-02-2025…) via HuggingFace Space (G4F)",
+  },
+  "openaifm": {
+    name: "OpenAI.fm",
+    description: "17 models (ballad, scientific_style, ash, calm…) via OpenAI.fm (G4F)",
+  },
+  "opera-aria": {
+    name: "Opera Aria",
+    description: "1 models (aria) via Opera Aria (G4F)",
+  },
+  "perplexity-g4f": {
+    name: "Perplexity",
+    description: "13 models (auto, o3pro, pplx_alpha, pplx_pro_upgraded…) via Perplexity (G4F)",
+  },
+  "pollinations-g4f": {
+    name: "Pollinations",
+    description: "4 models (openai-fast, openai, gpt-oss, sana) via Pollinations (G4F)",
+  },
+  "pollinations-image": {
+    name: "Pollinations Image",
+    description: "1 models (sana) via Pollinations Image (G4F)",
+  },
+  "qwen-chat": {
+    name: "Qwen Chat",
+    description: "16 models (qwen3.5-flash, qwen3.6-27b, qwen3.6-plus, qwen3.6-35b-a3b…) via Qwen Chat (G4F)",
+  },
+  "wewordle": {
+    name: "WeWordle",
+    description: "7 models (gpt-4o-mini, gpt-4o, gpt-4, v3…) via WeWordle (G4F)",
+  },
+  "yqcloud": {
+    name: "Yqcloud",
+    description: "1 models (gpt-4) via Yqcloud (G4F)",
   },
   "search": {
     name: "Web Search",
