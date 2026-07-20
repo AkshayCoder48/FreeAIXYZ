@@ -38,18 +38,18 @@ export default function ModelsPage() {
             </Button>
             <div className="h-5 w-px bg-border" />
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-[#2ce080]/10 border border-[#2ce080]/30 flex items-center justify-center">
-                <Cpu className="h-4 w-4 text-[#2ce080]" />
+              <div className="h-7 w-7 rounded-lg bg-[#ff9a3c]/10 border border-[#ff9a3c]/30 flex items-center justify-center">
+                <Cpu className="h-4 w-4 text-[#ff9a3c]" />
               </div>
               <span className="text-sm font-semibold">All Models</span>
             </div>
           </div>
           <Badge
             variant="outline"
-            className="gap-1.5 border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5"
+            className="gap-1.5 border-[#ff9a3c]/30 text-[#ff9a3c] bg-[#ff9a3c]/5"
           >
             <span className="relative flex h-1.5 w-1.5">
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2ce080]" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#ff9a3c]" />
             </span>
             {MODELS.length} models live
           </Badge>
@@ -66,7 +66,7 @@ export default function ModelsPage() {
             {MODELS.length} free models across {providerList.length} providers.
             Every model accepts the OpenAI Chat Completions schema — point any
             OpenAI SDK at{" "}
-            <code className="text-[#2ce080] text-xs">/api/v1</code> and use
+            <code className="text-[#ff9a3c] text-xs">/api/v1</code> and use
             any id below.
           </p>
         </div>
@@ -86,7 +86,7 @@ export default function ModelsPage() {
               <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <s.icon className="h-3.5 w-3.5" /> {s.label}
               </div>
-              <div className="text-2xl font-bold text-[#2ce080] mt-1">
+              <div className="text-2xl font-bold text-[#ff9a3c] mt-1">
                 {s.value}
               </div>
             </div>
@@ -96,7 +96,7 @@ export default function ModelsPage() {
         {/* providers overview */}
         <div className="mb-8 rounded-2xl border border-border bg-card/40 backdrop-blur p-5">
           <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Server className="h-4 w-4 text-[#2ce080]" /> Providers
+            <Server className="h-4 w-4 text-[#ff9a3c]" /> Providers
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {providerList.map((pid) => {
@@ -128,7 +128,7 @@ export default function ModelsPage() {
         {/* API quickstart */}
         <div className="mt-10 rounded-2xl border border-border bg-zinc-950/60 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/60 bg-zinc-900/40">
-            <Terminal className="h-3.5 w-3.5 text-[#2ce080]" />
+            <Terminal className="h-3.5 w-3.5 text-[#ff9a3c]" />
             <span className="text-[11px] text-muted-foreground font-mono">
               quickstart
             </span>

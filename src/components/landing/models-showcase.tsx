@@ -31,7 +31,7 @@ const CATEGORY_META: Record<
   { label: string; color: string }
 > = {
   professional: { label: "Professional", color: "text-sky-300 border-sky-500/30 bg-sky-500/5" },
-  sfw: { label: "SFW", color: "text-[#2ce080] border-[#2ce080]/30 bg-[#2ce080]/5" },
+  sfw: { label: "SFW", color: "text-[#ff9a3c] border-[#ff9a3c]/30 bg-[#ff9a3c]/5" },
   nsfw: { label: "NSFW", color: "text-rose-300 border-rose-500/30 bg-rose-500/5" },
   reasoning: { label: "Reasoning", color: "text-violet-300 border-violet-500/30 bg-violet-500/5" },
 };
@@ -72,13 +72,13 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   "gemini-cli": "text-blue-300",
   "gemini-v1beta": "text-sky-300",
   "gen-pollinations-ai": "text-green-300",
-  "google-antigravity": "text-emerald-300",
+  "google-antigravity": "text-orange-400",
   "groq-com": "text-fuchsia-300",
   "kobold-llamacpp-swarm": "text-stone-300",
   ktai: "text-sky-300",
   "modelscope-ai": "text-teal-300",
   "nectar-pollinations-ai": "text-lime-300",
-  "nvidia-com": "text-emerald-300",
+  "nvidia-com": "text-orange-400",
   "ollama-com": "text-stone-300",
   "ollama-pro": "text-orange-300",
   "opencode-ai-zen": "text-green-300",
@@ -107,7 +107,7 @@ function CapIcon({ on, icon: Icon, label }: { on: boolean; icon: typeof Zap; lab
       className={cn(
         "inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
         on
-          ? "border-[#2ce080]/30 bg-[#2ce080]/10 text-[#2ce080]"
+          ? "border-[#ff9a3c]/30 bg-[#ff9a3c]/10 text-[#ff9a3c]"
           : "border-border bg-muted/30 text-muted-foreground/40",
       )}
     >
@@ -199,7 +199,7 @@ export function ModelsShowcase() {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(i * 0.015, 0.3) }}
-              className="group rounded-xl border border-border bg-card/50 backdrop-blur p-4 hover:border-[#2ce080]/40 transition-colors flex flex-col gap-3"
+              className="group rounded-xl border border-border bg-card/50 backdrop-blur p-4 hover:border-[#ff9a3c]/40 transition-colors flex flex-col gap-3"
             >
               {/* header */}
               <div className="flex items-start justify-between gap-2">
@@ -265,9 +265,9 @@ export function ModelsShowcase() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-muted-foreground pt-2 border-t border-border/50">
         <span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5" /> {MODELS.length} models</span>
         <span className="flex items-center gap-1.5"><Server className="h-3.5 w-3.5" /> {Object.keys(PROVIDER_INFO).length} providers</span>
-        <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-[#2ce080]" /> streaming</span>
-        <span className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5 text-[#2ce080]" /> tool calling</span>
-        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-[#2ce080]" /> web search</span>
+        <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-[#ff9a3c]" /> streaming</span>
+        <span className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5 text-[#ff9a3c]" /> tool calling</span>
+        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-[#ff9a3c]" /> web search</span>
         <span className="flex items-center gap-1.5"><Eye className="h-3.5 w-3.5 text-muted-foreground/50" /> vision (none yet)</span>
       </div>
     </div>

@@ -70,7 +70,7 @@ function CodeBlock({
       <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/60 bg-zinc-900/60">
         <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
         <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#2ce080]/70" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#ff9a3c]/70" />
         <span className="ml-2 text-[11px] text-muted-foreground font-mono">
           {filename}
         </span>
@@ -1803,7 +1803,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <a
             href={`#${item.id}`}
             onClick={onNavigate}
-            className="block px-3 py-1.5 rounded-md text-muted-foreground hover:text-[#2ce080] hover:bg-[#2ce080]/5 font-medium"
+            className="block px-3 py-1.5 rounded-md text-muted-foreground hover:text-[#ff9a3c] hover:bg-[#ff9a3c]/5 font-medium"
           >
             {item.label}
           </a>
@@ -1814,7 +1814,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   key={child.id}
                   href={`#${child.id}`}
                   onClick={onNavigate}
-                  className="block px-3 py-1 rounded-md text-muted-foreground/80 hover:text-[#2ce080] hover:bg-[#2ce080]/5 text-[13px]"
+                  className="block px-3 py-1 rounded-md text-muted-foreground/80 hover:text-[#ff9a3c] hover:bg-[#ff9a3c]/5 text-[13px]"
                 >
                   {child.label}
                 </a>
@@ -1868,8 +1868,8 @@ export default function DocsPage() {
             </Button>
             <div className="h-5 w-px bg-border" />
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-[#2ce080]/10 border border-[#2ce080]/30 flex items-center justify-center">
-                <Zap className="h-4 w-4 text-[#2ce080]" />
+              <div className="h-7 w-7 rounded-lg bg-[#ff9a3c]/10 border border-[#ff9a3c]/30 flex items-center justify-center">
+                <Zap className="h-4 w-4 text-[#ff9a3c]" />
               </div>
               <span className="text-sm font-semibold">API Docs</span>
             </div>
@@ -1917,7 +1917,7 @@ export default function DocsPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <Badge
                 variant="outline"
-                className="border-[#2ce080]/30 text-[#2ce080] bg-[#2ce080]/5"
+                className="border-[#ff9a3c]/30 text-[#ff9a3c] bg-[#ff9a3c]/5"
               >
                 v1
               </Badge>
@@ -1929,7 +1929,7 @@ export default function DocsPage() {
               A free, OpenAI-compatible gateway with 285+ models across 34
               providers — plus web search and AI music generation. No API key,
               no auth, no rate limits. Point any OpenAI SDK at{" "}
-              <code className="text-[#2ce080]">{baseUrl}</code> and go.
+              <code className="text-[#ff9a3c]">{baseUrl}</code> and go.
             </p>
 
             <div className="grid sm:grid-cols-2 gap-3 pt-2">
@@ -1957,22 +1957,22 @@ export default function DocsPage() {
               <h3 className="font-semibold mb-2">Endpoints</h3>
               <ul className="space-y-1.5 text-sm">
                 <li>
-                  <code className="text-[#2ce080]">
+                  <code className="text-[#ff9a3c]">
                     POST /api/v1/chat/completions
                   </code>{" "}
                   — OpenAI-compatible chat (streaming + non-streaming + tool
                   calling)
                 </li>
                 <li>
-                  <code className="text-[#2ce080]">GET /api/v1/models</code> —
+                  <code className="text-[#ff9a3c]">GET /api/v1/models</code> —
                   List all 285+ models
                 </li>
                 <li>
-                  <code className="text-[#2ce080]">POST /api/v1/search</code> —
+                  <code className="text-[#ff9a3c]">POST /api/v1/search</code> —
                   DuckDuckGo web search
                 </li>
                 <li>
-                  <code className="text-[#2ce080]">
+                  <code className="text-[#ff9a3c]">
                     POST /api/v1/music/generate
                   </code>{" "}
                   — ACE-Step 1.5 music generation
@@ -1993,15 +1993,15 @@ export default function DocsPage() {
               token rotation, identity generation, and upstream authentication
               is handled automatically per-request.
             </p>
-            <div className="rounded-xl border border-[#2ce080]/30 bg-[#2ce080]/5 p-4 flex items-start gap-3">
-              <Check className="h-5 w-5 text-[#2ce080] shrink-0 mt-0.5" />
+            <div className="rounded-xl border border-[#ff9a3c]/30 bg-[#ff9a3c]/5 p-4 flex items-start gap-3">
+              <Check className="h-5 w-5 text-[#ff9a3c] shrink-0 mt-0.5" />
               <div className="text-sm">
                 <p className="font-medium text-foreground mb-1">
                   No auth headers needed
                 </p>
                 <p className="text-muted-foreground">
                   You can still pass{" "}
-                  <code className="text-[#2ce080]">
+                  <code className="text-[#ff9a3c]">
                     Authorization: Bearer not-needed
                   </code>{" "}
                   if your OpenAI SDK requires one — it will be ignored.
@@ -2027,7 +2027,7 @@ curl ${origin}/api/v1/chat/completions \\
                 Chat Completions
               </h2>
               <p className="text-muted-foreground max-w-2xl">
-                <code className="text-[#2ce080]">
+                <code className="text-[#ff9a3c]">
                   POST /api/v1/chat/completions
                 </code>{" "}
                 — fully OpenAI-compatible. Supports streaming,
@@ -2057,7 +2057,7 @@ curl ${origin}/api/v1/chat/completions \\
               </h3>
               <p className="text-muted-foreground text-sm max-w-2xl">
                 Send a request with{" "}
-                <code className="text-[#2ce080]">stream: false</code> (the
+                <code className="text-[#ff9a3c]">stream: false</code> (the
                 default) and get a single JSON response containing the full
                 assistant message.
               </p>
@@ -2068,12 +2068,12 @@ curl ${origin}/api/v1/chat/completions \\
             <div id="chat-streaming" className="scroll-mt-20 space-y-3">
               <h3 className="text-xl font-semibold">Streaming</h3>
               <p className="text-muted-foreground text-sm max-w-2xl">
-                Set <code className="text-[#2ce080]">stream: true</code> to
+                Set <code className="text-[#ff9a3c]">stream: true</code> to
                 receive Server-Sent Events with token-by-token deltas. Each
                 line is{" "}
-                <code className="text-[#2ce080]">{"data: <json>"}</code>; the
+                <code className="text-[#ff9a3c]">{"data: <json>"}</code>; the
                 stream ends with{" "}
-                <code className="text-[#2ce080]">{"data: [DONE]"}</code>.
+                <code className="text-[#ff9a3c]">{"data: [DONE]"}</code>.
               </p>
               <CodeTabs snippets={snippets.chatStreaming} />
             </div>
@@ -2085,11 +2085,11 @@ curl ${origin}/api/v1/chat/completions \\
               </h3>
               <p className="text-muted-foreground text-sm max-w-2xl">
                 Pass an array of{" "}
-                <code className="text-[#2ce080]">tools</code>. When the model
+                <code className="text-[#ff9a3c]">tools</code>. When the model
                 decides to call a function,{" "}
-                <code className="text-[#2ce080]">finish_reason</code> will be{" "}
-                <code className="text-[#2ce080]">{"\"tool_calls\""}</code> and{" "}
-                <code className="text-[#2ce080]">message.tool_calls</code> will
+                <code className="text-[#ff9a3c]">finish_reason</code> will be{" "}
+                <code className="text-[#ff9a3c]">{"\"tool_calls\""}</code> and{" "}
+                <code className="text-[#ff9a3c]">message.tool_calls</code> will
                 contain the function name + arguments.
               </p>
               <CodeTabs snippets={snippets.chatTools} />
@@ -2102,13 +2102,13 @@ curl ${origin}/api/v1/chat/completions \\
               </h3>
               <p className="text-muted-foreground text-sm max-w-2xl">
                 Same tools API, but with{" "}
-                <code className="text-[#2ce080]">stream: true</code>. Tool
+                <code className="text-[#ff9a3c]">stream: true</code>. Tool
                 calls arrive as deltas — you must accumulate{" "}
-                <code className="text-[#2ce080]">
+                <code className="text-[#ff9a3c]">
                   tool_calls[i].function.arguments
                 </code>{" "}
                 across chunks by{" "}
-                <code className="text-[#2ce080]">index</code>.
+                <code className="text-[#ff9a3c]">index</code>.
               </p>
               <CodeTabs snippets={snippets.chatToolsStreaming} />
             </div>
@@ -2119,7 +2119,7 @@ curl ${origin}/api/v1/chat/completions \\
             <div className="space-y-2">
               <h2 className="text-2xl font-bold tracking-tight">Models</h2>
               <p className="text-muted-foreground max-w-2xl">
-                <code className="text-[#2ce080]">GET /api/v1/models</code> —
+                <code className="text-[#ff9a3c]">GET /api/v1/models</code> —
                 returns 285+ models across 34 providers in the OpenAI list
                 format.
               </p>
@@ -2157,7 +2157,7 @@ curl ${origin}/api/v1/chat/completions \\
             <div id="models-filter" className="scroll-mt-20 space-y-3">
               <h3 className="text-xl font-semibold">Filter by provider</h3>
               <p className="text-muted-foreground text-sm max-w-2xl">
-                The <code className="text-[#2ce080]">owned_by</code> field gives
+                The <code className="text-[#ff9a3c]">owned_by</code> field gives
                 you the provider. Group models by it to filter, count, or
                 render provider dropdowns.
               </p>
@@ -2169,7 +2169,7 @@ curl ${origin}/api/v1/chat/completions \\
           <section id="web-search" className="scroll-mt-20 space-y-4">
             <h2 className="text-2xl font-bold tracking-tight">Web Search</h2>
             <p className="text-muted-foreground max-w-2xl">
-              <code className="text-[#2ce080]">POST /api/v1/search</code> —
+              <code className="text-[#ff9a3c]">POST /api/v1/search</code> —
               DuckDuckGo-backed web search. Returns titles, URLs, and snippets.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -2204,7 +2204,7 @@ curl ${origin}/api/v1/chat/completions \\
               Music Generation
             </h2>
             <p className="text-muted-foreground max-w-2xl">
-              <code className="text-[#2ce080]">
+              <code className="text-[#ff9a3c]">
                 POST /api/v1/music/generate
               </code>{" "}
               — generate AI music using ACE-Step 1.5. Returns base64-encoded
@@ -2265,11 +2265,11 @@ curl ${origin}/api/v1/chat/completions \\
                 <a
                   key={lang}
                   href="#chat-basic"
-                  className="rounded-xl border border-border bg-card/40 hover:border-[#2ce080]/40 hover:bg-[#2ce080]/5 p-4 transition-colors"
+                  className="rounded-xl border border-border bg-card/40 hover:border-[#ff9a3c]/40 hover:bg-[#ff9a3c]/5 p-4 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <Terminal className="h-4 w-4 text-[#2ce080]" />
-                    <span className="font-mono text-xs text-[#2ce080]">
+                    <Terminal className="h-4 w-4 text-[#ff9a3c]" />
+                    <span className="font-mono text-xs text-[#ff9a3c]">
                       {LANG_FILES[lang]}
                     </span>
                   </div>
@@ -2291,13 +2291,13 @@ curl ${origin}/api/v1/chat/completions \\
             FreeGPT Gateway — free, OpenAI-compatible, no auth.
           </span>
           <div className="flex items-center gap-3">
-            <Link href="/" className="hover:text-[#2ce080]">
+            <Link href="/" className="hover:text-[#ff9a3c]">
               Home
             </Link>
-            <Link href="/settings" className="hover:text-[#2ce080]">
+            <Link href="/settings" className="hover:text-[#ff9a3c]">
               Settings
             </Link>
-            <a href="#overview" className="hover:text-[#2ce080]">
+            <a href="#overview" className="hover:text-[#ff9a3c]">
               Top
             </a>
           </div>

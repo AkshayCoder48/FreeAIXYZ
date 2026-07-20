@@ -326,7 +326,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-red-500/70" />
           <span className="h-2 w-2 rounded-full bg-yellow-500/70" />
-          <span className="h-2 w-2 rounded-full bg-[#2ce080]/70" />
+          <span className="h-2 w-2 rounded-full bg-[#ff9a3c]/70" />
           <span className="ml-2 text-[11px] text-muted-foreground font-mono uppercase tracking-wide">
             {language || "text"}
           </span>
@@ -408,7 +408,7 @@ function renderInlineCode(text: string): ReactNode[] {
     nodes.push(
       <code
         key={`ic-${i}`}
-        className="px-1.5 py-0.5 rounded bg-zinc-900/80 border border-border/60 text-[12px] font-mono text-[#2ce080]"
+        className="px-1.5 py-0.5 rounded bg-zinc-900/80 border border-border/60 text-[12px] font-mono text-[#ff9a3c]"
       >
         {match[1]}
       </code>,
@@ -428,12 +428,12 @@ function ToolCallCard({ toolCalls }: { toolCalls: ToolCall[] }) {
       {toolCalls.map((tc, i) => (
         <div
           key={tc.id || i}
-          className="flex items-center gap-2 rounded-lg border border-[#2ce080]/50 bg-[#2ce080]/5 px-3 py-2"
+          className="flex items-center gap-2 rounded-lg border border-[#ff9a3c]/50 bg-[#ff9a3c]/5 px-3 py-2"
         >
-          <Wrench className="h-3.5 w-3.5 text-[#2ce080]" />
+          <Wrench className="h-3.5 w-3.5 text-[#ff9a3c]" />
           <Badge
             variant="secondary"
-            className="bg-[#2ce080]/15 text-[#2ce080] border border-[#2ce080]/30 font-mono text-xs"
+            className="bg-[#ff9a3c]/15 text-[#ff9a3c] border border-[#ff9a3c]/30 font-mono text-xs"
           >
             {tc.function.name || "unknown_tool"}
           </Badge>
@@ -454,10 +454,10 @@ function AudioPlayer({ audios }: { audios: AudioAsset[] }) {
         return (
           <div
             key={i}
-            className="flex items-center gap-3 rounded-lg border border-[#2ce080]/40 bg-[#2ce080]/5 px-3 py-2.5"
+            className="flex items-center gap-3 rounded-lg border border-[#ff9a3c]/40 bg-[#ff9a3c]/5 px-3 py-2.5"
           >
-            <div className="flex items-center justify-center h-9 w-9 shrink-0 rounded-full bg-[#2ce080]/15 border border-[#2ce080]/30">
-              <Music className="h-4 w-4 text-[#2ce080]" />
+            <div className="flex items-center justify-center h-9 w-9 shrink-0 rounded-full bg-[#ff9a3c]/15 border border-[#ff9a3c]/30">
+              <Music className="h-4 w-4 text-[#ff9a3c]" />
             </div>
             <audio controls src={src} className="flex-1 h-9 min-w-0" />
           </div>
@@ -473,7 +473,7 @@ function SearchResults({ results }: { results: SearchResult[] }) {
   return (
     <div className="space-y-2 my-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Search className="h-3.5 w-3.5 text-[#2ce080]" />
+        <Search className="h-3.5 w-3.5 text-[#ff9a3c]" />
         <span>{results.length} results</span>
       </div>
       <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -483,7 +483,7 @@ function SearchResults({ results }: { results: SearchResult[] }) {
             href={r.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block rounded-lg border border-border bg-card/40 px-3 py-2 hover:border-[#2ce080]/40 hover:bg-[#2ce080]/5 transition-colors"
+            className="block rounded-lg border border-border bg-card/40 px-3 py-2 hover:border-[#ff9a3c]/40 hover:bg-[#ff9a3c]/5 transition-colors"
           >
             <div className="flex items-start justify-between gap-2">
               <span className="text-sm font-medium text-foreground line-clamp-1">
@@ -491,7 +491,7 @@ function SearchResults({ results }: { results: SearchResult[] }) {
               </span>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
             </div>
-            <span className="text-[11px] text-[#2ce080] line-clamp-1 font-mono">
+            <span className="text-[11px] text-[#ff9a3c] line-clamp-1 font-mono">
               {r.url}
             </span>
             {r.snippet && (
@@ -511,9 +511,9 @@ function SearchResults({ results }: { results: SearchResult[] }) {
 function TypingDots() {
   return (
     <span className="inline-flex gap-1 items-center text-muted-foreground">
-      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce [animation-delay:-0.2s]" />
-      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce [animation-delay:-0.1s]" />
-      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce" />
+      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce [animation-delay:-0.2s]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce [animation-delay:-0.1s]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce" />
     </span>
   );
 }
@@ -932,8 +932,8 @@ export default function ChatPage() {
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2ce080] opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#2ce080]" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ff9a3c] opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#ff9a3c]" />
             </span>
             FreeGPT Chat
           </span>
@@ -961,7 +961,7 @@ export default function ChatPage() {
           <div className="p-3 border-b border-border">
             <Button
               onClick={newChat}
-              className="w-full bg-[#2ce080] hover:bg-[#22b569] text-[#042330] font-medium gap-2"
+              className="w-full bg-[#ff9a3c] hover:bg-[#f08820] text-[#000000] font-medium gap-2"
             >
               <Plus className="h-4 w-4" />
               New Chat
@@ -988,7 +988,7 @@ export default function ChatPage() {
                     className={cn(
                       "group relative flex items-start gap-2 rounded-lg px-2.5 py-2 cursor-pointer transition-colors",
                       currentChatId === c.id
-                        ? "bg-[#2ce080]/10 border border-[#2ce080]/30"
+                        ? "bg-[#ff9a3c]/10 border border-[#ff9a3c]/30"
                         : "hover:bg-accent border border-transparent",
                     )}
                     onClick={() => loadChat(c.id)}
@@ -997,7 +997,7 @@ export default function ChatPage() {
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 mt-0.5",
                         currentChatId === c.id
-                          ? "text-[#2ce080]"
+                          ? "text-[#ff9a3c]"
                           : "text-muted-foreground",
                       )}
                     />
@@ -1045,15 +1045,15 @@ export default function ChatPage() {
             <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
               {isMusicModel ? (
                 <>
-                  <Music className="h-3 w-3 text-[#2ce080]" /> music
+                  <Music className="h-3 w-3 text-[#ff9a3c]" /> music
                 </>
               ) : isSearchModel ? (
                 <>
-                  <Search className="h-3 w-3 text-[#2ce080]" /> search
+                  <Search className="h-3 w-3 text-[#ff9a3c]" /> search
                 </>
               ) : stream ? (
                 <>
-                  <Zap className="h-3 w-3 text-[#2ce080]" /> streaming
+                  <Zap className="h-3 w-3 text-[#ff9a3c]" /> streaming
                 </>
               ) : (
                 "non-stream"
@@ -1065,8 +1065,8 @@ export default function ChatPage() {
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-10">
-                <div className="h-16 w-16 rounded-2xl bg-[#2ce080]/10 border border-[#2ce080]/20 flex items-center justify-center">
-                  <Bot className="h-8 w-8 text-[#2ce080]" />
+                <div className="h-16 w-16 rounded-2xl bg-[#ff9a3c]/10 border border-[#ff9a3c]/20 flex items-center justify-center">
+                  <Bot className="h-8 w-8 text-[#ff9a3c]" />
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-base font-semibold">
@@ -1095,15 +1095,15 @@ export default function ChatPage() {
                   )}
                 >
                   {m.role === "assistant" && (
-                    <div className="h-8 w-8 shrink-0 rounded-lg bg-[#2ce080]/10 border border-[#2ce080]/20 flex items-center justify-center">
-                      <Bot className="h-4 w-4 text-[#2ce080]" />
+                    <div className="h-8 w-8 shrink-0 rounded-lg bg-[#ff9a3c]/10 border border-[#ff9a3c]/20 flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-[#ff9a3c]" />
                     </div>
                   )}
                   <div
                     className={cn(
                       "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
                       m.role === "user"
-                        ? "bg-[#2ce080] text-[#042330] rounded-br-sm font-medium"
+                        ? "bg-[#ff9a3c] text-[#000000] rounded-br-sm font-medium"
                         : "bg-card border border-border rounded-bl-sm",
                     )}
                   >
@@ -1173,7 +1173,7 @@ export default function ChatPage() {
                 <Button
                   onClick={send}
                   size="icon"
-                  className="h-11 w-11 shrink-0 bg-[#2ce080] hover:bg-[#22b569] text-[#042330]"
+                  className="h-11 w-11 shrink-0 bg-[#ff9a3c] hover:bg-[#f08820] text-[#000000]"
                   aria-label="Send"
                   disabled={!input.trim()}
                 >
@@ -1187,7 +1187,7 @@ export default function ChatPage() {
                   id="stream-toggle"
                   checked={stream}
                   onCheckedChange={(v) => setStream(v === true)}
-                  className="border-border data-[state=checked]:bg-[#2ce080] data-[state=checked]:border-[#2ce080] data-[state=checked]:text-[#042330]"
+                  className="border-border data-[state=checked]:bg-[#ff9a3c] data-[state=checked]:border-[#ff9a3c] data-[state=checked]:text-[#000000]"
                 />
                 <Label
                   htmlFor="stream-toggle"
@@ -1207,7 +1207,7 @@ export default function ChatPage() {
         <aside className="hidden md:flex w-64 shrink-0 border-l border-border bg-card/60 backdrop-blur flex-col">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold flex items-center gap-2">
-              <FileCode2 className="h-4 w-4 text-[#2ce080]" />
+              <FileCode2 className="h-4 w-4 text-[#ff9a3c]" />
               Files
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1231,7 +1231,7 @@ export default function ChatPage() {
                     onClick={() => setSelectedFile(f)}
                   >
                     <div className="flex items-center gap-2">
-                      <FileCode2 className="h-3.5 w-3.5 shrink-0 text-[#2ce080]" />
+                      <FileCode2 className="h-3.5 w-3.5 shrink-0 text-[#ff9a3c]" />
                       <span className="text-xs font-medium truncate flex-1">
                         {f.name}
                       </span>
@@ -1271,7 +1271,7 @@ export default function ChatPage() {
         <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col gap-0 p-0">
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-sm font-mono">
-              <FileCode2 className="h-4 w-4 text-[#2ce080]" />
+              <FileCode2 className="h-4 w-4 text-[#ff9a3c]" />
               {selectedFile?.name}
             </DialogTitle>
             <DialogDescription className="text-[11px]">

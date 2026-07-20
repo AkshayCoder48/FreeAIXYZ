@@ -201,8 +201,8 @@ export function Playground() {
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2ce080] opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#2ce080]" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ff9a3c] opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#ff9a3c]" />
             </span>
             <span className="text-sm font-medium">Live Playground</span>
             {stream && (
@@ -227,8 +227,8 @@ export function Playground() {
         >
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-10">
-              <div className="h-14 w-14 rounded-2xl bg-[#2ce080]/10 border border-[#2ce080]/20 flex items-center justify-center">
-                <Bot className="h-7 w-7 text-[#2ce080]" />
+              <div className="h-14 w-14 rounded-2xl bg-[#ff9a3c]/10 border border-[#ff9a3c]/20 flex items-center justify-center">
+                <Bot className="h-7 w-7 text-[#ff9a3c]" />
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">Try the API right here</p>
@@ -242,7 +242,7 @@ export function Playground() {
                   <button
                     key={p}
                     onClick={() => setInput(p)}
-                    className="text-xs px-3 py-1.5 rounded-full border border-border bg-background/60 hover:bg-accent hover:border-[#2ce080]/40 transition-colors"
+                    className="text-xs px-3 py-1.5 rounded-full border border-border bg-background/60 hover:bg-accent hover:border-[#ff9a3c]/40 transition-colors"
                   >
                     {p}
                   </button>
@@ -261,8 +261,8 @@ export function Playground() {
                 )}
               >
                 {m.role === "assistant" && (
-                  <div className="h-8 w-8 shrink-0 rounded-lg bg-[#2ce080]/10 border border-[#2ce080]/20 flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-[#2ce080]" />
+                  <div className="h-8 w-8 shrink-0 rounded-lg bg-[#ff9a3c]/10 border border-[#ff9a3c]/20 flex items-center justify-center">
+                    <Bot className="h-4 w-4 text-[#ff9a3c]" />
                   </div>
                 )}
                 <div
@@ -275,9 +275,9 @@ export function Playground() {
                 >
                   {m.content || (
                     <span className="inline-flex gap-1 items-center text-muted-foreground">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce [animation-delay:-0.2s]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce [animation-delay:-0.1s]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#2ce080] animate-bounce" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce [animation-delay:-0.2s]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce [animation-delay:-0.1s]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#ff9a3c] animate-bounce" />
                     </span>
                   )}
                 </div>
@@ -320,7 +320,7 @@ export function Playground() {
               <Button
                 onClick={send}
                 size="icon"
-                className="h-11 w-11 shrink-0 bg-[#2ce080] hover:bg-[#22b569] text-[#042330]"
+                className="h-11 w-11 shrink-0 bg-[#ff9a3c] hover:bg-[#f08820] text-[#000000]"
                 aria-label="Send"
               >
                 <Send className="h-4 w-4" />
@@ -334,7 +334,7 @@ export function Playground() {
       <div className="space-y-4">
         <div className="rounded-xl border border-border bg-card/60 backdrop-blur p-4 space-y-4">
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <Zap className="h-4 w-4 text-[#2ce080]" /> Settings
+            <Zap className="h-4 w-4 text-[#ff9a3c]" /> Settings
           </h3>
 
           <div className="space-y-2">
@@ -371,7 +371,7 @@ export function Playground() {
 
         <div className="rounded-xl border border-border bg-card/60 backdrop-blur p-4 space-y-2">
           <h3 className="text-sm font-semibold">Endpoint</h3>
-          <code className="block text-[11px] text-[#2ce080] break-all bg-[#2ce080]/5 border border-[#2ce080]/15 rounded-md px-2.5 py-2">
+          <code className="block text-[11px] text-[#ff9a3c] break-all bg-[#ff9a3c]/5 border border-[#ff9a3c]/15 rounded-md px-2.5 py-2">
             POST /api/v1/chat/completions
           </code>
           <p className="text-[11px] text-muted-foreground">
