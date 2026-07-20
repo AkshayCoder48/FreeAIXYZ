@@ -369,16 +369,18 @@ async function streamCompletion(
           // All G4F.space owner-based provider ids route to g4fSpaceProvider
           // which genuinely streams via SSE.
           const G4F_PROVIDER_IDS = new Set([
-            "anesnt", "gemini-cli", "google-antigravity", "ktai",
-            "modelscope-ai", "api-airforce", "audio", "cerebras-ai",
-            "community-day-2026", "crowllm-com", "deepinfra-com",
-            "gemini-v1beta", "gen-pollinations-ai", "groq-com",
-            "kobold-llamacpp-swarm", "navy", "nectar-pollinations-ai",
-            "nvidia-com", "ollama-com", "opencode-ai-zen",
-            "perplexity", "qwen", "ollama-swarm", "easychat",
-            "anyprovider", "bfl-flux", "huggingspace", "openaifm",
-            "opera-aria", "perplexity-g4f", "pollinations-g4f",
-            "pollinations-image", "qwen-chat", "wewordle", "yqcloud",
+            "easychat", "ollama-swarm", "yqcloud",
+            "wewordle", "qwen-chat", "pollinations-image",
+            "pollinations-g4f", "perplexity-g4f", "opera-aria",
+            "openaifm", "huggingspace", "bfl-flux",
+            "anyprovider", "api-airforce", "audio",
+            "cerebras-ai", "community-day-2026", "crowllm-com",
+            "deepinfra-com", "gemini-cli", "gemini-v1beta",
+            "gen-pollinations-ai", "google-antigravity", "groq-com",
+            "kobold-llamacpp-swarm", "ktai", "modelscope-ai",
+            "nectar-pollinations-ai", "nvidia-com", "ollama-com",
+            "ollama-pro", "opencode-ai-zen", "openrouter-ai",
+            "perplexity", "pollinations-ai", "qwen",
           ]);
           const realStream =
             model.provider === "nsfwlover" ||

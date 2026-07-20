@@ -1,16 +1,13 @@
 /**
- * G4F.space provider — OpenAI-compatible API aggregating 484+ models
- * from 24 upstream providers (NVIDIA, OllamaSwarm, Google, CrowLLM, etc.)
+ * G4F.space provider — OpenAI-compatible API aggregating 399+ models
+ * from 45+ upstream providers (NVIDIA, OllamaSwarm, Google, CrowLLM, etc.)
  *
  * Endpoint: POST https://g4f.space/v1/chat/completions
  * Models:   GET  https://g4f.space/v1/models
  *
- * Auth: NONE — public endpoint, no Bearer token required.
+ * Auth: Bearer token (user-provided G4F key) — enables unlimited daily access
+ * and removes the 3-active-days-per-12-days anonymous limit.
  * Response: standard OpenAI SSE format
- *
- * Models are grouped by their real `owned_by` field from the API,
- * NOT under a single "G4F" label. EasyChat models (gpt-5, grok-4.1-fast)
- * are accessed by bare model name; all others use the `srv_*:model` format.
  *
  * Retry logic: retries on 429/500/502/503 with exponential backoff (up to 2 retries).
  */
@@ -20,6 +17,9 @@ import type { Provider, ProviderCompletionRequest } from "./types";
 const ENDPOINT = "https://g4f.space/v1/chat/completions";
 const MAX_RETRIES = 2;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503]);
+
+// G4F.space user API key — enables unlimited daily access
+const G4F_API_KEY = "g4f_u_mqp91a_41a5cec8cb8f68804c9c2f248d1eaf44851049e488d73be9_e135930c";
 
 function parseSseLine(line: string): string | null {
   const trimmed = line.trim();
@@ -63,6 +63,7 @@ export const g4fSpaceProvider: Provider = {
 
     const headers = {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${G4F_API_KEY}`,
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
     };
