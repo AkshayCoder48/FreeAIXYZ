@@ -12,6 +12,7 @@ import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
+import { hfSpaceProvider } from "./hfspace";
 import { g4fSpaceProvider } from "./g4fspace";
 
 // Stub providers for standalone services (search/music). These are listed in
@@ -38,6 +39,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   llm7: llm7Provider,
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
+  hfspace: hfSpaceProvider,
   search: stubProvider,
   music: stubProvider,
   // G4F.space — all owner-based provider ids route to the single

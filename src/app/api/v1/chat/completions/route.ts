@@ -83,6 +83,11 @@ export async function POST(request: Request) {
 
   const model = resolveGatewayModel(body.model);
   const useTools = hasTools(body.tools) && model.capabilities.tools;
+  
+  // Extract optional auth token from request headers (for HF Space, etc.)
+  const authToken = request.headers.get("x-hf-token") || 
+                    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || 
+                    undefined;
   const wantsWebSearch = body.web_search === true;
 
   // Build the provider message list. Tool system prompt is prepended when tools
@@ -130,9 +135,9 @@ export async function POST(request: Request) {
   const provider = getProvider(model.provider);
 
   if (wantsStream) {
-    return streamCompletion(model, provider, messages, useTools, request);
+    return streamCompletion(model, provider, messages, useTools, request, authToken);
   }
-  return jsonCompletion(model, provider, messages, useTools);
+  return jsonCompletion(model, provider, messages, useTools, authToken);
 }
 
 /** Non-streaming completion. */
@@ -141,11 +146,11 @@ async function jsonCompletion(
   provider: ReturnType<typeof getProvider>,
   messages: ProviderMessage[],
   useTools: boolean,
-  
+  authToken?: string,
 ) {
   let text: string;
   try {
-    const result = await provider.complete({ model, messages });
+    const result = await provider.complete({ model, messages, authToken });
     text = result.text;
   } catch (err) {
     return upstreamErrorResponse(err);
@@ -242,7 +247,7 @@ async function streamCompletion(
   messages: ProviderMessage[],
   useTools: boolean,
   request: Request,
-  
+  authToken?: string,
 ) {
   const id = generateCompletionId();
   const created = Math.floor(Date.now() / 1000);
@@ -284,7 +289,7 @@ async function streamCompletion(
       try {
         if (useTools) {
           // ---- Tool-calling path: buffer full response, parse, emit ----
-          const result = await provider.complete({ model, messages, signal });
+          const result = await provider.complete({ model, messages, signal, authToken });
           clearInterval(heartbeatTimer);
           if (signal.aborted) {
             cleanup();
@@ -392,12 +397,14 @@ async function streamCompletion(
             model.provider === "llm7" ||
             model.provider === "heckai" ||
             model.provider === "spicywriter" ||
+            model.provider === "hfspace" ||
             G4F_PROVIDER_IDS.has(model.provider);
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.
             let hasContent = false;
             for await (const delta of provider.stream({
+              authToken,
               model,
               messages,
               signal,
@@ -445,7 +452,7 @@ async function streamCompletion(
             });
           } else {
             // Non-streaming provider: fetch full text, then re-pace.
-            const result = await provider.complete({ model, messages, signal });
+            const result = await provider.complete({ model, messages, signal, authToken });
             clearInterval(heartbeatTimer);
             if (signal.aborted) {
               cleanup();

@@ -25,6 +25,7 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "hfspace"
   | "search"
   | "music"
   | "easychat"
@@ -161,6 +162,9 @@ export const MODELS: readonly GatewayModel[] = [
   // Uncensored system preamble auto-injected for nsfw-* models.
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+
+  // ─── HuggingFace Space: GLM-5.2 (requires HF login, bills to user account) ────
+  hfs("glm-5-2-hf", "glm-5-2-hf", "GLM-5.2 — Zhipu AI flagship via HuggingFace Space (requires HF auth)", 128000),
 
   // ─── Standalone services: web search + music generation ────────────────
   // These use separate API endpoints (not chat completions).
@@ -864,6 +868,32 @@ function sw(
   };
 }
 
+
+/** HuggingFace Space model helper. Uses /api/chat endpoint with SSE streaming. */
+function hfs(
+  id: string,
+  upstream: string,
+  description: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "hfspace",
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Standalone service model (search, music, etc.) — listed for discovery but
  * called via their own endpoints, NOT via /v1/chat/completions. */
 function svc(
@@ -1002,6 +1032,10 @@ export const PROVIDER_INFO: Record<
   "heckai": {
     name: "HeckAI",
     description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",
+  },
+  "hfspace": {
+    name: "HuggingFace Space",
+    description: "GLM-5.2 via HuggingFace Space — requires HF login, bills to user account",
   },
   "spicywriter": {
     name: "SpicyWriter",
