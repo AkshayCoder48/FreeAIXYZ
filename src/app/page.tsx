@@ -115,10 +115,10 @@ export default function Home() {
               <Zap className="h-5 w-5 text-[#ff9a3c]" />
             </div>
             <div className="leading-tight">
-              <span className="block text-sm font-semibold tracking-tight">
-                FreeGPT<span className="text-[#ff9a3c]"> Gateway</span>
+              <span className="block text-sm font-semibold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
+                Free<span className="text-[#ff9a3c]">AI</span>XYZ
               </span>
-              <span className="block text-[10px] text-muted-foreground">
+              <span className="block text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                 OpenAI-compatible · Serverless
               </span>
             </div>
@@ -181,9 +181,9 @@ export default function Home() {
               <RefreshCw className="h-3 w-3" />
               Automatic per-request token rotation
             </Badge>
-            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-balance max-w-4xl">
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-balance max-w-4xl" style={{ fontFamily: "var(--font-brand), serif" }}>
               Unlimited free AI,{" "}
-              <span className="bg-gradient-to-r from-[#ff9a3c] to-[#7ff3b3] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#ff9a3c] to-[#ff7a00] bg-clip-text text-transparent" style={{ fontFamily: "var(--font-script), cursive" }}>
                 no key required
               </span>
             </h1>
@@ -245,7 +245,7 @@ export default function Home() {
         >
           <div className="mb-6 flex items-end justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Live Playground
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
@@ -269,7 +269,7 @@ export default function Home() {
           className="mx-auto max-w-6xl px-4 sm:px-6 py-12 scroll-mt-20"
         >
           <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
               Built to be frictionless
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl mx-auto">
@@ -286,7 +286,7 @@ export default function Home() {
                 <div className="h-11 w-11 rounded-xl bg-[#ff9a3c]/10 border border-[#ff9a3c]/20 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
                   <f.icon className={`h-5 w-5 ${f.accent}`} />
                 </div>
-                <h3 className="font-semibold mb-1.5">{f.title}</h3>
+                <h3 className="font-semibold mb-1.5" style={{ fontFamily: "var(--font-brand), serif" }}>{f.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {f.desc}
                 </p>
@@ -308,7 +308,7 @@ export default function Home() {
               >
                 <RefreshCw className="h-3 w-3" /> How it works
               </Badge>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Per-request token rotation
               </h2>
               <p className="text-sm text-muted-foreground mt-2 max-w-2xl mx-auto">
@@ -328,7 +328,7 @@ export default function Home() {
                         <s.icon className="h-5 w-5 text-[#ff9a3c]" />
                       </div>
                     </div>
-                    <h3 className="font-semibold mb-2">{s.title}</h3>
+                    <h3 className="font-semibold mb-2" style={{ fontFamily: "var(--font-brand), serif" }}>{s.title}</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
                       {s.desc}
                     </p>
@@ -376,7 +376,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
               <Badge variant="outline" className="mb-3 border-[#ff9a3c]/30 text-[#ff9a3c] bg-[#ff9a3c]/5">
                 <Terminal className="h-3 w-3" /> Quickstart
               </Badge>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Drop-in for any OpenAI client
               </h2>
               <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
@@ -418,7 +418,7 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
             </div>
             <div className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">
-                FreeGPT Gateway
+                <span style={{ fontFamily: "var(--font-brand), serif" }}>FreeAI<span className="text-[#ff9a3c]">XYZ</span></span>
               </span>{" "}
               · Unlimited free AI · OpenAI-compatible
             </div>

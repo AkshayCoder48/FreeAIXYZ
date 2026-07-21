@@ -48,6 +48,20 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   heckai: "text-fuchsia-300",
   spicywriter: "text-rose-400",
   hfspace: "text-yellow-500",
+  // Token-based providers
+  openrouter: "text-indigo-500",
+  groq: "text-orange-500",
+  together: "text-purple-500",
+  mistral: "text-blue-500",
+  cerebras: "text-red-500",
+  novita: "text-green-500",
+  deepinfra: "text-teal-500",
+  fireworks: "text-pink-500",
+  sambanova: "text-cyan-500",
+  siliconflow: "text-violet-500",
+  aihubmix: "text-amber-500",
+  huggingface: "text-yellow-500",
+
   search: "text-cyan-300",
   music: "text-pink-300",
   // G4F.space providers

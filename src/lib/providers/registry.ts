@@ -26,6 +26,18 @@ export type ProviderId =
   | "heckai"
   | "spicywriter"
   | "hfspace"
+  | "openrouter"
+  | "groq"
+  | "together"
+  | "mistral"
+  | "cerebras"
+  | "novita"
+  | "deepinfra"
+  | "fireworks"
+  | "sambanova"
+  | "siliconflow"
+  | "aihubmix"
+  | "huggingface"
   | "search"
   | "music"
   | "easychat"
@@ -165,6 +177,77 @@ export const MODELS: readonly GatewayModel[] = [
 
   // ─── HuggingFace Space: GLM-5.2 (requires HF login, bills to user account) ────
   hfs("glm-5-2-hf", "glm-5-2-hf", "GLM-5.2 — Zhipu AI flagship via HuggingFace Space (requires HF auth)", 128000),
+
+  // ─── Token-based providers (user provides API key via x-provider-token header) ────
+  // OpenRouter (14 free models with signup)
+  tp("openrouter", "or-laguna-s-2-1-free", "openrouter:poolside/laguna-s-2.1:free", "Poolside Laguna S 2.1 — code model (OpenRouter free)", "openrouter", 1048576),
+  tp("openrouter", "or-laguna-xs-2-1-free", "openrouter:poolside/laguna-xs-2.1:free", "Poolside Laguna XS 2.1 — lightweight code (OpenRouter free)", "openrouter", 262144),
+  tp("openrouter", "or-north-mini-code-free", "openrouter:cohere/north-mini-code:free", "Cohere North Mini Code (OpenRouter free)", "openrouter", 256000),
+  tp("openrouter", "or-nemotron-ultra-free", "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free", "NVIDIA Nemotron 3 Ultra 550B (OpenRouter free)", "openrouter", 1000000),
+  tp("openrouter", "or-nemotron-super-free", "openrouter:nvidia/nemotron-3-super-120b-a12b:free", "NVIDIA Nemotron 3 Super 120B (OpenRouter free)", "openrouter", 1000000),
+  tp("openrouter", "or-nemotron-nano-free", "openrouter:nvidia/nemotron-3-nano-30b-a3b:free", "NVIDIA Nemotron 3 Nano 30B (OpenRouter free)", "openrouter", 256000),
+  tp("openrouter", "or-gemma-4-26b-free", "openrouter:google/gemma-4-26b-a4b-it:free", "Google Gemma 4 26B (OpenRouter free)", "openrouter", 262144),
+  tp("openrouter", "or-gemma-4-31b-free", "openrouter:google/gemma-4-31b-it:free", "Google Gemma 4 31B (OpenRouter free)", "openrouter", 131072),
+  tp("openrouter", "or-tencent-hy3-free", "openrouter:tencent/hy3:free", "Tencent Hy3 (OpenRouter free)", "openrouter", 262144),
+  tp("openrouter", "or-laguna-m-free", "openrouter:poolside/laguna-m.1:free", "Poolside Laguna M.1 (OpenRouter free)", "openrouter", 262144),
+  tp("openrouter", "or-nemotron-safety-free", "openrouter:nvidia/nemotron-3.5-content-safety:free", "NVIDIA Nemotron Safety (OpenRouter free)", "openrouter", 128000),
+  tp("openrouter", "or-nemotron-nano-vl-free", "openrouter:nvidia/nemotron-nano-12b-v2-vl:free", "NVIDIA Nemotron Nano VL (OpenRouter free)", "openrouter", 128000),
+  tp("openrouter", "or-deepseek-v4-flash-free", "openrouter:deepseek-ai/deepseek-v4-flash:free", "DeepSeek V4 Flash (OpenRouter free)", "openrouter", 64000),
+  tp("openrouter", "or-gpt-oss-20b-free", "openrouter:openai/gpt-oss-20b:free", "GPT-OSS 20B (OpenRouter free)", "openrouter", 131072),
+
+  // Groq (fast inference, free tier with signup)
+  tp("groq", "groq-llama-3-3-70b", "groq:llama-3.3-70b-versatile", "Llama 3.3 70B Versatile (Groq — fast)", "groq", 131072),
+  tp("groq", "groq-llama-3-1-8b", "groq:llama-3.1-8b-instant", "Llama 3.1 8B Instant (Groq — ultra fast)", "groq", 131072),
+  tp("groq", "groq-gpt-oss-120b", "groq:openai/gpt-oss-120b", "GPT-OSS 120B (Groq)", "groq", 131072),
+  tp("groq", "groq-gpt-oss-20b", "groq:openai/gpt-oss-20b", "GPT-OSS 20B (Groq)", "groq", 131072),
+  tp("groq", "groq-qwen-32b", "groq:qwen/qwen3.5-32b", "Qwen 3.5 32B (Groq)", "groq", 131072),
+  tp("groq", "groq-llama4-scout", "groq:meta-llama/llama-4-scout-17b-16e-instruct", "Llama 4 Scout 17B (Groq)", "groq", 131072),
+
+  // Together AI (free tier with signup)
+  tp("together", "together-llama-3-3-70b", "together:meta-llama/Llama-3.3-70B-Instruct-Turbo", "Llama 3.3 70B Turbo (Together AI)", "together", 131072),
+  tp("together", "together-deepseek-v3", "together:deepseek-ai/DeepSeek-V3", "DeepSeek V3 (Together AI)", "together", 64000),
+  tp("together", "together-qwen-32b", "together:Qwen/Qwen2.5-32B-Instruct-Turbo", "Qwen 2.5 32B Turbo (Together AI)", "together", 131072),
+
+  // Mistral AI (free tier with signup)
+  tp("mistral", "mistral-large-3", "mistral:mistral-large-3", "Mistral Large 3 (Mistral AI)", "mistral", 128000),
+  tp("mistral", "mistral-medium-3", "mistral:mistral-medium-3", "Mistral Medium 3 (Mistral AI)", "mistral", 128000),
+  tp("mistral", "mistral-codestral", "mistral:codestral-latest", "Codestral (Mistral AI)", "mistral", 256000),
+  tp("mistral", "mistral-small", "mistral:mistral-small-latest", "Mistral Small (Mistral AI)", "mistral", 128000),
+
+  // Cerebras (fastest inference, free tier with signup)
+  tp("cerebras", "cerebras-llama-3-1-70b", "cerebras:llama3.1-70b", "Llama 3.1 70B (Cerebras — fastest)", "cerebras", 131072),
+  tp("cerebras", "cerebras-llama-3-1-8b", "cerebras:llama3.1-8b", "Llama 3.1 8B (Cerebras — fastest)", "cerebras", 131072),
+  tp("cerebras", "cerebras-llama-3-3-70b", "cerebras:llama-3.3-70b", "Llama 3.3 70B (Cerebras)", "cerebras", 131072),
+  tp("cerebras", "cerebras-glm-4-7", "cerebras:zai-glm-4.7", "GLM 4.7 (Cerebras)", "cerebras", 131072),
+
+  // Novita AI (141 models, free tier with signup)
+  tp("novita", "novita-kimi-k3", "novita:moonshotai/kimi-k3", "Kimi K3 (Novita AI)", "novita", 131072),
+  tp("novita", "novita-glm-5-2", "novita:zai-org/glm-5.2", "GLM-5.2 (Novita AI)", "novita", 128000),
+  tp("novita", "novita-deepseek-v4-pro", "novita:deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (Novita AI)", "novita", 64000),
+  tp("novita", "novita-deepseek-v4-flash", "novita:deepseek/deepseek-v4-flash", "DeepSeek V4 Flash (Novita AI)", "novita", 64000),
+  tp("novita", "novita-minimax-m3", "novita:minimax/minimax-m3", "Minimax M3 (Novita AI)", "novita", 196608),
+
+  // DeepInfra (free tier with signup)
+  tp("deepinfra", "deepinfra-glm-5-2", "deepinfra:zai-org/GLM-5.2", "GLM-5.2 (DeepInfra)", "deepinfra", 128000),
+  tp("deepinfra", "deepinfra-llama-3-3-70b", "deepinfra:meta-llama/Llama-3.3-70B-Instruct", "Llama 3.3 70B (DeepInfra)", "deepinfra", 131072),
+  tp("deepinfra", "deepinfra-deepseek-v3", "deepinfra:deepseek-ai/DeepSeek-V3", "DeepSeek V3 (DeepInfra)", "deepinfra", 64000),
+
+  // Fireworks AI (free tier with signup)
+  tp("fireworks", "fireworks-llama-3-3-70b", "fireworks:accounts/fireworks/models/llama-v3p3-70b-instruct", "Llama 3.3 70B (Fireworks AI)", "fireworks", 131072),
+
+  // SambaNova (free tier with signup)
+  tp("sambanova", "sambanova-deepseek-v3-1", "sambanova:DeepSeek-V3.1", "DeepSeek V3.1 (SambaNova)", "sambanova", 131072),
+  tp("sambanova", "sambanova-llama-3-3-70b", "sambanova:Meta-Llama-3.3-70B-Instruct", "Llama 3.3 70B (SambaNova)", "sambanova", 131072),
+  tp("sambanova", "sambanova-gpt-oss-120b", "sambanova:gpt-oss-120b", "GPT-OSS 120B (SambaNova)", "sambanova", 131072),
+
+  // SiliconFlow (free tier with signup)
+  tp("siliconflow", "sf-qwen-32b", "siliconflow:Qwen/Qwen2.5-32B-Instruct", "Qwen 2.5 32B (SiliconFlow)", "siliconflow", 131072),
+  tp("siliconflow", "sf-deepseek-v3", "siliconflow:deepseek-ai/DeepSeek-V3", "DeepSeek V3 (SiliconFlow)", "siliconflow", 64000),
+
+  // HuggingFace Router (free tier with signup)
+  tp("huggingface", "hf-glm-5-2", "huggingface:zai-org/GLM-5.2", "GLM-5.2 (HuggingFace)", "huggingface", 128000),
+  tp("huggingface", "hf-deepseek-v4", "huggingface:deepseek-ai/DeepSeek-V4-Pro", "DeepSeek V4 Pro (HuggingFace)", "huggingface", 64000),
+  tp("huggingface", "hf-qwen-3-6-27b", "huggingface:Qwen/Qwen3.6-27B", "Qwen 3.6 27B (HuggingFace)", "huggingface", 262144),
 
   // ─── Standalone services: web search + music generation ────────────────
   // These use separate API endpoints (not chat completions).
@@ -894,6 +977,34 @@ function hfs(
   };
 }
 
+
+/** Token-based provider model helper. User provides API key via x-provider-token header. */
+function tp(
+  provider: ProviderId,
+  id: string,
+  upstream: string,
+  description: string,
+  providerName: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider,
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Standalone service model (search, music, etc.) — listed for discovery but
  * called via their own endpoints, NOT via /v1/chat/completions. */
 function svc(
@@ -1037,6 +1148,56 @@ export const PROVIDER_INFO: Record<
     name: "HuggingFace Space",
     description: "GLM-5.2 via HuggingFace Space — requires HF login, bills to user account",
   },
+
+  "openrouter": {
+    name: "OpenRouter",
+    description: "14 free models (Gemma, Nemotron, Laguna, DeepSeek) — requires signup, pass API key via x-provider-token header",
+  },
+  "groq": {
+    name: "Groq",
+    description: "Ultra-fast Llama, GPT-OSS, Qwen models — requires signup, free tier",
+  },
+  "together": {
+    name: "Together AI",
+    description: "Llama, DeepSeek, Qwen models — requires signup, free tier",
+  },
+  "mistral": {
+    name: "Mistral AI",
+    description: "Mistral Large 3, Codestral, Medium — requires signup, free tier",
+  },
+  "cerebras": {
+    name: "Cerebras",
+    description: "Fastest inference — Llama 3.3, GLM 4.7 — requires signup, free tier",
+  },
+  "novita": {
+    name: "Novita AI",
+    description: "141 models (Kimi K3, GLM-5.2, DeepSeek V4) — requires signup, free tier",
+  },
+  "deepinfra": {
+    name: "DeepInfra",
+    description: "GLM-5.2, Llama 3.3, DeepSeek — requires signup, free tier",
+  },
+  "fireworks": {
+    name: "Fireworks AI",
+    description: "Llama 3.3 70B — requires signup, free tier",
+  },
+  "sambanova": {
+    name: "SambaNova",
+    description: "DeepSeek V3.1, Llama 3.3, GPT-OSS — requires signup, free tier",
+  },
+  "siliconflow": {
+    name: "SiliconFlow",
+    description: "Qwen, DeepSeek models — requires signup, free tier",
+  },
+  "aihubmix": {
+    name: "AIHubMix",
+    description: "357 models (GPT, Claude, Gemini, Grok) — requires signup, pass key",
+  },
+  "huggingface": {
+    name: "HuggingFace Router",
+    description: "124 models (GLM-5.2, DeepSeek V4, Qwen) — requires HF token",
+  },
+
   "spicywriter": {
     name: "SpicyWriter",
     description: "2 uncensored NSFW models (Ling 2.6 Flash, Nemo) — free anonymous, rotated anon id per call, real SSE streaming",

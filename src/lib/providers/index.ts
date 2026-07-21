@@ -13,6 +13,7 @@ import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
 import { hfSpaceProvider } from "./hfspace";
+import { tokenProvider } from "./tokenprovider";
 import { g4fSpaceProvider } from "./g4fspace";
 
 // Stub providers for standalone services (search/music). These are listed in
@@ -40,6 +41,20 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
   hfspace: hfSpaceProvider,
+  // Token-based providers (user provides API key)
+  openrouter: tokenProvider,
+  groq: tokenProvider,
+  together: tokenProvider,
+  mistral: tokenProvider,
+  cerebras: tokenProvider,
+  novita: tokenProvider,
+  deepinfra: tokenProvider,
+  fireworks: tokenProvider,
+  sambanova: tokenProvider,
+  siliconflow: tokenProvider,
+  aihubmix: tokenProvider,
+  huggingface: tokenProvider,
+
   search: stubProvider,
   music: stubProvider,
   // G4F.space — all owner-based provider ids route to the single
