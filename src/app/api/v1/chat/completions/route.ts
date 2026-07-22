@@ -397,19 +397,6 @@ async function streamCompletion(
             model.provider === "llm7" ||
             model.provider === "heckai" ||
             model.provider === "spicywriter" ||
-            model.provider === "hfspace" ||
-            model.provider === "openrouter" ||
-            model.provider === "groq" ||
-            model.provider === "together" ||
-            model.provider === "mistral" ||
-            model.provider === "cerebras" ||
-            model.provider === "novita" ||
-            model.provider === "deepinfra" ||
-            model.provider === "fireworks" ||
-            model.provider === "sambanova" ||
-            model.provider === "siliconflow" ||
-            model.provider === "aihubmix" ||
-            model.provider === "huggingface" ||
             G4F_PROVIDER_IDS.has(model.provider);
 
           if (realStream) {
