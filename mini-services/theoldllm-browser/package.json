@@ -1,0 +1,10 @@
+{
+  "name": "theoldllm-browser",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

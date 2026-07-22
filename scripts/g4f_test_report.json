@@ -1,0 +1,24 @@
+[
+  {
+    "id": "srv_mrgy0nmbc8a86c407f17:models/gemini-flash-lite-latest",
+    "owned_by": "gemini-v1beta",
+    "model": "models/gemini-flash-lite-latest",
+    "label": "gemini-v1beta:models/gemini-flash-lite-latest",
+    "requests": 2382,
+    "basic_ok": false,
+    "basic_latency_ms": 504,
+    "basic_content": "",
+    "basic_error": "HTTP 429: [{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on "
+  },
+  {
+    "id": "srv_mkombumpae45db46dcb8:meta/llama-3.1-8b-instruct",
+    "owned_by": "nvidia.com",
+    "model": "meta/llama-3.1-8b-instruct",
+    "label": "nvidia.com:meta/llama-3.1-8b-instruct",
+    "requests": 2160,
+    "basic_ok": true,
+    "basic_latency_ms": 481,
+    "basic_content": "12",
+    "basic_error": ""
+  }
+]
