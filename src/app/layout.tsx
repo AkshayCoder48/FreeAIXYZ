@@ -77,7 +77,7 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${inter.variable} ${jetbrains.variable} ${pacifico.variable} antialiased bg-background text-foreground`}
-        style={{ fontFamily: "var(--font-body), system-ui, sans-serif" }}
+        suppressHydrationWarning
       >
         {children}
         <SonnerToaster
