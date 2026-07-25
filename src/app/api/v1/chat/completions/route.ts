@@ -84,10 +84,6 @@ export async function POST(request: Request) {
   const model = resolveGatewayModel(body.model);
   const useTools = hasTools(body.tools) && model.capabilities.tools;
   
-  // Extract optional auth token from request headers (for HF Space, etc.)
-  const authToken = request.headers.get("x-hf-token") || 
-                    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || 
-                    undefined;
   const wantsWebSearch = body.web_search === true;
 
   // Build the provider message list. Tool system prompt is prepended when tools
@@ -135,9 +131,9 @@ export async function POST(request: Request) {
   const provider = getProvider(model.provider);
 
   if (wantsStream) {
-    return streamCompletion(model, provider, messages, useTools, request, authToken);
+    return streamCompletion(model, provider, messages, useTools, request);
   }
-  return jsonCompletion(model, provider, messages, useTools, authToken);
+  return jsonCompletion(model, provider, messages, useTools);
 }
 
 /** Non-streaming completion. */
@@ -373,20 +369,6 @@ async function streamCompletion(
           // (re-paced by the gateway).
           // All G4F.space owner-based provider ids route to g4fSpaceProvider
           // which genuinely streams via SSE.
-          const G4F_PROVIDER_IDS = new Set([
-            "easychat", "ollama-swarm", "yqcloud",
-            "wewordle", "qwen-chat", "pollinations-image",
-            "pollinations-g4f", "perplexity-g4f", "opera-aria",
-            "openaifm", "huggingspace", "bfl-flux",
-            "anyprovider", "api-airforce", "audio",
-            "cerebras-ai", "community-day-2026", "crowllm-com",
-            "deepinfra-com", "gemini-cli", "gemini-v1beta",
-            "gen-pollinations-ai", "google-antigravity", "groq-com",
-            "kobold-llamacpp-swarm", "ktai", "modelscope-ai",
-            "nectar-pollinations-ai", "nvidia-com", "ollama-com",
-            "ollama-pro", "opencode-ai-zen", "openrouter-ai",
-            "perplexity", "pollinations-ai", "qwen",
-          ]);
           const realStream =
             model.provider === "nsfwlover" ||
             model.provider === "surfsense" ||
@@ -396,14 +378,12 @@ async function streamCompletion(
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
             model.provider === "heckai" ||
-            model.provider === "spicywriter" ||
-            G4F_PROVIDER_IDS.has(model.provider);
+            model.provider === "spicywriter";
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.
             let hasContent = false;
             for await (const delta of provider.stream({
-              authToken,
               model,
               messages,
               signal,
