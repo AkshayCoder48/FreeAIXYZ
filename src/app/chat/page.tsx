@@ -29,6 +29,8 @@ import {
   Zap,
   ExternalLink,
   Clock,
+  Key,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ModelSelect } from "@/components/landing/model-select";
+import { findModel } from "@/lib/providers";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +98,67 @@ interface StoredFile {
 const CHATS_KEY = "freeaipt_chats";
 const FILES_KEY = "freeaipt_files";
 const DEFAULT_MODEL = "toolbaz-v4.5-fast";
+const API_KEYS_STORAGE_KEY = "freeaixyz_api_keys";
+
+/** Map gated provider → localStorage field + request header name. */
+const GATED_KEY_MAP: Record<
+  string,
+  { field: "zai" | "openrouter" | "groq"; header: string }
+> = {
+  zai: { field: "zai", header: "x-zai-token" },
+  "openrouter-key": { field: "openrouter", header: "x-openrouter-key" },
+  "groq-key": { field: "groq", header: "x-groq-key" },
+};
+
+interface StoredApiKeys {
+  zai: string;
+  openrouter: string;
+  groq: string;
+}
+
+function loadApiKeys(): StoredApiKeys {
+  if (typeof window === "undefined")
+    return { zai: "", openrouter: "", groq: "" };
+  try {
+    const raw = localStorage.getItem(API_KEYS_STORAGE_KEY);
+    if (!raw) return { zai: "", openrouter: "", groq: "" };
+    const parsed = JSON.parse(raw) as Partial<StoredApiKeys>;
+    return {
+      zai: parsed.zai ?? "",
+      openrouter: parsed.openrouter ?? "",
+      groq: parsed.groq ?? "",
+    };
+  } catch {
+    return { zai: "", openrouter: "", groq: "" };
+  }
+}
+
+/** Build the API-key headers for a given model id (empty object if no key needed). */
+function buildKeyHeaders(modelId: string): Record<string, string> {
+  const m = findModel(modelId);
+  if (!m || !m.requiresKey || !m.keyHeader) return {};
+  const keys = loadApiKeys();
+  const mapping = GATED_KEY_MAP[m.provider];
+  if (!mapping) return {};
+  const value = keys[mapping.field]?.trim();
+  if (!value) return {};
+  return { [mapping.header]: value };
+}
+
+/** Returns the BYOK provider name if the model requires a key the user hasn't set. */
+function missingKeyName(modelId: string): string | null {
+  const m = findModel(modelId);
+  if (!m || !m.requiresKey) return null;
+  const keys = loadApiKeys();
+  const mapping = GATED_KEY_MAP[m.provider];
+  if (!mapping) return null;
+  const value = keys[mapping.field]?.trim();
+  if (value) return null;
+  if (m.provider === "zai") return "Z.AI";
+  if (m.provider === "openrouter-key") return "OpenRouter";
+  if (m.provider === "groq-key") return "Groq";
+  return null;
+}
 
 const FILE_EXTENSIONS: Record<string, string> = {
   python: "py",
@@ -667,17 +731,25 @@ export default function ChatPage() {
         role: m.role,
         content: m.content,
       }));
+      const keyHeaders = buildKeyHeaders(model);
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...keyHeaders },
         signal: controller.signal,
         body: JSON.stringify({ model, messages: apiMessages, stream }),
       });
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
+        let parsedMessage: string | null = null;
+        try {
+          const parsed = JSON.parse(errText);
+          parsedMessage = parsed?.error?.message ?? null;
+        } catch {
+          /* ignore — fall through to raw text */
+        }
         throw new Error(
-          `HTTP ${res.status}${errText ? `: ${errText.slice(0, 200)}` : ""}`,
+          `HTTP ${res.status}${parsedMessage ? `: ${parsedMessage}` : errText ? `: ${errText.slice(0, 200)}` : ""}`,
         );
       }
 
@@ -822,6 +894,15 @@ export default function ChatPage() {
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
+
+    // Block sending if the selected model requires a key the user hasn't added.
+    const missing = missingKeyName(model);
+    if (missing) {
+      toast.error(
+        `This model requires an API key. Add your ${missing} key in Settings.`,
+      );
+      return;
+    }
 
     if (!currentChatId) {
       setCurrentChatId(generateId());
@@ -1060,6 +1141,23 @@ export default function ChatPage() {
               )}
             </Badge>
           </div>
+
+          {/* BYOK banner — shown when the selected model needs a key the user hasn't added */}
+          {mounted && missingKeyName(model) && (
+            <Link
+              href="/settings"
+              className="flex items-center gap-2 mx-3 mt-2 rounded-lg border border-[#ff9a3c]/40 bg-[#ff9a3c]/10 px-3 py-2 text-xs hover:bg-[#ff9a3c]/15 transition-colors shrink-0"
+            >
+              <Key className="h-3.5 w-3.5 text-[#ff9a3c] shrink-0" />
+              <span className="flex-1 text-foreground">
+                This model requires an API key.{" "}
+                <span className="text-[#ff9a3c] font-medium underline-offset-2 hover:underline">
+                  Click here to add one.
+                </span>
+              </span>
+              <AlertCircle className="h-3.5 w-3.5 text-[#ff9a3c] shrink-0" />
+            </Link>
+          )}
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">

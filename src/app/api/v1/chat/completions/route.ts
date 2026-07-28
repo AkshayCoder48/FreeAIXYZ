@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import {
   resolveGatewayModel,
   getProvider,
+  isGatedProvider,
+  GATED_PROVIDERS,
+  GatedKeyMissingError,
   type GatewayModel,
   type ProviderMessage,
 } from "@/lib/providers";
@@ -40,6 +43,14 @@ function errorResponse(
 
 /** Translate an upstream error into an OpenAI-shaped error response. */
 function upstreamErrorResponse(err: unknown) {
+  if (err instanceof GatedKeyMissingError) {
+    return errorResponse(
+      err.message,
+      401,
+      "authentication_required",
+      "authentication_required",
+    );
+  }
   if (err instanceof ToolbazError) {
     const detail = err.upstreamBody;
     let status = 502;
@@ -57,6 +68,16 @@ function upstreamErrorResponse(err: unknown) {
     return errorResponse(err.message, status, "upstream_error", code);
   }
   const message = err instanceof Error ? err.message : "Unknown upstream error";
+  // Surface upstream 401/403 from gated providers as authentication errors.
+  const isAuth = /\bHTTP (401|403)\b/i.test(message) || /unauthorized|forbidden/i.test(message);
+  if (isAuth) {
+    return errorResponse(
+      message,
+      401,
+      "authentication_required",
+      "authentication_required",
+    );
+  }
   const isQuota = /quota|rate.?limit|429/i.test(message);
   return errorResponse(
     message,
@@ -83,7 +104,27 @@ export async function POST(request: Request) {
 
   const model = resolveGatewayModel(body.model);
   const useTools = hasTools(body.tools) && model.capabilities.tools;
-  
+
+  // ─── Gated model: extract the user-supplied API key ────────────────────
+  // The chat client sends provider-specific headers (x-zai-token,
+  // x-openrouter-key, x-groq-key). We read whichever one matches the
+  // gated provider for this model. If the model requires a key and none
+  // is present, return a 401 with a clear, actionable message.
+  let authToken: string | undefined;
+  if (isGatedProvider(model.provider)) {
+    const cfg = GATED_PROVIDERS[model.provider];
+    const raw = request.headers.get(cfg.keyHeader);
+    authToken = raw && raw.trim() ? raw.trim() : undefined;
+    if (!authToken) {
+      return errorResponse(
+        `This model requires an API key. Please go to /settings to add your ${cfg.name} token.`,
+        401,
+        "authentication_required",
+        "authentication_required",
+      );
+    }
+  }
+
   const wantsWebSearch = body.web_search === true;
 
   // Build the provider message list. Tool system prompt is prepended when tools
@@ -131,9 +172,9 @@ export async function POST(request: Request) {
   const provider = getProvider(model.provider);
 
   if (wantsStream) {
-    return streamCompletion(model, provider, messages, useTools, request);
+    return streamCompletion(model, provider, messages, useTools, request, authToken);
   }
-  return jsonCompletion(model, provider, messages, useTools);
+  return jsonCompletion(model, provider, messages, useTools, authToken);
 }
 
 /** Non-streaming completion. */
@@ -378,7 +419,10 @@ async function streamCompletion(
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
             model.provider === "heckai" ||
-            model.provider === "spicywriter";
+            model.provider === "spicywriter" ||
+            model.provider === "zai" ||
+            model.provider === "openrouter-key" ||
+            model.provider === "groq-key";
 
           if (realStream) {
             // Genuine upstream streaming: emit each delta immediately.
@@ -387,6 +431,7 @@ async function streamCompletion(
               model,
               messages,
               signal,
+              authToken,
             })) {
               if (signal.aborted) break;
               if (delta) {

@@ -14,6 +14,7 @@ import {
   Cpu,
   Server,
   Globe,
+  Key,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,9 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   llm7: "text-blue-500",
   heckai: "text-fuchsia-500",
   spicywriter: "text-rose-400",
+  zai: "text-emerald-500",
+  "openrouter-key": "text-indigo-500",
+  "groq-key": "text-teal-500",
   search: "text-cyan-500",
   music: "text-pink-500",
 };
@@ -177,9 +181,21 @@ export function ModelsShowcase() {
                     </span>
                   </div>
                 </div>
-                <Badge variant="outline" className={cn("text-[9px] shrink-0", cat.color)}>
-                  {cat.label}
-                </Badge>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge variant="outline" className={cn("text-[9px]", cat.color)}>
+                    {cat.label}
+                  </Badge>
+                  {m.requiresKey && (
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] border-[#ff9a3c]/40 text-[#ff9a3c] bg-[#ff9a3c]/5 flex items-center gap-1"
+                      title={`Requires a ${PROVIDER_INFO[m.provider]?.name ?? ""} API key (header: ${m.keyHeader})`}
+                    >
+                      <Key className="h-2.5 w-2.5" />
+                      BYOK
+                    </Badge>
+                  )}
+                </div>
               </div>
 
               {/* description */}

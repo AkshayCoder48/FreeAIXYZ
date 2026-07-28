@@ -25,6 +25,9 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "zai"
+  | "openrouter-key"
+  | "groq-key"
   | "search"
   | "music";
 
@@ -56,6 +59,10 @@ export interface GatewayModel {
   contextWindow: number;
   /** Whether the model is currently reachable from this gateway. */
   experimental?: boolean;
+  /** Whether the model requires an API key from the user. */
+  requiresKey?: boolean;
+  /** The HTTP header the gateway reads the API key from (when requiresKey=true). */
+  keyHeader?: string;
 }
 
 export const MODELS: readonly GatewayModel[] = [
@@ -129,6 +136,20 @@ export const MODELS: readonly GatewayModel[] = [
   // Uncensored system preamble auto-injected for nsfw-* models.
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+
+  // ─── Gated providers (require user-supplied API key) ──────────────────────
+  // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
+  gated("zai-glm-5-2", "glm-5.2", "GLM-5.2 — Z.AI flagship, excellent for coding (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
+  gated("zai-glm-5-1", "GLM-5.1", "GLM-5.1 — previous Z.AI flagship (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
+  gated("zai-glm-5-turbo", "GLM-5-Turbo", "GLM-5-Turbo — fast Z.AI chat model (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
+  gated("zai-glm-4-7", "glm-4.7", "GLM-4.7 — classic high-performance Z.AI model (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
+  // OpenRouter — API key from openrouter.ai/keys, sent via x-openrouter-key
+  gated("or-gpt-5", "openai/gpt-5", "GPT-5 via OpenRouter — flagship reasoning model (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 128000),
+  gated("or-claude-sonnet-5", "anthropic/claude-sonnet-5", "Claude Sonnet 5 via OpenRouter — Anthropic's latest (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 200000),
+  gated("or-gemini-3-5-flash", "google/gemini-3.5-flash", "Gemini 3.5 Flash via OpenRouter — fast and capable (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 1000000),
+  // Groq — API key from console.groq.com/keys, sent via x-groq-key
+  gated("groq-llama-3-3-70b", "llama-3.3-70b-versatile", "Llama 3.3 70B Versatile on Groq — ultra-fast inference (requires Groq key)", "groq-key", "x-groq-key", 128000),
+  gated("groq-gpt-oss-120b", "openai/gpt-oss-120b", "GPT-OSS 120B on Groq — open-weight model, ultra-fast (requires Groq key)", "groq-key", "x-groq-key", 128000),
 
 
 
@@ -403,6 +424,35 @@ function sw(
   };
 }
 
+/** Gated model helper — requires the user to supply their own API key. */
+function gated(
+  id: string,
+  upstream: string,
+  description: string,
+  provider: "zai" | "openrouter-key" | "groq-key",
+  keyHeader: string,
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider,
+    upstream,
+    description,
+    category: "professional",
+    contextWindow,
+    requiresKey: true,
+    keyHeader,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 
 
 
@@ -523,5 +573,17 @@ export const PROVIDER_INFO: Record<
   "unlimitedai": {
     name: "UnlimitedAI",
     description: "Uncensored reasoning + web search, NDJSON token streaming",
+  },
+  "zai": {
+    name: "Z.AI (BYOK)",
+    description: "4 GLM models (GLM-5.2, 5.1, 5-Turbo, 4.7) — requires your Z.AI JWT token from chat.z.ai local storage",
+  },
+  "openrouter-key": {
+    name: "OpenRouter (BYOK)",
+    description: "3 models (GPT-5, Claude Sonnet 5, Gemini 3.5 Flash) — requires your OpenRouter API key from openrouter.ai/keys",
+  },
+  "groq-key": {
+    name: "Groq (BYOK)",
+    description: "2 models (Llama 3.3 70B, GPT-OSS 120B) on ultra-fast Groq inference — requires your Groq API key from console.groq.com/keys",
   },
 };
