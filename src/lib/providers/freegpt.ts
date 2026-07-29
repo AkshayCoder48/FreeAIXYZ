@@ -170,9 +170,9 @@ async function fetchChallenge(uuid: string): Promise<{
     (json.difficulty as number) ??
     (json.level as number) ??
     4;
-  if (!challenge) {
+  if (!challenge || !challengeId) {
     throw new Error(
-      `FreeGPT challenge response missing 'challenge' field: ${JSON.stringify(json).slice(0, 200)}`,
+      `FreeGPT challenge response unexpected: ${JSON.stringify(json).slice(0, 300)}`,
     );
   }
   return { challenge, difficulty };
