@@ -250,124 +250,15 @@ export interface CompletionResult {
  *   1. generate session id + fingerprint
  *   2. POST token.php  -> captcha token
  *   3. POST writing.php -> completion text
+ *
+ * No context compression or chunking — if the prompt is too long,
+ * Toolbaz will return an error and the caller can handle it.
  */
-/** Maximum prompt length Toolbaz accepts (approx 5000 chars including delimiters).
- * If the prompt exceeds this, we split it into chunks and send sequentially,
- * accumulating context from each response. */
-const MAX_PROMPT_LENGTH = 4500;
-
-/** Check if a prompt exceeds the Toolbaz limit. */
-function isPromptTooLong(text: string): boolean {
-  return text.length > MAX_PROMPT_LENGTH;
-}
-
-/** Split a long conversation into chunks that fit within the limit.
- * Each chunk includes enough context from previous responses. */
-function chunkConversation(turns: PromptTurn[]): PromptTurn[][] {
-  const fullText = turnsToText(turns);
-  if (fullText.length <= MAX_PROMPT_LENGTH) {
-    return [turns];
-  }
-
-  // For a single long user message, split the message content
-  if (turns.length === 1 && turns[0].role === "user") {
-    const chunks: PromptTurn[][] = [];
-    const content = turns[0].text;
-    const chunkSize = MAX_PROMPT_LENGTH - 200; // Leave room for delimiters
-    let offset = 0;
-    let partNum = 1;
-
-    while (offset < content.length) {
-      const chunk = content.slice(offset, offset + chunkSize);
-      const isLast = offset + chunkSize >= content.length;
-      const prefix = `[Part ${partNum}${isLast ? " (final)" : ""}] `;
-      chunks.push([{ role: "user", text: `${prefix}${chunk}${isLast ? "\n\nPlease process this final part and give a complete response." : "\n\nPlease acknowledge this part briefly, I will send more."}` }]);
-      offset += chunkSize;
-      partNum++;
-    }
-    return chunks;
-  }
-
-  // For multi-turn conversations, summarize older turns
-  const result: PromptTurn[] = [];
-  let currentLength = 0;
-
-  for (const turn of turns) {
-    const turnText = `${turn.role}: ${turn.text}`;
-    if (currentLength + turnText.length > MAX_PROMPT_LENGTH - 500 && result.length > 0) {
-      // Summarize: keep the system message and last few turns
-      break;
-    }
-    result.push(turn);
-    currentLength += turnText.length;
-  }
-
-  // If we couldn't fit everything, add a summary note
-  if (result.length < turns.length) {
-    result.push({
-      role: "system",
-      text: "[Note: Earlier conversation context was truncated to fit the prompt limit. Please respond based on the available context.]",
-    });
-  }
-
-  return [result];
-}
-
 export async function complete({
   model,
   turns,
   signal,
 }: CompletionOptions): Promise<CompletionResult> {
-  // Check if we need to chunk the prompt
-  const fullText = turnsToText(turns);
-  
-  if (isPromptTooLong(fullText)) {
-    // Split into chunks and process sequentially
-    const chunks = chunkConversation(turns);
-    let accumulatedResponse = "";
-    let lastSessionId = "";
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const { captcha, sessionId, userAgent } = await requestCaptchaToken();
-      lastSessionId = sessionId;
-
-      const text = turnsToText(chunk);
-      const body = new URLSearchParams({
-        text,
-        capcha: captcha,
-        model,
-        session_id: sessionId,
-      }).toString();
-
-      const res = await fetch(WRITING_ENDPOINT, {
-        method: "POST",
-        headers: buildHeaders(userAgent),
-        body,
-        signal,
-      });
-
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        throw new ToolbazError(model, res.status, raw);
-      }
-
-      const raw = await res.text();
-      const cleaned = cleanResponse(raw);
-      
-      if (i < chunks.length - 1) {
-        // Non-final chunk — just accumulate (response is an acknowledgment)
-        accumulatedResponse += cleaned + "\n\n";
-      } else {
-        // Final chunk — this is the main response
-        accumulatedResponse += cleaned;
-      }
-    }
-
-    return { text: accumulatedResponse.trim(), model, sessionId: lastSessionId };
-  }
-
-  // Normal (non-chunked) flow
   const { captcha, sessionId, userAgent } = await requestCaptchaToken();
 
   const text = turnsToText(turns);
