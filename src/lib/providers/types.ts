@@ -7,12 +7,25 @@ export interface ProviderMessage {
   content: string;
 }
 
+export interface ProviderTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 export interface ProviderCompletionRequest {
   model: GatewayModel;
   messages: ProviderMessage[];
   signal?: AbortSignal;
   /** Optional auth token (e.g., LMArena session token from /settings). */
   authToken?: string;
+  /** Optional tools for function calling (passed through to providers that support it). */
+  tools?: ProviderTool[];
+  /** Optional tool choice: "auto" | "none" | "required" */
+  toolChoice?: string;
 }
 
 export interface ProviderCompletionResult {

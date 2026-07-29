@@ -245,10 +245,39 @@ function parseOpenAISseLine(line: string): string | null {
   if (!data || data === "[DONE]") return null;
   try {
     const json = JSON.parse(data) as {
-      choices?: Array<{ delta?: { content?: string } }>;
+      choices?: Array<{
+        delta?: {
+          content?: string;
+          tool_calls?: Array<{
+            index: number;
+            id?: string;
+            type?: string;
+            function?: { name?: string; arguments?: string };
+          }>;
+        };
+        finish_reason?: string;
+      }>;
     };
-    const delta = json?.choices?.[0]?.delta?.content;
-    return typeof delta === "string" ? delta : null;
+    const choice = json?.choices?.[0];
+    if (!choice) return null;
+
+    // Handle content deltas
+    const content = choice.delta?.content;
+    if (typeof content === "string" && content) return content;
+
+    // Handle tool_calls deltas — convert to text that the gateway can parse
+    const toolCalls = choice.delta?.tool_calls;
+    if (toolCalls && toolCalls.length > 0) {
+      // Format tool calls as a JSON envelope that the gateway's parseToolCalls can parse
+      const formatted = toolCalls.map((tc) => ({
+        name: tc.function?.name || "",
+        arguments: tc.function?.arguments || "",
+      }));
+      // Return the tool call as a special marker
+      return JSON.stringify({ __tool_calls: formatted });
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -257,10 +286,32 @@ function parseOpenAISseLine(line: string): string | null {
 /** Extract assistant text from a non-streaming OpenAI-compatible JSON body. */
 function extractNonStreamText(json: unknown): string {
   type OpenAiShape = {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{
+      message?: {
+        content?: string;
+        tool_calls?: Array<{
+          id?: string;
+          type?: string;
+          function?: { name?: string; arguments?: string };
+        }>;
+      };
+      finish_reason?: string;
+    }>;
   };
   const data = json as OpenAiShape | undefined;
-  const text = data?.choices?.[0]?.message?.content;
+  const choice = data?.choices?.[0];
+  if (!choice) return "";
+
+  // If there are tool_calls, format them as a tool-call envelope
+  if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+    const calls = choice.message.tool_calls.map((tc) => ({
+      name: tc.function?.name || "",
+      arguments: tc.function?.arguments || "",
+    }));
+    return JSON.stringify({ __tool_calls: calls });
+  }
+
+  const text = choice.message?.content;
   return typeof text === "string" ? text : "";
 }
 
@@ -319,14 +370,24 @@ export const freeGptProvider: Provider = {
     };
 
     // 5. POST completion (non-streaming)
-    const body = {
+    const body: Record<string, unknown> = {
       model: req.model.upstream,
       messages: req.messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
       stream: false,
+      temperature: 0.5,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      top_p: 1,
     };
+
+    // Pass through tools if provided (FreeGPT supports native tool calling)
+    if (req.tools && req.tools.length > 0) {
+      body.tools = req.tools;
+      body.tool_choice = req.toolChoice || "auto";
+    }
 
     const res = await fetch(`${BASE_URL}${COMPLETIONS_PATH}`, {
       method: "POST",
@@ -401,14 +462,24 @@ export const freeGptProvider: Provider = {
     };
 
     // 5. POST completion (streaming)
-    const body = {
+    const body: Record<string, unknown> = {
       model: req.model.upstream,
       messages: req.messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
       stream: true,
+      temperature: 0.5,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      top_p: 1,
     };
+
+    // Pass through tools if provided (FreeGPT supports native tool calling)
+    if (req.tools && req.tools.length > 0) {
+      body.tools = req.tools;
+      body.tool_choice = req.toolChoice || "auto";
+    }
 
     const res = await fetch(`${BASE_URL}${COMPLETIONS_PATH}`, {
       method: "POST",

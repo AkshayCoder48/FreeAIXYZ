@@ -8,6 +8,7 @@ import {
   type GatewayModel,
   type ProviderMessage,
 } from "@/lib/providers";
+import type { ProviderTool } from "@/lib/providers/types";
 import { ToolbazError } from "@/lib/toolbaz";
 import {
   generateCompletionId,
@@ -153,10 +154,15 @@ export async function POST(request: Request) {
   }
 
   if (useTools) {
-    messages.push({
-      role: "system",
-      content: buildToolSystemPrompt(body.tools!, body.tool_choice),
-    });
+    // For FreeGPT models, tools are passed natively to the API (not via prompt injection)
+    if (model.provider === "freegpt") {
+      // Tools will be passed through via ProviderCompletionRequest
+    } else {
+      messages.push({
+        role: "system",
+        content: buildToolSystemPrompt(body.tools!, body.tool_choice),
+      });
+    }
   }
   for (const m of body.messages) {
     const text = messageToText(m);
@@ -171,10 +177,14 @@ export async function POST(request: Request) {
   const wantsStream = body.stream === true;
   const provider = getProvider(model.provider);
 
+  // Pass tools natively for FreeGPT, otherwise use prompt injection
+  const nativeTools = useTools && model.provider === "freegpt" ? body.tools : undefined;
+  const nativeToolChoice = nativeTools ? (typeof body.tool_choice === "string" ? body.tool_choice : "auto") : undefined;
+
   if (wantsStream) {
-    return streamCompletion(model, provider, messages, useTools, request, authToken);
+    return streamCompletion(model, provider, messages, useTools, request, authToken, nativeTools, nativeToolChoice);
   }
-  return jsonCompletion(model, provider, messages, useTools, authToken);
+  return jsonCompletion(model, provider, messages, useTools, authToken, nativeTools, nativeToolChoice);
 }
 
 /** Non-streaming completion. */
@@ -184,10 +194,18 @@ async function jsonCompletion(
   messages: ProviderMessage[],
   useTools: boolean,
   authToken?: string,
+  tools?: unknown[],
+  toolChoice?: string,
 ) {
   let text: string;
   try {
-    const result = await provider.complete({ model, messages, authToken });
+    const result = await provider.complete({
+      model,
+      messages,
+      authToken,
+      tools: tools as ProviderTool[] | undefined,
+      toolChoice,
+    });
     text = result.text;
   } catch (err) {
     return upstreamErrorResponse(err);
@@ -285,6 +303,8 @@ async function streamCompletion(
   useTools: boolean,
   request: Request,
   authToken?: string,
+  tools?: unknown[],
+  toolChoice?: string,
 ) {
   const id = generateCompletionId();
   const created = Math.floor(Date.now() / 1000);
@@ -326,7 +346,7 @@ async function streamCompletion(
       try {
         if (useTools) {
           // ---- Tool-calling path: buffer full response, parse, emit ----
-          const result = await provider.complete({ model, messages, signal, authToken });
+          const result = await provider.complete({ model, messages, signal, authToken, tools: tools as ProviderTool[] | undefined, toolChoice });
           clearInterval(heartbeatTimer);
           if (signal.aborted) {
             cleanup();
@@ -433,6 +453,8 @@ async function streamCompletion(
               messages,
               signal,
               authToken,
+              tools: tools as ProviderTool[] | undefined,
+              toolChoice,
             })) {
               if (signal.aborted) break;
               if (delta) {
@@ -477,7 +499,7 @@ async function streamCompletion(
             });
           } else {
             // Non-streaming provider: fetch full text, then re-pace.
-            const result = await provider.complete({ model, messages, signal, authToken });
+            const result = await provider.complete({ model, messages, signal, authToken, tools: tools as ProviderTool[] | undefined, toolChoice });
             clearInterval(heartbeatTimer);
             if (signal.aborted) {
               cleanup();

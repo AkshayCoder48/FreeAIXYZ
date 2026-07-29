@@ -479,7 +479,7 @@ function fg(
     contextWindow,
     capabilities: {
       streaming: true,
-      tools: opts?.tools ?? false,
+      tools: true,
       systemPrompt: true,
       multiTurn: true,
       vision: false,
