@@ -275,7 +275,7 @@ export const freeGptProvider: Provider = {
     const uuid = randomUUID();
 
     // 2. Fetch challenge
-    const { challenge, difficulty } = await fetchChallenge(uuid);
+    const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
 
     // 3. Generate secure payload via WASM signer
     const timestamp = Date.now().toString();
@@ -300,7 +300,11 @@ export const freeGptProvider: Provider = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
       uuid: uuid,
       "x-secure-challenge": challenge,
+      "x-secure-challenge-id": challengeId,
+      "x-secure-challenge-expires-at": String(expiresAt),
+      "x-secure-challenge-version": version,
       "x-secure-client-ip": clientIp,
+      "x-origin": "https://freegpt.tech",
       "cf-turnstile-token": "",
       ...secureHeaders,
     };
@@ -351,7 +355,7 @@ export const freeGptProvider: Provider = {
     const uuid = randomUUID();
 
     // 2. Fetch challenge
-    const { challenge, difficulty } = await fetchChallenge(uuid);
+    const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
 
     // 3. Generate secure payload via WASM signer
     const timestamp = Date.now().toString();
@@ -375,7 +379,11 @@ export const freeGptProvider: Provider = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
       uuid: uuid,
       "x-secure-challenge": challenge,
+      "x-secure-challenge-id": challengeId,
+      "x-secure-challenge-expires-at": String(expiresAt),
+      "x-secure-challenge-version": version,
       "x-secure-client-ip": clientIp,
+      "x-origin": "https://freegpt.tech",
       "cf-turnstile-token": "",
       ...secureHeaders,
     };
