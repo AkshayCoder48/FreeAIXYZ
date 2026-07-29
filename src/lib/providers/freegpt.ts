@@ -31,8 +31,9 @@ import path from "node:path";
 import { randomUUID, randomBytes } from "node:crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
 
-const BASE_URL = "https://standalone.freegpt.win:3001";
+const BASE_URL = "https://freegpt.tech";
 const CHALLENGE_PATH = "/api/challenge";
+const FALLBACK_URL = "https://standalone.freegpt.win:3001";
 const COMPLETIONS_PATH = "/api/openai/oneapi/v1/chat/completions";
 
 /** Maximum requests per minute per client IP. */
