@@ -142,6 +142,9 @@ function extractClientIp(req: ProviderCompletionRequest): string {
 async function fetchChallenge(uuid: string): Promise<{
   challenge: string;
   difficulty: number;
+  challengeId: string;
+  expiresAt: number;
+  version: string;
 }> {
   const res = await fetch(`${BASE_URL}${CHALLENGE_PATH}`, {
     method: "GET",
@@ -175,7 +178,7 @@ async function fetchChallenge(uuid: string): Promise<{
       `FreeGPT challenge response unexpected: ${JSON.stringify(json).slice(0, 300)}`,
     );
   }
-  return { challenge, difficulty };
+  return { challenge, difficulty, challengeId, expiresAt, version };
 }
 
 /**
