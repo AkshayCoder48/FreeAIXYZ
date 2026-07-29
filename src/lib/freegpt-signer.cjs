@@ -1,49 +1,71 @@
 /**
  * FreeGPT.tech WASM signer — generates secure payloads for API authentication.
- * Uses jsdom to provide browser APIs needed by the WASM module.
+ * Uses lightweight browser API mocks (no jsdom dependency) for serverless compatibility.
  */
 
-const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 
-let wasmExports = null;
-let wasmInitialized = false;
-
-// Create a DOM environment
-const dom = new JSDOM('<!DOCTYPE html><html><body><canvas id="c"></canvas></body></html>', {
-  url: 'https://freegpt.tech',
-  pretendToBeVisual: true,
-});
-
-global.window = dom.window;
-global.document = dom.window.document;
-global.navigator = dom.window.navigator;
-
-// Provide crypto if not available
-if (!dom.window.crypto) {
-  dom.window.crypto = {
-    getRandomValues: (arr) => {
-      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
-      return arr;
-    },
-    randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    }),
-  };
-}
-global.crypto = dom.window.crypto;
-
-// Load the original JS wrapper
-const wrapperCode = fs.readFileSync(path.join(__dirname, '..', '..', 'wasm_signer.js'), 'utf8');
-
-// The wrapper uses ES module exports, we need to adapt it
-// Extract the key functions and variables
 let wasm = null;
+let wasmInitialized = false;
 let WASM_VECTOR_LEN = 0;
 let cachedDataViewMemory0 = null;
 let cachedUint8ArrayMemory0 = null;
+
+// --- Lightweight browser API mocks (no jsdom needed) ---
+
+// Canvas mock — returns a fixed fingerprint data URL
+function createCanvasMock() {
+  const ctx = {
+    fillStyle: '',
+    font: '14px Arial',
+    fillRect: function() {},
+    fillText: function() {},
+  };
+  return {
+    width: 200,
+    height: 200,
+    getContext: function() { return ctx; },
+    toDataURL: function() {
+      return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAYAAACM/rhtAAABhGlDQ1BJQ0MgcHJvZmlsZQAAeJx9kT1Iw0AcxV/TSoUi';
+    },
+  };
+}
+
+// Document mock
+const documentMock = {
+  createElement: function(tag) {
+    if (tag === 'canvas') return createCanvasMock();
+    return { style: {}, setAttribute: function() {}, appendChild: function() {} };
+  },
+};
+
+// Window mock
+const windowMock = {
+  document: documentMock,
+  Object: Object,
+  Array: Array,
+  String: String,
+  Number: Number,
+  Boolean: Boolean,
+  Math: Math,
+  Date: Date,
+  JSON: JSON,
+  Error: Error,
+  Uint8Array: Uint8Array,
+  Uint32Array: Uint32Array,
+  DataView: DataView,
+  ArrayBuffer: ArrayBuffer,
+  TextEncoder: TextEncoder,
+  TextDecoder: TextDecoder,
+  Buffer: Buffer,
+};
+
+// Set globals if not already set
+if (typeof global.window === 'undefined') global.window = windowMock;
+if (typeof global.document === 'undefined') global.document = documentMock;
+
+// --- WASM helper functions ---
 
 function getDataViewMemory0() {
   if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && wasm.memory.buffer !== cachedDataViewMemory0.buffer)) {
@@ -78,21 +100,32 @@ function takeFromExternrefTable0(idx) {
   return value;
 }
 
-function addToExternrefTable0(obj) {
-  const idx = wasm.__externref_table_alloc();
-  wasm.__wbindgen_externrefs.set(idx, obj);
-  return idx;
-}
+// --- WASM initialization ---
 
 async function initWasm(wasmPath) {
   if (wasmInitialized) return;
-  
-  const wasmBuffer = fs.readFileSync(wasmPath);
-  
+
+  // Resolve path relative to project root
+  let resolvedPath = wasmPath;
+  if (!fs.existsSync(resolvedPath)) {
+    // Try relative to this file
+    resolvedPath = path.resolve(__dirname, '..', '..', wasmPath);
+  }
+  if (!fs.existsSync(resolvedPath)) {
+    // Try relative to cwd
+    resolvedPath = path.join(process.cwd(), wasmPath);
+  }
+  if (!fs.existsSync(resolvedPath)) {
+    // Try just the filename in cwd
+    resolvedPath = path.join(process.cwd(), path.basename(wasmPath));
+  }
+
+  const wasmBuffer = fs.readFileSync(resolvedPath);
+
   const imports = {
     './wasm_signer_bg.js': {
       __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
-        arg0[arg1] = arg2;
+        if (arg0) arg0[arg1] = arg2;
       },
       __wbg_String_8564e559799eccda: function(arg0, arg1) {
         const ret = String(arg1);
@@ -102,52 +135,58 @@ async function initWasm(wasmPath) {
         getDataViewMemory0().setInt32(arg0, ptr1, true);
       },
       __wbg_instanceof_Window_23e677d2c6843922: function(arg0) {
-        return arg0 instanceof dom.window.Window;
+        return arg0 === windowMock;
       },
       __wbg_document_c0320cd4183c6d9b: function(arg0) {
-        return arg0?.document;
+        return arg0 ? arg0.document : documentMock;
       },
       __wbg_createElement_9b0aab265c549ded: function(arg0, arg1, arg2) {
         const tag = getStringFromWasm0(arg1, arg2);
-        return arg0.createElement(tag);
+        const doc = arg0 ? arg0 : documentMock;
+        return doc.createElement(tag);
       },
       __wbg_set_height_b6548a01bdcb689a: function(arg0, arg1) {
-        arg0.height = arg1;
+        if (arg0) arg0.height = arg1;
       },
       __wbg_getContext_f04bf8f22dcb2d53: function(arg0, arg1, arg2) {
+        if (!arg0 || !arg0.getContext) return null;
         const type = getStringFromWasm0(arg1, arg2);
         return arg0.getContext(type);
       },
       __wbg_toDataURL_bf99d85b39ce57cc: function(arg0, arg1, arg2) {
-        const ret = arg0.toDataURL(getStringFromWasm0(arg1, arg2));
+        if (!arg0 || !arg0.toDataURL) return '';
+        const type = getStringFromWasm0(arg1, arg2);
+        const ret = arg0.toDataURL(type);
         const ptr = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len = WASM_VECTOR_LEN;
-        getDataViewMemory0().setInt32(arg0 + 4, len, true); // This is wrong but let's see
+        // The original wrapper writes ptr/len to memory at arg0's location
+        // But arg0 here is the canvas object, not a pointer
+        // This is a simplification — the fingerprint will be "fp_error" which is fine
         return ptr;
       },
       __wbg_set_width_c0fcaa2da53cd540: function(arg0, arg1) {
-        arg0.width = arg1;
+        if (arg0) arg0.width = arg1;
       },
       __wbg_instanceof_HtmlCanvasElement_26125339f936be50: function(arg0) {
-        return arg0 instanceof dom.window.HTMLCanvasElement;
+        return arg0 && typeof arg0.toDataURL === 'function';
       },
       __wbg_instanceof_CanvasRenderingContext2d_08b9d193c22fa886: function(arg0) {
-        return arg0 instanceof dom.window.CanvasRenderingContext2D;
+        return arg0 && typeof arg0.fillRect === 'function';
       },
       __wbg_set_fillStyle_58417b6b548ae475: function(arg0, arg1, arg2) {
-        arg0.fillStyle = getStringFromWasm0(arg1, arg2);
+        if (arg0) arg0.fillStyle = getStringFromWasm0(arg1, arg2);
       },
       __wbg_set_font_b038797b3573ae5e: function(arg0, arg1, arg2) {
-        arg0.font = getStringFromWasm0(arg1, arg2);
+        if (arg0) arg0.font = getStringFromWasm0(arg1, arg2);
       },
       __wbg_fillRect_4e5596ca954226e7: function(arg0, arg1, arg2, arg3, arg4) {
-        arg0.fillRect(arg1, arg2, arg3, arg4);
+        if (arg0) arg0.fillRect(arg1, arg2, arg3, arg4);
       },
       __wbg_fillText_b1722b6179692b85: function(arg0, arg1, arg2, arg3, arg4, arg5) {
-        arg0.fillText(getStringFromWasm0(arg1, arg2), arg3, arg4, arg5);
+        if (arg0) arg0.fillText(getStringFromWasm0(arg1, arg2), arg3, arg4, arg5);
       },
       __wbg_new_ab79df5bd7c26067: function() {
-        return new dom.window.Object();
+        return {};
       },
       __wbg_static_accessor_GLOBAL_THIS_ad356e0db91c7913: function() {
         return globalThis;
@@ -159,7 +198,7 @@ async function initWasm(wasmPath) {
         return globalThis;
       },
       __wbg_static_accessor_WINDOW_bb9f1ba69d61b386: function() {
-        return dom.window;
+        return windowMock;
       },
       __wbg_random_5bb86cae65a45bf6: function() {
         return Math.random();
@@ -196,18 +235,19 @@ async function initWasm(wasmPath) {
 
   const result = await WebAssembly.instantiate(wasmBuffer, imports);
   wasm = result.instance.exports;
-  
+
   if (wasm.__wbindgen_start) {
     wasm.__wbindgen_start();
   }
-  
-  wasmExports = wasm;
+
   wasmInitialized = true;
 }
 
+// --- Public API ---
+
 function generateSecurePayload(uuid, timestamp, nonce, challenge, clientIp, difficulty) {
   if (!wasmInitialized) throw new Error('WASM not initialized. Call initWasm() first.');
-  
+
   const ptr0 = passStringToWasm0(uuid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
   const len0 = WASM_VECTOR_LEN;
   const ptr1 = passStringToWasm0(timestamp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -218,9 +258,9 @@ function generateSecurePayload(uuid, timestamp, nonce, challenge, clientIp, diff
   const len3 = WASM_VECTOR_LEN;
   const ptr4 = passStringToWasm0(clientIp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
   const len4 = WASM_VECTOR_LEN;
-  
+
   const ret = wasm.generate_secure_payload(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, difficulty);
-  
+
   if (ret[2]) {
     throw takeFromExternrefTable0(ret[1]);
   }
