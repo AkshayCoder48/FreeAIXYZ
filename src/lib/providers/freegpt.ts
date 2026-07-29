@@ -306,6 +306,9 @@ export const freeGptProvider: Provider = {
       "x-secure-client-ip": clientIp,
       "x-origin": "https://freegpt.tech",
       "cf-turnstile-token": "",
+      "x-secure-timestamp": timestamp,
+      "x-secure-nonce": nonce,
+      "x-secure-version": "3.0",
       ...secureHeaders,
     };
 
@@ -385,6 +388,9 @@ export const freeGptProvider: Provider = {
       "x-secure-client-ip": clientIp,
       "x-origin": "https://freegpt.tech",
       "cf-turnstile-token": "",
+      "x-secure-timestamp": timestamp,
+      "x-secure-nonce": nonce,
+      "x-secure-version": "3.0",
       ...secureHeaders,
     };
 
