@@ -146,8 +146,8 @@ async function fetchChallenge(uuid: string): Promise<{
   const res = await fetch(`${BASE_URL}${CHALLENGE_PATH}`, {
     method: "GET",
     headers: {
-      "x-secure-uuid": uuid,
-      "x-secure-client-ip": "127.0.0.1",
+      uuid: uuid,
+      "x-origin": "https://freegpt.tech",
       Accept: "application/json",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -298,7 +298,7 @@ export const freeGptProvider: Provider = {
       Accept: "application/json",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      "x-secure-uuid": uuid,
+      uuid: uuid,
       "x-secure-challenge": challenge,
       "x-secure-client-ip": clientIp,
       "cf-turnstile-token": "",
@@ -373,7 +373,7 @@ export const freeGptProvider: Provider = {
       Accept: "text/event-stream",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      "x-secure-uuid": uuid,
+      uuid: uuid,
       "x-secure-challenge": challenge,
       "x-secure-client-ip": clientIp,
       "cf-turnstile-token": "",
