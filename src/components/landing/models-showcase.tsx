@@ -48,6 +48,7 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   llm7: "text-blue-500",
   heckai: "text-fuchsia-500",
   spicywriter: "text-rose-400",
+  freegpt: "text-purple-500",
   zai: "text-emerald-500",
   "openrouter-key": "text-indigo-500",
   "groq-key": "text-teal-500",

@@ -12,6 +12,7 @@ import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
+import { freeGptProvider } from "./freegpt";
 import {
   zaiProvider,
   openRouterKeyProvider,
@@ -44,6 +45,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   llm7: llm7Provider,
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
+  freegpt: freeGptProvider,
   zai: zaiProvider,
   "openrouter-key": openRouterKeyProvider,
   "groq-key": groqKeyProvider,

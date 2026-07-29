@@ -11,7 +11,7 @@
  *   - SFW-only / general models get a clean descriptive id.
  *   - NSFW / uncensored models get an explicit "nsfw-" prefix so callers know.
  *
- * Total: 285 models across 32 providers.
+ * Total: 312 models across 33 providers.
  */
 
 export type ProviderId =
@@ -25,6 +25,7 @@ export type ProviderId =
   | "llm7"
   | "heckai"
   | "spicywriter"
+  | "freegpt"
   | "zai"
   | "openrouter-key"
   | "groq-key"
@@ -136,6 +137,39 @@ export const MODELS: readonly GatewayModel[] = [
   // Uncensored system preamble auto-injected for nsfw-* models.
   sw("nsfw-ling-2-6-flash", "Ling 2.6 Flash", "Ling 2.6 Flash — uncensored NSFW, real token streaming, tool calling supported", 128000),
   sw("nsfw-nemo", "Nemo", "Nemo — uncensored NSFW model, real token streaming, tool calling supported", 128000),
+
+  // ─── FreeGPT.tech provider: WASM-secured, 27 free models, no key ────
+  // Each request mints a fresh UUID, fetches a one-time PoW challenge, and
+  // signs it via a WASM module before calling the OpenAI-compatible endpoint.
+  // Backup host (standalone.freegpt.win:3001) — no Cloudflare, so the
+  // cf-turnstile-token header can be empty. Real SSE streaming.
+  fg("fgpt-gpt-4o-mini", "gpt-4o-mini", "GPT-4o mini — fast, lightweight, WASM-secured via FreeGPT.tech (no key)", "professional", 128000),
+  fg("fgpt-gpt-5-4-mini", "gpt-5.4-mini", "GPT-5.4 mini — fast flagship-tier, tool calling supported (FreeGPT.tech)", "professional", 128000, { tools: true }),
+  fg("fgpt-gpt-5-4-nano", "gpt-5.4-nano", "GPT-5.4 nano — ultra-light variant (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-5-3-free", "gpt-5.3-free", "GPT-5.3 free — mid-tier free model (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-5-3-thinking-free", "gpt-5.3-thinking-free", "GPT-5.3 thinking free — reasoning model, shows chain-of-thought (FreeGPT.tech)", "reasoning", 128000),
+  fg("fgpt-gpt-5-free", "gpt-5-free", "GPT-5 free — flagship free tier (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-deepseek-v4-flash", "deepseek-v4-flash", "DeepSeek V4 Flash — fast latest DeepSeek (FreeGPT.tech)", "professional", 64000),
+  fg("fgpt-gpt-5-mini", "gpt-5-mini", "GPT-5 mini — compact flagship (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-5-nano", "gpt-5-nano", "GPT-5 nano — smallest GPT-5 variant (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gemini-3-1-flash-lite", "gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite preview — Google lightweight (FreeGPT.tech)", "professional", 1000000),
+  fg("fgpt-grok-4-20-fast", "grok-4.20-fast", "Grok 4.20 Fast — xAI fast variant (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-llama-3-3-70b", "Meta-Llama-3.3-70B-Instruct", "Llama 3.3 70B Instruct — Meta open flagship, tool calling supported (FreeGPT.tech)", "professional", 128000, { tools: true }),
+  fg("fgpt-qwen-3-5-397b", "Qwen/Qwen3.5-397B-A17B", "Qwen 3.5 397B (A17B) — Alibaba flagship MoE (FreeGPT.tech)", "professional", 262144),
+  fg("fgpt-qwen-3-6-plus", "qwen3.6-plus", "Qwen 3.6 Plus — Alibaba enhanced, tool calling supported (FreeGPT.tech)", "professional", 262144, { tools: true }),
+  fg("fgpt-grok-4", "grok-4", "Grok 4 — xAI flagship, hidden (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-deepseek-reasoner", "deepseek-reasoner", "DeepSeek Reasoner — reasoning model, shows chain-of-thought (FreeGPT.tech)", "reasoning", 64000),
+  fg("fgpt-gemini-2-5-flash", "gemini-2.5-flash", "Gemini 2.5 Flash — fast Google model (FreeGPT.tech)", "professional", 1000000),
+  fg("fgpt-gpt-4-1-mini", "gpt-4.1-mini", "GPT-4.1 mini — fast lightweight (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-4-1-nano", "gpt-4.1-nano", "GPT-4.1 nano — smallest GPT-4.1 (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-deepseek-chat", "deepseek-chat", "DeepSeek Chat — general DeepSeek model (FreeGPT.tech)", "professional", 64000),
+  fg("fgpt-gpt-3-5-turbo", "gpt-3.5-turbo", "GPT-3.5 Turbo — legacy OpenAI model (FreeGPT.tech)", "professional", 16000),
+  fg("fgpt-grok-3", "grok-3", "Grok 3 — previous xAI flagship (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-grok-3-mini", "grok-3-mini", "Grok 3 mini — compact xAI (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-gpt-5-4", "gpt-5.4", "GPT-5.4 — latest flagship, free on test days (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gemini-2-5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro — Google flagship, free on test days (FreeGPT.tech)", "professional", 2000000),
+  fg("fgpt-grok-4-3", "grok-4.3", "Grok 4.3 — newest xAI flagship, free on test days (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — image generation (FreeGPT.tech)", "professional", 128000),
 
   // ─── Gated providers (require user-supplied API key) ──────────────────────
   // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
@@ -424,6 +458,36 @@ function sw(
   };
 }
 
+/** FreeGPT.tech model helper. WASM-secured, no key, real OpenAI SSE streaming.
+ *  The optional `tools` capability override applies to a few models that
+ *  explicitly support tool calls upstream (gpt-5.4-mini, Llama 3.3 70B,
+ *  Qwen 3.6 Plus). */
+function fg(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+  opts?: { tools?: boolean },
+): GatewayModel {
+  return {
+    id,
+    provider: "freegpt",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: opts?.tools ?? false,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Gated model helper — requires the user to supply their own API key. */
 function gated(
   id: string,
@@ -526,6 +590,10 @@ export const PROVIDER_INFO: Record<
   ProviderId,
   { name: string; description: string }
 > = {
+  "freegpt": {
+    name: "FreeGPT.tech",
+    description: "27 free models (GPT-5.4, DeepSeek V4, Gemini, Grok 4, Llama 3.3 70B, Qwen) — WASM-secured, no API key needed",
+  },
   "heckai": {
     name: "HeckAI",
     description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",

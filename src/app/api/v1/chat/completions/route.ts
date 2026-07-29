@@ -420,6 +420,7 @@ async function streamCompletion(
             model.provider === "llm7" ||
             model.provider === "heckai" ||
             model.provider === "spicywriter" ||
+            model.provider === "freegpt" ||
             model.provider === "zai" ||
             model.provider === "openrouter-key" ||
             model.provider === "groq-key";

@@ -44,7 +44,21 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "scripts/**"]
+  ignores: [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "examples/**",
+    "skills",
+    "scripts/**",
+    // Node-only CommonJS / plain-JS utility modules that intentionally use
+    // require() and can't be migrated to ESM (WASM signer wrapper, etc.).
+    "**/*.cjs",
+    "src/lib/freegpt-wasm.js",
+    "wasm_signer.js",
+  ]
 }];
 
 export default eslintConfig;

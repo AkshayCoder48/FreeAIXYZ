@@ -219,8 +219,8 @@ export default function Home() {
               {[
                 ["∞", "Daily requests"],
                 ["$0", "Cost"],
-                ["285+", "Models"],
-                ["34", "Providers"],
+                ["76", "Free Models"],
+                ["15", "Providers"],
               ].map(([big, small]) => (
                 <div
                   key={small}
