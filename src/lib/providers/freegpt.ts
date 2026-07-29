@@ -332,7 +332,7 @@ export const freeGptProvider: Provider = {
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       throw new Error(
-        `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challenge.challengeId?.slice(0,8)} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
+        `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challengeId?.slice(0,8)} exp=${expiresAt} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
       );
     }
 
@@ -414,7 +414,7 @@ export const freeGptProvider: Provider = {
     if (!res.ok || !res.body) {
       const txt = await res.text().catch(() => "");
       throw new Error(
-        `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challenge.challengeId?.slice(0,8)} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
+        `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challengeId?.slice(0,8)} exp=${expiresAt} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
       );
     }
 
