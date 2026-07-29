@@ -172,7 +172,10 @@ async function fetchChallenge(uuid: string): Promise<{
   const difficulty =
     (json.difficulty as number) ??
     (json.level as number) ??
-    4;
+    2;
+  const challengeId = (json.challengeId as string) ?? "";
+  const expiresAt = (json.expiresAt as number) ?? 0;
+  const version = (json.version as string) ?? "1.0";
   if (!challenge || !challengeId) {
     throw new Error(
       `FreeGPT challenge response unexpected: ${JSON.stringify(json).slice(0, 300)}`,
