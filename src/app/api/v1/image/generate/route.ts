@@ -78,7 +78,8 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ success: true, images: [{ url: imageUrl, format: "jpeg" }], model: modelId, model_name: config.displayName, category: config.category, prompt: body.prompt, width, height });
     } else if (config.provider === "freegpt") {
-      const chatRes = await fetch("http://localhost:3000/api/v1/chat/completions", {
+      const origin = new URL(request.url).origin;
+      const chatRes = await fetch(`${origin}/api/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: `fgpt-${config.freegptModel}`, messages: [{ role: "user", content: body.prompt }], stream: false }),
