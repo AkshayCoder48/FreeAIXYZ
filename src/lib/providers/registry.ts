@@ -170,6 +170,8 @@ export const MODELS: readonly GatewayModel[] = [
   fg("fgpt-gemini-2-5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro — Google flagship, free on test days (FreeGPT.tech)", "professional", 2000000),
   fg("fgpt-grok-4-3", "grok-4.3", "Grok 4.3 — newest xAI flagship, free on test days (FreeGPT.tech)", "professional", 131000),
   fg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — image generation (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-nano-banana-2", "nano-banana-2", "Nano Banana 2 — Google image generation (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-flux-2-flex", "flux-2-flex", "Flux 2 Flex — image generation (FreeGPT.tech)", "professional", 128000),
 
   // ─── Gated providers (require user-supplied API key) ──────────────────────
   // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
