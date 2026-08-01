@@ -91,6 +91,8 @@ export function ModelsShowcase() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
     return MODELS.filter((m) => {
+      // Image models live in their own section — hide them from the chat showcase.
+      if (m.modality === "text-to-image") return false;
       if (providerFilter !== "all" && m.provider !== providerFilter) return false;
       if (categoryFilter !== "all" && m.category !== categoryFilter) return false;
       if (!q) return true;
@@ -104,9 +106,17 @@ export function ModelsShowcase() {
 
   const providerCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const m of MODELS) counts[m.provider] = (counts[m.provider] ?? 0) + 1;
+    for (const m of MODELS) {
+      if (m.modality === "text-to-image") continue;
+      counts[m.provider] = (counts[m.provider] ?? 0) + 1;
+    }
     return counts;
   }, []);
+
+  const textModelCount = useMemo(
+    () => MODELS.filter((m) => m.modality !== "text-to-image").length,
+    [],
+  );
 
   return (
     <div className="space-y-5">
@@ -128,7 +138,7 @@ export function ModelsShowcase() {
             onClick={() => setProviderFilter("all")}
             className="h-8"
           >
-            All providers ({MODELS.length})
+            All providers ({textModelCount})
           </Button>
           {(Object.keys(PROVIDER_INFO) as ProviderId[]).map((pid) => (
             <Button
@@ -242,7 +252,7 @@ export function ModelsShowcase() {
 
       {/* legend */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-muted-foreground pt-2 border-t border-border/50">
-        <span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5" /> {MODELS.length} models</span>
+        <span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5" /> {textModelCount} models</span>
         <span className="flex items-center gap-1.5"><Server className="h-3.5 w-3.5" /> {Object.keys(PROVIDER_INFO).length} providers</span>
         <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-[#ff9a3c]" /> streaming</span>
         <span className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5 text-[#ff9a3c]" /> tool calling</span>

@@ -126,9 +126,9 @@ export default function Home() {
           <nav className="hidden md:flex items-center gap-1 text-sm">
             {[
               ["Playground", "#playground"],
+              ["Image Gen", "/models#image-models"],
               ["Features", "#features"],
-              ["Rotation", "#rotation"],
-              ["Docs", "#docs"],
+              ["Docs", "/docs#image-generation"],
               ["Settings", "/settings"],
             ].map(([label, href]) => (
               <a
@@ -426,6 +426,9 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <a href="/chat" className="hover:text-foreground transition-colors">
               Chat
+            </a>
+            <a href="/docs#image-generation" className="hover:text-foreground transition-colors">
+              Image Gen
             </a>
             <a href="/docs" className="hover:text-foreground transition-colors">
               Docs

@@ -11,7 +11,8 @@
  *   - SFW-only / general models get a clean descriptive id.
  *   - NSFW / uncensored models get an explicit "nsfw-" prefix so callers know.
  *
- * Total: 312 models across 33 providers.
+ * Total: 89 chat/text models + 142 text-to-image models (separate registry)
+ * across 16 text providers + 5 image providers.
  */
 
 export type ProviderId =
@@ -64,6 +65,10 @@ export interface GatewayModel {
   requiresKey?: boolean;
   /** The HTTP header the gateway reads the API key from (when requiresKey=true). */
   keyHeader?: string;
+  /** Modality — text models answer prompts; text-to-image models emit images. */
+  modality?: "text" | "text-to-image";
+  /** For text-to-image models only: visual style family. */
+  imageCategory?: "anime" | "realism" | "nsfw-anime" | "nsfw-realism" | "mixed" | "general";
 }
 
 export const MODELS: readonly GatewayModel[] = [
@@ -169,9 +174,9 @@ export const MODELS: readonly GatewayModel[] = [
   fg("fgpt-gpt-5-4", "gpt-5.4", "GPT-5.4 — latest flagship, free on test days (FreeGPT.tech)", "professional", 128000),
   fg("fgpt-gemini-2-5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro — Google flagship, free on test days (FreeGPT.tech)", "professional", 2000000),
   fg("fgpt-grok-4-3", "grok-4.3", "Grok 4.3 — newest xAI flagship, free on test days (FreeGPT.tech)", "professional", 131000),
-  fg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — image generation (FreeGPT.tech)", "professional", 128000),
-  fg("fgpt-nano-banana-2", "nano-banana-2", "Nano Banana 2 — Google image generation (FreeGPT.tech)", "professional", 128000),
-  fg("fgpt-flux-2-flex", "flux-2-flex", "Flux 2 Flex — image generation (FreeGPT.tech)", "professional", 128000),
+  fgImg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — OpenAI image generation (FreeGPT.tech)", "general"),
+  fgImg("fgpt-nano-banana-2", "nano-banana-2", "Nano Banana 2 — Google Gemini image generation (FreeGPT.tech)", "realism"),
+  fgImg("fgpt-flux-2-flex", "flux-2-flex", "Flux 2 Flex — Black Forest Labs photoreal image generation (FreeGPT.tech)", "realism"),
 
   // ─── Gated providers (require user-supplied API key) ──────────────────────
   // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
@@ -484,6 +489,37 @@ function fg(
       tools: true,
       systemPrompt: true,
       multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** FreeGPT.tech image model helper. Same WASM-secured transport as fg(),
+ *  but flagged as a text-to-image modality so the UI can group it under
+ *  "Image models" and the chat route can route image requests correctly.
+ *  FreeGPT image models return a markdown image link in the assistant
+ *  message content (parsed by /api/v1/image/generate). */
+function fgImg(
+  id: string,
+  upstream: string,
+  description: string,
+  imageCategory: GatewayModel["imageCategory"] = "general",
+): GatewayModel {
+  return {
+    id,
+    provider: "freegpt",
+    upstream,
+    description,
+    category: "professional",
+    contextWindow: 128000,
+    modality: "text-to-image",
+    imageCategory,
+    capabilities: {
+      streaming: false,
+      tools: false,
+      systemPrompt: false,
+      multiTurn: false,
       vision: false,
       webSearch: false,
     },

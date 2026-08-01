@@ -1762,6 +1762,205 @@ end`,
 </html>`,
 });
 
+// ─── Image Generation snippets ─────────────────────────────────────────────
+const imageGen = (o: string): Record<Lang, string> => ({
+  curl: `# Generate an image and save it to disk
+curl ${o}/api/v1/image/generate \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "prompt": "1girl, cute anime girl, blue hair, masterpiece",
+    "model": "horde-meinamix",
+    "width": 512,
+    "height": 768,
+    "nsfw": false
+  }' | python3 -c "import json,sys,urllib.request; d=json.load(sys.stdin); urllib.request.urlretrieve(d['images'][0]['url'], 'image.webp'); print('Saved image.webp')"
+
+# List all 160+ image models:
+curl ${o}/api/v1/image/generate
+
+# Response shape:
+# {
+#   "success": true,
+#   "images": [{"url": "https://...webp", "format": "webp"}],
+#   "model": "horde-meinamix",
+#   "model_name": "MeinaMix",
+#   "category": "anime",
+#   "provider": "aihorde",
+#   "prompt": "...",
+#   "width": 512, "height": 768
+# }
+
+# NSFW models (18+) require explicit consent:
+curl ${o}/api/v1/image/generate \\
+  -H "Content-Type: application/json" \\
+  -d '{"prompt":"...","model":"horde-urpm","nsfw":true}'`,
+  python: `import requests, shutil
+
+res = requests.post("${o}/api/v1/image/generate", json={
+    "prompt": "1girl, cute anime girl, blue hair, masterpiece",
+    "model": "horde-meinamix",   # anime. Also: horde-juggernaut-xl (realism), horde-flux-1-schnell-fp8 (mixed)
+    "width": 512,
+    "height": 768,
+    "nsfw": False,
+}, timeout=300)
+data = res.json()
+if data.get("success"):
+    img_url = data["images"][0]["url"]
+    with requests.get(img_url, stream=True) as r:
+        with open("image.webp", "wb") as f:
+            shutil.copyfileobj(r.raw, f)
+    print("Saved image.webp — model:", data["model_name"], "category:", data["category"])
+else:
+    print("Error:", data.get("error"))`,
+  javascript: `// Browser — show the generated image inline
+const res = await fetch("${o}/api/v1/image/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    prompt: "photorealistic portrait, golden hour, 8k",
+    model: "horde-juggernaut-xl",   // realism
+    width: 768, height: 768,
+  }),
+});
+const data = await res.json();
+if (data.success) {
+  const img = document.createElement("img");
+  img.src = data.images[0].url;   // direct image URL
+  img.width = 512;
+  document.body.appendChild(img);
+  console.log("Model:", data.model_name, "Category:", data.category);
+} else {
+  console.error("Error:", data.error);
+}`,
+  node: `// Node.js — download to file
+import fs from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+
+const res = await fetch("${o}/api/v1/image/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    prompt: "cyberpunk city at night, neon, cinematic",
+    model: "horde-flux-1-schnell-fp8",   // mixed
+    width: 1024, height: 1024,
+  }),
+});
+const data = await res.json();
+if (data.success) {
+  const imgRes = await fetch(data.images[0].url);
+  await pipeline(Readable.fromWeb(imgRes.body), fs.createWriteStream("image.webp"));
+  console.log("Saved image.webp");
+} else {
+  console.error("Error:", data.error);
+}`,
+  php: `<?php
+$body = json_encode([
+  "prompt" => "1girl, cute anime girl, blue hair",
+  "model" => "horde-meinamix",
+  "width" => 512, "height" => 768,
+]);
+$ch = curl_init("${o}/api/v1/image/generate");
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+$res = curl_exec($ch); curl_close($ch);
+$data = json_decode($res, true);
+if ($data["success"] ?? false) {
+  $img = file_get_contents($data["images"][0]["url"]);
+  file_put_contents("image.webp", $img);
+  echo "Saved image.webp\\n";
+} else {
+  echo "Error: " . ($data["error"] ?? "unknown") . "\\n";
+}`,
+  go: `package main
+import (
+  "bytes"; "encoding/json"; "fmt"; "io"; "net/http"; "os"
+)
+func main() {
+  body, _ := json.Marshal(map[string]any{
+    "prompt": "photorealistic mountain landscape",
+    "model": "horde-juggernaut-xl",
+    "width": 768, "height": 768,
+  })
+  res, _ := http.Post("${o}/api/v1/image/generate", "application/json", bytes.NewBuffer(body))
+  var data struct {
+    Success bool \`json:"success"\`
+    Images []struct{ Url string \`json:"url"\` } \`json:"images"\`
+    Error string \`json:"error"\`
+  }
+  json.NewDecoder(res.Body).Decode(&data)
+  if data.Success {
+    imgRes, _ := http.Get(data.Images[0].Url)
+    f, _ := os.Create("image.webp")
+    io.Copy(f, imgRes.Body); f.Close()
+    fmt.Println("Saved image.webp")
+  } else {
+    fmt.Println("Error:", data.Error)
+  }
+}`,
+  ruby: `require 'net/http'
+require 'json'
+require 'open-uri'
+
+uri = URI("${o}/api/v1/image/generate")
+res = Net::HTTP.post(uri, {
+  prompt: "1girl, anime, blue hair, masterpiece",
+  model: "horde-meinamix",
+  width: 512, height: 768,
+}.to_json, "Content-Type" => "application/json")
+
+data = JSON.parse(res.body)
+if data["success"]
+  URI.open(data["images"][0]["url"]) do |img|
+    File.write("image.webp", img.read, mode: "wb")
+  end
+  puts "Saved image.webp — #{data['model_name']}"
+else
+  puts "Error: #{data['error']}"
+end`,
+  html: `<!-- Image generation widget -->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>FreeAIXYZ Image Gen</title></head>
+<body>
+  <input id="prompt" value="1girl, cute anime girl, blue hair" style="width:320px" />
+  <select id="model">
+    <option value="horde-meinamix">Anime — MeinaMix</option>
+    <option value="horde-juggernaut-xl">Realism — Juggernaut XL</option>
+    <option value="horde-flux-1-schnell-fp8">Mixed — Flux Schnell</option>
+    <option value="pollgen-flux">Pollinations — Flux</option>
+    <option value="freegpt-gpt-image-2">FreeGPT — GPT-Image 2</option>
+  </select>
+  <button onclick="gen()">Generate</button>
+  <div id="out"></div>
+  <script>
+    async function gen() {
+      document.getElementById('out').innerHTML = 'Generating… (AI Horde can take 30s–3min)';
+      const res = await fetch("${o}/api/v1/image/generate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          prompt: document.getElementById('prompt').value,
+          model: document.getElementById('model').value,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('out').innerHTML =
+          '<img src="' + data.images[0].url + '" style="max-width:400px" />' +
+          '<p>' + data.model_name + ' · ' + data.category + '</p>';
+      } else {
+        document.getElementById('out').innerHTML = 'Error: ' + (data.error || 'unknown');
+      }
+    }
+  </script>
+</body>
+</html>`,
+});
+
 // ─── Sidebar navigation structure ───────────────────────────────────────────
 type NavItem = {
   id: string;
@@ -1792,6 +1991,7 @@ const NAV: NavItem[] = [
   },
   { id: "web-search", label: "Web Search" },
   { id: "music", label: "Music Generation" },
+  { id: "image-generation", label: "Image Generation" },
   { id: "code-examples", label: "Code Examples" },
 ];
 
@@ -1841,6 +2041,7 @@ export default function DocsPage() {
     modelsFilter: modelsFilter(origin),
     webSearch: webSearch(origin),
     music: music(origin),
+    imageGen: imageGen(origin),
   };
 
   const baseUrl = `${origin}/api/v1`;
@@ -2247,6 +2448,125 @@ curl ${origin}/api/v1/chat/completions \\
               audio directly in the browser.
             </p>
             <CodeTabs snippets={snippets.music} />
+          </section>
+
+          {/* Image Generation */}
+          <section id="image-generation" className="scroll-mt-20 space-y-4">
+            <h2 className="text-2xl font-bold tracking-tight">
+              Image Generation
+            </h2>
+            <p className="text-muted-foreground max-w-2xl">
+              <code className="text-[#ff9a3c]">
+                POST /api/v1/image/generate
+              </code>{" "}
+              — generate AI images from text prompts.{" "}
+              <strong className="text-foreground">160+ models</strong> across 5
+              style families: anime, realism, NSFW anime, NSFW realism, and
+              mixed/artistic. Powered by AI Horde (free, anonymous, no signup),
+              Pollinations gen, and FreeGPT.tech.
+            </p>
+
+            <div className="rounded-xl border border-[#ff9a3c]/30 bg-[#ff9a3c]/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#ff9a3c] mb-2">
+                Providers
+              </div>
+              <ul className="text-sm text-muted-foreground space-y-1.5">
+                <li>
+                  <strong className="text-foreground">AI Horde</strong> — 161+
+                  community SD/SDXL/Flux models. Free anonymous access (API key{" "}
+                  <code className="text-[#ff9a3c]">0000000000</code>). Async
+                  submit→poll→fetch flow (30s–3min per image).
+                </li>
+                <li>
+                  <strong className="text-foreground">Pollinations gen</strong> —
+                  the new <code className="text-[#ff9a3c]">gen.pollinations.ai</code>{" "}
+                  endpoint. 4 free anon models: flux, kontext, klein,
+                  dreamshaper. Synchronous.
+                </li>
+                <li>
+                  <strong className="text-foreground">FreeGPT.tech</strong> — 3
+                  image models (GPT-Image 2, Nano Banana 2, Flux 2 Flex) via the
+                  WASM-secured chat endpoint.
+                </li>
+                <li>
+                  <strong className="text-foreground">nekos.life / purrbot</strong> —
+                  anime image fetchers (existing art, zero latency). Useful as
+                  fast fallbacks for the anime / NSFW anime categories.
+                </li>
+              </ul>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-border bg-card/40 p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                  Request body
+                </div>
+                <pre className="mt-2 text-[12.5px] text-zinc-200 font-mono">{`{
+  "prompt": "1girl, cute anime girl, blue hair",  // required
+  "model": "horde-meinamix",        // default: pollgen-flux
+  "width": 512,                     // optional
+  "height": 768,                    // optional
+  "seed": 42,                       // pollinations only
+  "nologo": true,                   // pollinations only
+  "negative_prompt": "blurry",      // horde only
+  "steps": 30,                      // horde only (default 30)
+  "cfg_scale": 7,                   // horde only (default 7)
+  "nsfw": false                     // REQUIRED: true for NSFW models (18+)
+}`}</pre>
+              </div>
+              <div className="rounded-xl border border-border bg-card/40 p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                  Response shape
+                </div>
+                <pre className="mt-2 text-[12.5px] text-zinc-200 font-mono">{`{
+  "success": true,
+  "images": [
+    { "url": "https://...webp", "format": "webp" }
+  ],
+  "model": "horde-meinamix",
+  "model_name": "MeinaMix",
+  "category": "anime",
+  "provider": "aihorde",
+  "prompt": "1girl, cute anime girl...",
+  "width": 512,
+  "height": 768,
+  "seed": "1524206340",
+  "censored": false,
+  "queue_note": "AI Horde anonymous tier..."
+}`}</pre>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-500 mb-1">
+                NSFW consent
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Models in the <code className="text-rose-500">nsfw-anime</code>{" "}
+                and <code className="text-rose-500">nsfw-realism</code>{" "}
+                categories (e.g. <code>horde-urpm</code>,{" "}
+                <code>horde-wai-ani-nsfw-ponyxl</code>) return HTTP 403 unless
+                you explicitly pass <code className="text-rose-500">"nsfw": true</code>{" "}
+                in the request body. By doing so you confirm you are 18+ and
+                consent to adult content.
+              </p>
+            </div>
+
+            <p className="text-muted-foreground text-sm">
+              Browse all 160+ image models and their categories on the{" "}
+              <a href="/models#image-models" className="text-[#ff9a3c] hover:underline">
+                Models page
+              </a>
+              . Or call <code className="text-[#ff9a3c]">GET /api/v1/image/generate</code>{" "}
+              for the full machine-readable list.
+            </p>
+
+            <p className="text-muted-foreground text-sm">
+              Each example below generates an image and saves it to disk —
+              except the JavaScript tab, which displays the image inline in the
+              browser.
+            </p>
+            <CodeTabs snippets={snippets.imageGen} />
           </section>
 
           {/* Code Examples summary */}

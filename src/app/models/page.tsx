@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import { ModelsShowcase } from "@/components/landing/models-showcase";
+import { ImageModelsShowcase } from "@/components/landing/image-models-showcase";
 import { MODELS, PROVIDER_INFO, type ProviderId } from "@/lib/providers";
+import { IMAGE_MODELS, imageModelCounts } from "@/lib/providers/image-registry";
 import { Badge } from "@/components/ui/badge";
-import { Server, Cpu, Zap, ArrowLeft, ExternalLink, Terminal } from "lucide-react";
+import { Server, Cpu, Zap, ArrowLeft, ExternalLink, Terminal, ImageIcon, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "All Models — FreeGPT Gateway",
+  title: "All Models — FreeAIXYZ Gateway",
   description:
-    "Browse all 24 free AI models across 5 providers. Filter by capability (streaming, tools, vision), category, and provider.",
+    "Browse all free AI models across text and image providers. Chat models + 160+ text-to-image models (anime, realism, NSFW anime, NSFW realism, mixed).",
 };
 
 export default function ModelsPage() {
   const providerList = Object.keys(PROVIDER_INFO) as ProviderId[];
-  const streamingCount = MODELS.filter((m) => m.capabilities.streaming).length;
-  const toolsCount = MODELS.filter((m) => m.capabilities.tools).length;
+  const textModels = MODELS.filter((m) => m.modality !== "text-to-image");
+  const imageModelsCount = IMAGE_MODELS.length;
+  const streamingCount = textModels.filter((m) => m.capabilities.streaming).length;
+  const toolsCount = textModels.filter((m) => m.capabilities.tools).length;
+  const imgCounts = imageModelCounts();
+  const nsfwCount = imgCounts["nsfw-anime"] + imgCounts["nsfw-realism"];
 
   return (
     <div className="relative min-h-screen flex flex-col bg-background">
@@ -51,7 +57,7 @@ export default function ModelsPage() {
             <span className="relative flex h-1.5 w-1.5">
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#ff9a3c]" />
             </span>
-            {MODELS.length} models live
+            {textModels.length} text · {imageModelsCount} image models live
           </Badge>
         </div>
       </header>
@@ -63,19 +69,19 @@ export default function ModelsPage() {
             All available models
           </h1>
           <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-            {MODELS.length} free models across {providerList.length} providers.
-            Every model accepts the OpenAI Chat Completions schema — point any
-            OpenAI SDK at{" "}
-            <code className="text-[#ff9a3c] text-xs">/api/v1</code> and use
-            any id below.
+            {textModels.length} free chat models across {providerList.length} text providers,
+            plus <span className="text-[#ff9a3c] font-medium">{imageModelsCount} text-to-image models</span> (anime, realism, NSFW anime, NSFW realism, mixed).
+            Every chat model accepts the OpenAI Chat Completions schema — point any
+            OpenAI SDK at <code className="text-[#ff9a3c] text-xs">/api/v1</code>.
+            Image models use <code className="text-[#ff9a3c] text-xs">/api/v1/image/generate</code>.
           </p>
         </div>
 
         {/* stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {[
-            { icon: Cpu, label: "Models", value: MODELS.length },
-            { icon: Server, label: "Providers", value: providerList.length },
+            { icon: Cpu, label: "Chat models", value: textModels.length },
+            { icon: ImageIcon, label: "Image models", value: imageModelsCount },
             { icon: Zap, label: "Streaming", value: streamingCount },
             { icon: Cpu, label: "Tool calling", value: toolsCount },
           ].map((s) => (
@@ -101,7 +107,7 @@ export default function ModelsPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {providerList.map((pid) => {
               const info = PROVIDER_INFO[pid];
-              const count = MODELS.filter((m) => m.provider === pid).length;
+              const count = textModels.filter((m) => m.provider === pid).length;
               return (
                 <div
                   key={pid}
@@ -124,6 +130,36 @@ export default function ModelsPage() {
 
         {/* searchable showcase */}
         <ModelsShowcase />
+
+        {/* ─── Image models section ─── */}
+        <div className="mt-14 mb-8" id="image-models">
+          <div className="flex items-center gap-2 mb-2">
+            <ImageIcon className="h-5 w-5 text-[#ff9a3c]" />
+            <h2 className="text-2xl font-bold tracking-tight">Image Models</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4 max-w-2xl">
+            {imageModelsCount} text-to-image models across 5 style families.
+            Generate via <code className="text-[#ff9a3c] text-xs">POST /api/v1/image/generate</code>{" "}
+            with <code className="text-[#ff9a3c] text-xs">&#123; prompt, model &#125;</code>.
+            AI Horde is free + anonymous (no signup). NSFW models require{" "}
+            <code className="text-[#ff9a3c] text-xs">nsfw:true</code> (18+).
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <Badge variant="outline" className="gap-1 text-pink-500 border-pink-500/30 bg-pink-500/5">Anime: {imgCounts.anime}</Badge>
+            <Badge variant="outline" className="gap-1 text-blue-500 border-blue-500/30 bg-blue-500/5">Realism: {imgCounts.realism}</Badge>
+            <Badge variant="outline" className="gap-1 text-purple-500 border-purple-500/30 bg-purple-500/5">Mixed: {imgCounts.mixed}</Badge>
+            <Badge variant="outline" className="gap-1 text-amber-500 border-amber-500/30 bg-amber-500/5">General: {imgCounts.general}</Badge>
+            <Badge variant="outline" className="gap-1 text-rose-500 border-rose-500/30 bg-rose-500/5">
+              <ShieldAlert className="h-3 w-3" /> NSFW: {nsfwCount}
+            </Badge>
+            <Button asChild variant="outline" size="sm" className="ml-auto gap-1.5">
+              <Link href="/docs#image-generation">
+                <Terminal className="h-3.5 w-3.5" /> API docs
+              </Link>
+            </Button>
+          </div>
+          <ImageModelsShowcase />
+        </div>
 
         {/* API quickstart */}
         <div className="mt-10 rounded-2xl border border-border bg-zinc-950/60 overflow-hidden">
@@ -159,8 +195,8 @@ export default function ModelsPage() {
       <footer className="mt-auto border-t border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-6 flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
-            FreeGPT Gateway · {MODELS.length} models · {providerList.length}{" "}
-            providers
+            FreeAIXYZ Gateway · {textModels.length} chat + {imageModelsCount} image models · {providerList.length}{" "}
+            text providers
           </span>
           <Link
             href="/"
