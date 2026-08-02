@@ -379,7 +379,7 @@ async function streamCompletion(
                   },
                 ],
               });
-              await sleep(0);
+              await sleep(20);
               for (const piece of chunkString(tc.function.arguments, 24)) {
                 send({
                   id,
@@ -398,7 +398,7 @@ async function streamCompletion(
                     },
                   ],
                 });
-                await sleep(0);
+                await sleep(20);
               }
             }
             send({
@@ -446,8 +446,11 @@ async function streamCompletion(
             model.provider === "groq-key";
 
           if (realStream) {
-            // Genuine upstream streaming: emit each delta immediately.
-            let hasContent = false;
+            // Buffer all upstream deltas, then re-pace as fake word-by-word
+            // streaming with realistic delays. This ensures ALL providers
+            // appear to stream token-by-token, even if the upstream returned
+            // the full text in one chunk.
+            const collectedParts: string[] = [];
             for await (const delta of provider.stream({
               model,
               messages,
@@ -457,25 +460,17 @@ async function streamCompletion(
               toolChoice,
             })) {
               if (signal.aborted) break;
-              if (delta) {
-                hasContent = true;
-                send({
-                  id,
-                  object: "chat.completion.chunk",
-                  created,
-                  model: model.id,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: { content: delta },
-                      finish_reason: null,
-                    },
-                  ],
-                });
-              }
+              if (delta) collectedParts.push(delta);
             }
             clearInterval(heartbeatTimer);
-            if (!hasContent) {
+            const fullText = collectedParts.join("");
+            if (fullText) {
+              await streamText(send, fullText, signal, {
+                id,
+                created,
+                model: model.id,
+              });
+            } else {
               send({
                 id,
                 object: "chat.completion.chunk",
@@ -571,7 +566,7 @@ async function streamCompletion(
   });
 }
 
-/** Stream text as content deltas, re-pacing with yields between writes. */
+/** Stream text as content deltas, re-pacing with realistic delays between writes. */
 async function streamText(
   send: (obj: unknown) => void,
   text: string,
@@ -588,7 +583,12 @@ async function streamText(
       model: meta.model,
       choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
     });
-    await sleep(0);
+    // Realistic pacing: 18-35ms per word, 60ms for newlines, 80ms for punctuation
+    const lastChar = piece[piece.length - 1] ?? "";
+    const isNewline = piece.includes("\n");
+    const isPunct = ".,!?;:。！？".includes(lastChar);
+    const delay = isNewline ? 60 : isPunct ? 80 : 18 + Math.random() * 22;
+    await sleep(delay);
   }
 }
 

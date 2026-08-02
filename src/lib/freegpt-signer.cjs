@@ -59,6 +59,22 @@ const windowMock = {
   TextEncoder: TextEncoder,
   TextDecoder: TextDecoder,
   Buffer: Buffer,
+  location: {
+    href: "https://freegpt.tech/",
+    protocol: "https:",
+    host: "freegpt.tech",
+    hostname: "freegpt.tech",
+    port: "",
+    pathname: "/",
+    search: "",
+    hash: "",
+    origin: "https://freegpt.tech",
+  },
+  navigator: {
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    platform: "Linux x86_64",
+    language: "en-US",
+  },
 };
 
 // Set globals if not already set

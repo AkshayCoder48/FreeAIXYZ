@@ -26,7 +26,6 @@ import {
   Server,
   Sparkles,
   ShieldAlert,
-  Shuffle,
 } from "lucide-react";
 
 const CATEGORY_META: Record<
@@ -37,16 +36,14 @@ const CATEGORY_META: Record<
   realism: { label: "Realism", color: "text-blue-500", icon: ImageIcon },
   "nsfw-anime": { label: "NSFW Anime", color: "text-rose-500", icon: ShieldAlert },
   "nsfw-realism": { label: "NSFW Realism", color: "text-red-500", icon: ShieldAlert },
+  "nsfw-mixed": { label: "NSFW Mixed", color: "text-fuchsia-500", icon: ShieldAlert },
   mixed: { label: "Mixed / Artistic", color: "text-purple-500", icon: Sparkles },
   general: { label: "General", color: "text-amber-500", icon: ImageIcon },
 };
 
 const PROVIDER_COLORS: Partial<Record<ImageProviderId, string>> = {
-  aihorde: "text-emerald-500",
   "pollinations-gen": "text-orange-500",
   freegpt: "text-purple-500",
-  nekoslife: "text-pink-500",
-  purrbot: "text-rose-500",
 };
 
 const CATEGORY_ORDER: ImageCategory[] = [
@@ -56,6 +53,7 @@ const CATEGORY_ORDER: ImageCategory[] = [
   "general",
   "nsfw-anime",
   "nsfw-realism",
+  "nsfw-mixed",
 ];
 
 export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean }) {
@@ -200,22 +198,12 @@ export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean
                   <ProvIcon className="h-2.5 w-2.5" />
                   {IMAGE_PROVIDER_INFO[m.provider].name}
                 </Badge>
-                {m.provider === "nekoslife" || m.provider === "purrbot" ? (
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] gap-1 text-muted-foreground"
-                  >
-                    <Shuffle className="h-2.5 w-2.5" />
-                    fetch
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] gap-1 text-muted-foreground"
-                  >
-                    {m.width}×{m.height}
-                  </Badge>
-                )}
+                <Badge
+                  variant="outline"
+                  className="text-[9px] gap-1 text-muted-foreground"
+                >
+                  {m.width}×{m.height}
+                </Badge>
               </div>
 
               <code className="mt-2 block text-[10px] font-mono text-[#ff9a3c]/80 truncate">

@@ -398,6 +398,18 @@ export const freeGptProvider: Provider = {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
+      // Bypass for FreeGPT 400 "no available tokens" error — surface a clear,
+      // actionable message instead of the raw Chinese error.
+      if (res.status === 400 && txt.includes("没有可用的tokens")) {
+        throw new Error(
+          "FreeGPT's upstream token pool is temporarily exhausted. Please try a different model or retry in a few minutes.",
+        );
+      }
+      if (res.status === 400 && txt.includes("Provider failed")) {
+        throw new Error(
+          `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
+        );
+      }
       throw new Error(
         `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challengeId?.slice(0,8)} exp=${expiresAt} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
       );
@@ -490,6 +502,16 @@ export const freeGptProvider: Provider = {
 
     if (!res.ok || !res.body) {
       const txt = await res.text().catch(() => "");
+      if (res.status === 400 && txt.includes("没有可用的tokens")) {
+        throw new Error(
+          "FreeGPT's upstream token pool is temporarily exhausted. Please try a different model or retry in a few minutes.",
+        );
+      }
+      if (res.status === 400 && txt.includes("Provider failed")) {
+        throw new Error(
+          `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
+        );
+      }
       throw new Error(
         `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challengeId?.slice(0,8)} exp=${expiresAt} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
       );
