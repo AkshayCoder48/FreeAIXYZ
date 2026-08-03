@@ -583,11 +583,12 @@ async function streamText(
       model: meta.model,
       choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
     });
-    // Realistic pacing: 18-35ms per word, 60ms for newlines, 80ms for punctuation
+    // Short delays: 3-8ms per word, 12ms newlines, 15ms punctuation.
+    // Fast enough that a 500-word response streams in ~2-3s, not 15s.
     const lastChar = piece[piece.length - 1] ?? "";
     const isNewline = piece.includes("\n");
     const isPunct = ".,!?;:。！？".includes(lastChar);
-    const delay = isNewline ? 60 : isPunct ? 80 : 18 + Math.random() * 22;
+    const delay = isNewline ? 12 : isPunct ? 15 : 3 + Math.random() * 5;
     await sleep(delay);
   }
 }
