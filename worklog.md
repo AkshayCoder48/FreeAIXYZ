@@ -1581,3 +1581,30 @@ Stage Summary:
 - FreeGPT 400 errors now surface clear actionable messages.
 - Deployed to https://freeaixyz4all.vercel.app
 - `bun run lint` clean, `npx tsc --noEmit` clean.
+
+---
+Task ID: 11
+Agent: image-page-and-streaming-speed
+Task: Fix /image 404 + reduce streaming delays (was too slow after generation complete)
+
+Work Log:
+- **Fixed /image 404** — the Image Studio page was missing from the repo (got lost during git rebase issues). Created `src/app/image/page.tsx` with:
+  - Model selector (grouped by category, 11 base models)
+  - Prompt textarea
+  - Width/height inputs
+  - NSFW unlock toggle
+  - Generate/Cancel button
+  - Image grid with copy URL/download/open actions
+  - Loading state with spinner
+
+- **Fixed streaming speed** — the delays were too long (18-80ms per token), causing a 500-word response to take 15+ seconds to stream AFTER generation was already complete. Reduced to:
+  - 3-8ms per word (was 18-35ms)
+  - 12ms for newlines (was 60ms)
+  - 15ms for punctuation (was 80ms)
+  - Now a 99-chunk response streams in ~1.9s (was ~10s+)
+
+Stage Summary:
+- /image page FIXED — returns 200, full Image Studio UI works.
+- Streaming speed FIXED — 3-15ms delays (was 18-80ms). 99 chunks in 1.9s.
+- Deployed to https://freeaixyz4all.vercel.app
+- All routes 200.
