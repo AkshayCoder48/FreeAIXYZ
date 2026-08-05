@@ -1693,3 +1693,29 @@ Stage Summary:
 - Research note: Finding 100-400 truly free no-signup no-key server-callable chat APIs
   is extremely difficult. Most services require signup, are Cloudflare-blocked, are
   browser-only, or have removed their anonymous tiers. OVHcloud is the best new find.
+
+---
+Task ID: 14
+Agent: remove-byok-find-new-providers
+Task: Remove all BYOK/gated/OVH/HeckAI, fix HeckAI empty, find 200+ no-auth chat providers
+
+Work Log:
+- **Removed ALL BYOK/gated providers**: Z.AI (4 models), OpenRouter (3), Groq (2) = 9 models removed. Deleted `src/lib/providers/gated.ts`. Removed all gated provider references from chat route, chat page, models-showcase.
+- **Removed OVH** (15 models) — rate limited (2 RPM per model, constantly hitting limit).
+- **Removed HeckAI** (7 models) — upstream now returns "Payment Required (status 402): This request requires more credits" via OpenRouter. HeckAI became a proxy to OpenRouter and requires credits. Deleted `src/lib/providers/heckai.ts` and `src/lib/providers/ovh.ts`.
+- **Expanded FreeGPT** from 28 to 54 chat models — added all 50 upstream models (GPT-5.5, GPT-5.6 Luna/Sol, Claude Opus/Sonnet/Fable 5, Claude 4.6-4.8, Grok 4.20, Grok Imagine, GPT-4o, GPT-4.1, o3, o4-mini, GPT-OSS 120B, Baidu EB50/EB45T, Xiaomi MiMo, Gemini variants).
+- **Cleaned LLM7** from 27 to 5 verified-working no-key models (gpt-oss:20b, codestral-latest, deepseek-v4-flash:0731, gemini-3.1-flash-lite, minimax-m2.7). The other 22 models now require a key.
+- **Research**: Tested 40+ free chat APIs including DuckDuckGo, HuggingFace, nano-gpt, Aion Labs, ModelScope, DeepInfra, Fireworks, Together, AI21, Cohere, Groq, Cerebras, Blackbox, Phind, You.com, Pizzagpt, gptgod, chataigpt, and more. ALL require either signup, API key, or are Cloudflare-blocked. The only no-auth providers that work are the ones already integrated: FreeGPT, Toolbaz, KiloCode, LLM7, Pollinations, SurfSense, UnlimitedAI, SpicyWriter, NSFWLover, JollyGen.
+- **No duplicates** — verified all 111 model IDs are unique.
+- **No placeholders** — every model ID corresponds to a real upstream model.
+- **No fakes** — all models are from real, tested providers.
+
+Stage Summary:
+- **111 no-auth free chat models** across 10 providers (0 BYOK, 0 gated, 0 duplicates)
+- All BYOK removed (Z.AI, OpenRouter, Groq = 9 models)
+- OVH removed (rate limited)
+- HeckAI removed (upstream requires credits)
+- FreeGPT expanded to 54 models (all upstream models)
+- LLM7 cleaned to 5 verified-working models
+- Deployed to https://freeaixyz4all.vercel.app
+- HONEST NOTE: Reaching 200+ models is not possible with only no-auth providers. The free no-signup no-key chat API landscape is extremely limited — most services require signup, are Cloudflare-blocked, or have removed their anonymous tiers. The 111 models represent ALL known working no-auth chat APIs as of testing.
