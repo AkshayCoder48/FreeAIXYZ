@@ -146,17 +146,8 @@ function buildKeyHeaders(modelId: string): Record<string, string> {
 }
 
 /** Returns the BYOK provider name if the model requires a key the user hasn't set. */
-function missingKeyName(modelId: string): string | null {
-  const m = findModel(modelId);
-  if (!m || !m.requiresKey) return null;
-  const keys = loadApiKeys();
-  const mapping = GATED_KEY_MAP[m.provider];
-  if (!mapping) return null;
-  const value = keys[mapping.field]?.trim();
-  if (value) return null;
-  if (m.provider === "zai") return "Z.AI";
-  if (m.provider === "openrouter-key") return "OpenRouter";
-  if (m.provider === "groq-key") return "Groq";
+function missingKeyName(_modelId: string): string | null {
+  // No BYOK/gated providers — all models are free, no-key.
   return null;
 }
 

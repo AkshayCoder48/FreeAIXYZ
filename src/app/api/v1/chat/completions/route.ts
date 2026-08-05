@@ -2,9 +2,6 @@ import { NextResponse } from "next/server";
 import {
   resolveGatewayModel,
   getProvider,
-  isGatedProvider,
-  GATED_PROVIDERS,
-  GatedKeyMissingError,
   type GatewayModel,
   type ProviderMessage,
 } from "@/lib/providers";
@@ -44,14 +41,6 @@ function errorResponse(
 
 /** Translate an upstream error into an OpenAI-shaped error response. */
 function upstreamErrorResponse(err: unknown) {
-  if (err instanceof GatedKeyMissingError) {
-    return errorResponse(
-      err.message,
-      401,
-      "authentication_required",
-      "authentication_required",
-    );
-  }
   if (err instanceof ToolbazError) {
     const detail = err.upstreamBody;
     let status = 502;
@@ -106,25 +95,8 @@ export async function POST(request: Request) {
   const model = resolveGatewayModel(body.model);
   const useTools = hasTools(body.tools) && model.capabilities.tools;
 
-  // ─── Gated model: extract the user-supplied API key ────────────────────
-  // The chat client sends provider-specific headers (x-zai-token,
-  // x-openrouter-key, x-groq-key). We read whichever one matches the
-  // gated provider for this model. If the model requires a key and none
-  // is present, return a 401 with a clear, actionable message.
-  let authToken: string | undefined;
-  if (isGatedProvider(model.provider)) {
-    const cfg = GATED_PROVIDERS[model.provider];
-    const raw = request.headers.get(cfg.keyHeader);
-    authToken = raw && raw.trim() ? raw.trim() : undefined;
-    if (!authToken) {
-      return errorResponse(
-        `This model requires an API key. Please go to /settings to add your ${cfg.name} token.`,
-        401,
-        "authentication_required",
-        "authentication_required",
-      );
-    }
-  }
+  // No BYOK/gated providers — all models are free, no-key.
+  const authToken: string | undefined = undefined;
 
   const wantsWebSearch = body.web_search === true;
 
@@ -438,13 +410,8 @@ async function streamCompletion(
             model.provider === "pollinations" ||
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
-            model.provider === "heckai" ||
             model.provider === "spicywriter" ||
-            model.provider === "freegpt" ||
-            model.provider === "ovh" ||
-            model.provider === "zai" ||
-            model.provider === "openrouter-key" ||
-            model.provider === "groq-key";
+            model.provider === "freegpt";
 
           if (realStream) {
             // Buffer all upstream deltas, then re-pace as fake word-by-word

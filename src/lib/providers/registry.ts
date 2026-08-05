@@ -24,13 +24,8 @@ export type ProviderId =
   | "pollinations"
   | "kilocode"
   | "llm7"
-  | "heckai"
   | "spicywriter"
   | "freegpt"
-  | "ovh"
-  | "zai"
-  | "openrouter-key"
-  | "groq-key"
   | "search"
   | "music";
 
@@ -132,43 +127,12 @@ export const MODELS: readonly GatewayModel[] = [
   kc("stepfun-step-37-flash", "stepfun/step-3.7-flash:free", "StepFun Step 3.7 Flash — fast multilingual model", "professional", 262144),
   kc("ling-30-flash", "inclusionai/ling-3.0-flash:free", "InclusionAI Ling 3.0 Flash — Chinese/English bilingual model", "professional", 262144),
 
-  // ─── LLM7.io provider: free anonymous, no key (tested OK) ───────────────
-  l7("gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous access", "professional", 131072),
+  // ─── LLM7.io provider: free anonymous, no key (5 models verified working) ──
+  l7("l7-gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous via LLM7", "professional", 131072),
   l7("l7-codestral", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
-  l7("l7-gpt-5-4", "gpt-5.4", "GPT-5.4 — flagship via LLM7, free anonymous", "professional", 128000),
-  l7("l7-gpt-5-5", "gpt-5.5", "GPT-5.5 — improved flagship via LLM7, free anonymous", "professional", 128000),
-  l7("l7-gpt-5-6-luna", "gpt-5.6-luna", "GPT-5.6 Luna — creative variant via LLM7, free anonymous", "professional", 128000),
-  l7("l7-gpt-5-6-sol", "gpt-5.6-sol", "GPT-5.6 Sol — solar variant via LLM7, free anonymous", "professional", 128000),
-  l7("l7-gpt-5-6-terra", "gpt-5.6-terra", "GPT-5.6 Terra — grounded variant via LLM7, free anonymous", "professional", 128000),
-  l7("l7-deepseek-v4-flash", "deepseek-v4-flash", "DeepSeek V4 Flash — fast latest DeepSeek via LLM7", "professional", 64000),
-  l7("l7-deepseek-v4-pro", "deepseek-v4-pro", "DeepSeek V4 Pro — full DeepSeek via LLM7, free anonymous", "professional", 64000),
+  l7("l7-deepseek-v4-flash", "deepseek-v4-flash:0731", "DeepSeek V4 Flash — fast latest DeepSeek via LLM7", "professional", 64000),
   l7("l7-gemini-3-1-flash-lite", "gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite — lightweight Google model via LLM7", "professional", 1000000),
-  l7("l7-gemini-3-5-flash-low", "gemini-3.5-flash-low", "Gemini 3.5 Flash Low — efficient Google model via LLM7", "professional", 1000000),
-  l7("l7-gemini-omni-flash", "gemini-omni-flash", "Gemini Omni Flash — multimodal Google model via LLM7", "professional", 1000000),
-  l7("l7-grok-4-5", "grok-4.5", "Grok 4.5 — xAI model via LLM7, free anonymous", "professional", 131000),
-  l7("l7-kimi-k2-7-code", "kimi-k2.7-code", "Kimi K2.7 Code — Moonshot coding model via LLM7", "professional", 262144),
-  l7("l7-kimi-k3", "kimi-k3", "Kimi K3 — Moonshot latest model via LLM7, free anonymous", "professional", 262144),
   l7("l7-minimax-m2-7", "minimax-m2.7", "MiniMax M2.7 — large Chinese model via LLM7", "professional", 1000000),
-  l7("l7-claude-sonnet-5", "claude-sonnet-5", "Claude Sonnet 5 — Anthropic model via LLM7, free anonymous", "professional", 200000),
-  l7("l7-claude-opus-5", "claude-opus-5", "Claude Opus 5 — Anthropic flagship via LLM7, free anonymous", "professional", 200000),
-  l7("l7-claude-fable-5", "claude-fable-5", "Claude Fable 5 — storytelling variant via LLM7", "professional", 200000),
-  l7("l7-mistral-nemo", "mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct — 12B multilingual via LLM7", "professional", 128000),
-  l7("l7-mistral-small-24b", "mistral-Small-24B-Instruct-2501", "Mistral Small 24B Instruct — compact via LLM7", "professional", 128000),
-  l7("l7-seed-2-0-mini", "seed-2.0-mini", "Seed 2.0 Mini — ByteDance model via LLM7, free anonymous", "professional", 128000),
-  l7("l7-l3-8b-lunaris", "L3-8B-Lunaris-v1-Turbo", "L3 8B Lunaris v1 Turbo — fast roleplay model via LLM7", "sfw", 8000),
-  l7("l7-mimo-v2-5", "XiaomiMiMo/MiMo-V2.5", "Xiaomi MiMo V2.5 — Xiaomi AI model via LLM7", "professional", 128000),
-  l7("l7-mimo-v2-5-pro", "XiaomiMiMo/MiMo-V2.5-Pro", "Xiaomi MiMo V2.5 Pro — enhanced via LLM7", "professional", 128000),
-  l7("l7-inkling", "Inkling", "Inkling — creative writing model via LLM7", "sfw", 32000),
-  l7("l7-inkling-small", "Inkling-Small", "Inkling Small — lightweight creative model via LLM7", "sfw", 32000),
-
-  // ─── HeckAI provider: free, no-auth, real SSE streaming ────────────────
-  ha("heckai-gemini-3-flash", "google/gemini-3-flash-preview", "Gemini 3 Flash Preview — Google's latest fast model (via HeckAI)", "professional", 1000000),
-  ha("heckai-gemini-3-1-flash-lite", "google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite — Google lightweight (via HeckAI)", "professional", 1000000),
-  ha("heckai-deepseek-v4-pro", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro — latest flagship (via HeckAI)", "professional", 64000),
-  ha("heckai-deepseek-v4-flash", "deepseek/deepseek-v4-flash", "DeepSeek V4 Flash — fast variant (via HeckAI)", "professional", 64000),
-  ha("heckai-qwen3-7-plus", "qwen/qwen3.7-plus", "Qwen 3.7 Plus — Alibaba enhanced (via HeckAI)", "professional", 262144),
-  ha("heckai-minimax-m3", "minimax/minimax-m3", "Minimax M3 — Chinese AI flagship (via HeckAI)", "professional", 196000),
-  ha("heckai-stepfun-flash", "stepfun/step-3.7-flash", "StepFun 3.7 Flash — fast Chinese AI (via HeckAI)", "professional", 262144),
 
   // ─── SpicyWriter provider: free anonymous NSFW/uncensored, real SSE ────
   // Each call mints a fresh anon id (X-Anonymous-User-Id) → unlimited free.
@@ -210,39 +174,35 @@ export const MODELS: readonly GatewayModel[] = [
   fgImg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — OpenAI image generation (FreeGPT.tech)", "general"),
   fgImg("fgpt-nano-banana-2", "nano-banana-2", "Nano Banana 2 — Google Gemini image generation (FreeGPT.tech)", "realism"),
   fgImg("fgpt-flux-2-flex", "flux-2-flex", "Flux 2 Flex — Black Forest Labs photoreal image generation (FreeGPT.tech)", "realism"),
-
-  // ─── OVHcloud AI Endpoints provider: free, no-auth, OpenAI-compatible ────
-  // 15 chat models hosted on OVHcloud Kepler AI (EU). No signup, no key.
-  // 2 RPM per IP per model on the anonymous tier. Credit: OVHcloud.
-  ovh("ovh-mistral-7b", "Mistral-7B-Instruct-v0.3", "Mistral 7B Instruct v0.3 — fast, lightweight (OVHcloud, no key)", "professional", 32000),
-  ovh("ovh-mistral-nemo", "Mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct — 12B model, multilingual (OVHcloud, no key)", "professional", 128000),
-  ovh("ovh-mistral-small-32", "Mistral-Small-3.2-24B-Instruct-2506", "Mistral Small 3.2 24B — latest compact Mistral (OVHcloud, no key)", "professional", 128000),
-  ovh("ovh-llama-3-3-70b", "Meta-Llama-3_3-70B-Instruct", "Llama 3.3 70B Instruct — Meta's latest flagship (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-32b", "Qwen3-32B", "Qwen 3 32B — Alibaba's versatile model (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-5-9b", "Qwen3.5-9B", "Qwen 3.5 9B — fast, efficient (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-5-397b", "Qwen3.5-397B-A17B", "Qwen 3.5 397B A17B — MoE flagship (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-6-27b", "Qwen3.6-27B", "Qwen 3.6 27B — latest Qwen (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-coder-30b", "Qwen3-Coder-30B-A3B-Instruct", "Qwen 3 Coder 30B — specialized for code generation (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen2-5-vl-72b", "Qwen2.5-VL-72B-Instruct", "Qwen 2.5 VL 72B — vision-language model (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-gpt-oss-120b", "gpt-oss-120b", "GPT-OSS 120B — OpenAI's open-weight model (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-gpt-oss-20b", "gpt-oss-20b", "GPT-OSS 20B — lightweight open-weight (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-qwen3-guard-06b", "Qwen3Guard-Gen-0.6B", "Qwen 3 Guard Gen 0.6B — safety/content moderation (OVHcloud, no key)", "professional", 32000),
-  ovh("ovh-qwen3-guard-8b", "Qwen3Guard-Gen-8B", "Qwen 3 Guard Gen 8B — safety/content moderation (OVHcloud, no key)", "professional", 131000),
-  ovh("ovh-ppl", "ppl", "PPL — perplexity/performance model (OVHcloud, no key)", "professional", 32000),
-
-  // ─── Gated providers (require user-supplied API key) ──────────────────────
-  // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
-  gated("zai-glm-5-2", "glm-5.2", "GLM-5.2 — Z.AI flagship, excellent for coding (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
-  gated("zai-glm-5-1", "GLM-5.1", "GLM-5.1 — previous Z.AI flagship (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
-  gated("zai-glm-5-turbo", "GLM-5-Turbo", "GLM-5-Turbo — fast Z.AI chat model (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
-  gated("zai-glm-4-7", "glm-4.7", "GLM-4.7 — classic high-performance Z.AI model (requires Z.AI JWT)", "zai", "x-zai-token", 128000),
-  // OpenRouter — API key from openrouter.ai/keys, sent via x-openrouter-key
-  gated("or-gpt-5", "openai/gpt-5", "GPT-5 via OpenRouter — flagship reasoning model (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 128000),
-  gated("or-claude-sonnet-5", "anthropic/claude-sonnet-5", "Claude Sonnet 5 via OpenRouter — Anthropic's latest (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 200000),
-  gated("or-gemini-3-5-flash", "google/gemini-3.5-flash", "Gemini 3.5 Flash via OpenRouter — fast and capable (requires OpenRouter key)", "openrouter-key", "x-openrouter-key", 1000000),
-  // Groq — API key from console.groq.com/keys, sent via x-groq-key
-  gated("groq-llama-3-3-70b", "llama-3.3-70b-versatile", "Llama 3.3 70B Versatile on Groq — ultra-fast inference (requires Groq key)", "groq-key", "x-groq-key", 128000),
-  gated("groq-gpt-oss-120b", "openai/gpt-oss-120b", "GPT-OSS 120B on Groq — open-weight model, ultra-fast (requires Groq key)", "groq-key", "x-groq-key", 128000),
+  // Additional FreeGPT models (50 total from the upstream model list)
+  fg("fgpt-gpt-5-5", "gpt-5.5", "GPT-5.5 — improved flagship (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-5-6-luna", "gpt-5.6-luna", "GPT-5.6 Luna — creative variant (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-5-6-sol", "gpt-5.6-sol", "GPT-5.6 Sol — solar variant (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-deepseek-v4-pro", "deepseek-v4-pro", "DeepSeek V4 Pro — full DeepSeek flagship (FreeGPT.tech)", "professional", 64000),
+  fg("fgpt-gemini-3-pro-preview", "gemini-3-pro-preview", "Gemini 3 Pro Preview — Google flagship preview (FreeGPT.tech)", "professional", 2000000),
+  fg("fgpt-gemini-3-5-flash", "gemini-3.5-flash", "Gemini 3.5 Flash — Google fast model (FreeGPT.tech)", "professional", 1000000),
+  fg("fgpt-gemini-3-flash-preview", "gemini-3-flash-preview", "Gemini 3 Flash Preview — Google latest fast (FreeGPT.tech)", "professional", 1000000),
+  fg("fgpt-gemini-3-1-pro-preview", "gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview — Google pro preview (FreeGPT.tech)", "professional", 2000000),
+  fg("fgpt-claude-fable-5", "claude-fable-5", "Claude Fable 5 — Anthropic storytelling model (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-sonnet-5", "claude-sonnet-5", "Claude Sonnet 5 — Anthropic latest (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-opus-5", "claude-opus-5", "Claude Opus 5 — Anthropic flagship (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-opus-4-8", "claude-opus-4-8", "Claude Opus 4.8 — previous Anthropic flagship (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-opus-4-7", "claude-opus-4-7", "Claude Opus 4.7 — Anthropic model (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-opus-4-6", "claude-opus-4-6", "Claude Opus 4.6 — Anthropic model (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-claude-sonnet-4-6", "claude-sonnet-4-6", "Claude Sonnet 4.6 — Anthropic model (FreeGPT.tech)", "professional", 200000),
+  fg("fgpt-grok-4-20", "grok-4.20", "Grok 4.20 — xAI flagship (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-grok-4-20-non-reasoning", "grok-4.20-0309-non-reasoning", "Grok 4.20 Non-Reasoning — fast xAI variant (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-grok-imagine", "grok-imagine", "Grok Imagine — xAI image-capable model (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-gpt-4o", "gpt-4o", "GPT-4o — OpenAI multimodal flagship (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gpt-4-1", "gpt-4.1", "GPT-4.1 — OpenAI model (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-o3", "o3", "o3 — OpenAI reasoning flagship (FreeGPT.tech)", "reasoning", 200000),
+  fg("fgpt-o4-mini", "o4-mini", "o4 Mini — OpenAI compact reasoning (FreeGPT.tech)", "reasoning", 128000),
+  fg("fgpt-gpt-oss-120b", "gpt-oss-120b", "GPT-OSS 120B — OpenAI open-weight (FreeGPT.tech)", "professional", 131000),
+  fg("fgpt-baidu-eb50", "Webapp/Baidu/EB50", "Baidu EB50 — Chinese AI model (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-baidu-eb45t", "Webapp/Baidu/EB45T", "Baidu EB45T — Chinese AI model (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-mimo-v2-5", "mimo-v2.5", "Xiaomi MiMo V2.5 — Xiaomi AI model (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-mimo-v2-5-pro", "mimo-v2.5-pro", "Xiaomi MiMo V2.5 Pro — enhanced Xiaomi (FreeGPT.tech)", "professional", 128000),
+  fg("fgpt-gemini-3-1-flash-image", "gemini-3.1-flash-image", "Gemini 3.1 Flash Image — Google image-capable (FreeGPT.tech)", "professional", 1000000),
 
 
 
@@ -465,33 +425,6 @@ function l7(
 }
 
 
-/** HeckAI model helper. Free, no-auth, real SSE streaming. */
-function ha(
-  id: string,
-  upstream: string,
-  description: string,
-  category: GatewayModel["category"],
-  contextWindow: number,
-): GatewayModel {
-  return {
-    id,
-    provider: "heckai",
-    upstream,
-    description,
-    category,
-    contextWindow,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
-    },
-  };
-}
-
-
 /** SpicyWriter model helper. Free anonymous NSFW/uncensored, real SSE streaming. */
 function sw(
   id: string,
@@ -578,62 +511,6 @@ function fgImg(
   };
 }
 
-/** OVHcloud AI Endpoints model helper. Free, no-auth, OpenAI-compatible.
- *  Real SSE streaming. 2 RPM per IP per model on the anonymous tier. */
-function ovh(
-  id: string,
-  upstream: string,
-  description: string,
-  category: GatewayModel["category"],
-  contextWindow: number,
-): GatewayModel {
-  return {
-    id,
-    provider: "ovh",
-    upstream,
-    description,
-    category,
-    contextWindow,
-    capabilities: {
-      streaming: true,
-      tools: false,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
-    },
-  };
-}
-
-/** Gated model helper — requires the user to supply their own API key. */
-function gated(
-  id: string,
-  upstream: string,
-  description: string,
-  provider: "zai" | "openrouter-key" | "groq-key",
-  keyHeader: string,
-  contextWindow: number,
-): GatewayModel {
-  return {
-    id,
-    provider,
-    upstream,
-    description,
-    category: "professional",
-    contextWindow,
-    requiresKey: true,
-    keyHeader,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
-    },
-  };
-}
-
 
 
 
@@ -709,15 +586,7 @@ export const PROVIDER_INFO: Record<
 > = {
   "freegpt": {
     name: "FreeGPT.tech",
-    description: "27 free models (GPT-5.4, DeepSeek V4, Gemini, Grok 4, Llama 3.3 70B, Qwen) — WASM-secured, no API key needed",
-  },
-  "ovh": {
-    name: "OVHcloud AI",
-    description: "15 free models (Mistral, Llama 3.3 70B, Qwen 3.5, gpt-oss) — OVHcloud Kepler AI, no signup, no key, 2 RPM/model",
-  },
-  "heckai": {
-    name: "HeckAI",
-    description: "7 free models (Gemini 3 Flash, DeepSeek V4, Qwen 3.7, Minimax M3) — no auth, real SSE",
+    description: "50 free models (GPT-5.5/5.6, Claude Opus/Sonnet 5, Grok 4.20, Gemini 3, DeepSeek V4, Llama 3.3) — WASM-secured, no API key needed",
   },
   "jollygen": {
     name: "JollyGen",
@@ -725,7 +594,7 @@ export const PROVIDER_INFO: Record<
   },
   "kilocode": {
     name: "Kilo Code",
-    description: "10 free models (NVIDIA Nemotron, Tencent Hy3, Poolside…) — no key, real SSE streaming",
+    description: "16 free models (NVIDIA Nemotron, Tencent Hy3, Poolside, StepFun, Ling) — no key, real SSE streaming",
   },
   "llm7": {
     name: "LLM7.io",
@@ -762,17 +631,5 @@ export const PROVIDER_INFO: Record<
   "unlimitedai": {
     name: "UnlimitedAI",
     description: "Uncensored reasoning + web search, NDJSON token streaming",
-  },
-  "zai": {
-    name: "Z.AI (BYOK)",
-    description: "4 GLM models (GLM-5.2, 5.1, 5-Turbo, 4.7) — requires your Z.AI JWT token from chat.z.ai local storage",
-  },
-  "openrouter-key": {
-    name: "OpenRouter (BYOK)",
-    description: "3 models (GPT-5, Claude Sonnet 5, Gemini 3.5 Flash) — requires your OpenRouter API key from openrouter.ai/keys",
-  },
-  "groq-key": {
-    name: "Groq (BYOK)",
-    description: "2 models (Llama 3.3 70B, GPT-OSS 120B) on ultra-fast Groq inference — requires your Groq API key from console.groq.com/keys",
   },
 };

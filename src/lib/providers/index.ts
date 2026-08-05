@@ -10,18 +10,8 @@ import { unlimitedAiProvider } from "./unlimitedai";
 import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
-import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
 import { freeGptProvider } from "./freegpt";
-import { ovhProvider } from "./ovh";
-import {
-  zaiProvider,
-  openRouterKeyProvider,
-  groqKeyProvider,
-  isGatedProvider,
-  GatedKeyMissingError,
-  GATED_PROVIDERS,
-} from "./gated";
 
 // Stub providers for standalone services (search/music). These are listed in
 // the model registry for discovery but called via their own API endpoints.
@@ -44,13 +34,8 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   pollinations: pollinationsProvider,
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
-  heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
   freegpt: freeGptProvider,
-  ovh: ovhProvider,
-  zai: zaiProvider,
-  "openrouter-key": openRouterKeyProvider,
-  "groq-key": groqKeyProvider,
   search: stubProvider,
   music: stubProvider,
 };
@@ -71,4 +56,3 @@ export {
   type ModelCapabilities,
   type ProviderId,
 } from "./registry";
-export { isGatedProvider, GatedKeyMissingError, GATED_PROVIDERS } from "./gated";
