@@ -411,7 +411,8 @@ async function streamCompletion(
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
             model.provider === "spicywriter" ||
-            model.provider === "freegpt";
+            model.provider === "freegpt" ||
+            model.provider === "g4fspace";
 
           if (realStream) {
             // Buffer all upstream deltas, then re-pace as fake word-by-word

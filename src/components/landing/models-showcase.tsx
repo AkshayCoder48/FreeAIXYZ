@@ -48,6 +48,7 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   llm7: "text-blue-500",
   spicywriter: "text-rose-400",
   freegpt: "text-purple-500",
+  g4fspace: "text-cyan-500",
   search: "text-cyan-500",
   music: "text-pink-500",
 };
