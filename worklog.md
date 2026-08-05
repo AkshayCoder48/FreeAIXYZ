@@ -1837,3 +1837,34 @@ Stage Summary:
 - Tool streaming FIXED: uses provider.stream() not provider.complete()
 - Subscription detection: clear error for subscription-required models
 - Deployed to https://freeaixyz4all.vercel.app
+
+---
+Task ID: 18
+Agent: fix-tool-format-and-subscription-check
+Task: Fix tool call format (no raw JSON in content) + check FreeGPT JS for subscription bypass
+
+Work Log:
+- **FIX: Tool call format — no more raw JSON in content**
+  - Problem: When tools were active, content deltas were emitted in real-time, showing raw JSON like `[{"name":"create_file","arguments":{...}}]` to the user, then tool_calls were emitted at the end (duplicate).
+  - Fix: When tools are active, the response is now buffered SILENTLY (no content deltas during accumulation). After buffering:
+    - If tool calls found → emit ONLY tool_calls (no content) with finish_reason="tool_calls"
+    - If no tool calls → stream content via streamText (1ms delays, almost instant) with finish_reason="stop"
+  - Verified: `create_file` tool call returns `content: None`, `tool_calls: [{name: "create_file", arguments: "{...}"}]`, `finish_reason: "tool_calls"` ✓
+  - Verified: Streaming with tools emits only `tool_calls` deltas, no raw JSON content ✓
+
+- **FreeGPT subscription investigation**
+  - Checked all FreeGPT JS chunks (page.js, 9291.js, layout.js, webpack.js)
+  - Found: subscription check is SERVER-SIDE (One API user group system)
+  - Free users get 'free' group, subscribed users get 'premium' group
+  - The WASM PoW challenge only authenticates the REQUEST, not the USER
+  - Registration requires Turnstile captcha — cannot automate
+  - The JS contains: "Some models are only available to subscribed users, switch to a free model to continue using"
+  - No client-side bypass exists for subscription-gated models
+  - Subscription models (Claude, GPT-5.5/5.6, o3, etc.) remain gated — cannot be bypassed
+  - Clear error message already surfaces when subscription models are used
+
+Stage Summary:
+- Tool call format FIXED: proper OpenAI format, no raw JSON in content
+- Streaming with tools FIXED: buffers silently, emits only tool_calls
+- FreeGPT subscription: no bypass found (server-side check, requires paid subscription)
+- Deployed to https://freeaixyz4all.vercel.app
