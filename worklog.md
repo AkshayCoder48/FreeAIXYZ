@@ -1764,3 +1764,37 @@ Stage Summary:
 - When blocked, clear error message is surfaced; models still listed in registry
 - Deployed to https://freeaixyz4all.vercel.app
 - `bun run lint` clean, `npx tsc --noEmit` clean
+
+---
+Task ID: 16
+Agent: real-streaming-fix
+Task: Fix real-time streaming (emit tokens as they arrive, not buffer-then-repace) + remove g4f.space
+
+Work Log:
+- **CRITICAL STREAMING FIX**: The realStream path was buffering ALL upstream deltas into `collectedParts[]`, then calling `streamText()` on the full text. This meant:
+  1. Client sees nothing during generation (just heartbeats)
+  2. After upstream finishes, text is re-paced word-by-word with artificial delays
+  3. Total time = upstream generation time + re-pacing time
+  
+  Fixed: Now emits each delta immediately as it arrives from the upstream provider.
+  - No buffering, no re-pacing, no artificial delays
+  - First token sent to client the instant upstream sends it
+  - Total time = upstream generation time only
+  - Verified: KiloCode streams "1\n", "2\n3\n", "4\n5" as separate real-time deltas
+
+- **Toolbaz kept as non-streaming**: Toolbaz returns full text in one chunk (no SSE).
+  It still uses `streamText()` re-pacing (3-15ms delays) since there's nothing to stream.
+
+- **Removed g4f.space** (165 models):
+  - Was returning 403 from Vercel IPs (cloud provider blocking)
+  - Deleted src/lib/providers/g4fspace.ts
+  - Removed all 165 g4f model entries from registry
+  - Removed from ProviderId, PROVIDER_INFO, index.ts, realStream allowlist
+  - Removed g4fspace from models-showcase provider colors
+
+Stage Summary:
+- Streaming FIXED: real-time token-by-token emission (no buffering)
+- g4f.space REMOVED: was unreliable (403 from cloud IPs)
+- 111 no-auth free chat models (0 BYOK, 0 duplicates, 0 fakes)
+- Toolbaz correctly uses re-pacing (non-streaming provider)
+- Deployed to https://freeaixyz4all.vercel.app
