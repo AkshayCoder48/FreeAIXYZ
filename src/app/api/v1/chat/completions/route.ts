@@ -441,6 +441,7 @@ async function streamCompletion(
             model.provider === "heckai" ||
             model.provider === "spicywriter" ||
             model.provider === "freegpt" ||
+            model.provider === "ovh" ||
             model.provider === "zai" ||
             model.provider === "openrouter-key" ||
             model.provider === "groq-key";

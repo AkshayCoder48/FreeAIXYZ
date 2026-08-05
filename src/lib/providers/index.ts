@@ -13,6 +13,7 @@ import { llm7Provider } from "./llm7";
 import { heckAiProvider } from "./heckai";
 import { spicyWriterProvider } from "./spicywriter";
 import { freeGptProvider } from "./freegpt";
+import { ovhProvider } from "./ovh";
 import {
   zaiProvider,
   openRouterKeyProvider,
@@ -46,6 +47,7 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   heckai: heckAiProvider,
   spicywriter: spicyWriterProvider,
   freegpt: freeGptProvider,
+  ovh: ovhProvider,
   zai: zaiProvider,
   "openrouter-key": openRouterKeyProvider,
   "groq-key": groqKeyProvider,

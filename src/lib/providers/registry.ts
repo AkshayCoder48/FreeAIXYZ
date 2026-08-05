@@ -27,6 +27,7 @@ export type ProviderId =
   | "heckai"
   | "spicywriter"
   | "freegpt"
+  | "ovh"
   | "zai"
   | "openrouter-key"
   | "groq-key"
@@ -113,7 +114,7 @@ export const MODELS: readonly GatewayModel[] = [
   // ─── Pollinations.ai provider: free, no-auth, OpenAI-compatible SSE ──────
   pol("openai-fast", "openai-fast", "GPT-OSS 20B Reasoning — fast, no signup, real token streaming with reasoning", "reasoning", 128000, true),
 
-  // ─── Kilo Code provider: 9 free models, no key, real SSE (tested OK) ───
+  // ─── Kilo Code provider: 16 free models, no key, real SSE (tested OK) ───
   kc("tencent-hy3", "tencent/hy3:free", "Tencent Hy3 — large-scale Chinese/English model", "professional", 262144),
   kc("nemotron-ultra", "nvidia/nemotron-3-ultra-550b-a55b:free", "NVIDIA Nemotron 3 Ultra (550B) — flagship reasoning model", "reasoning", 1000000),
   kc("nemotron-super", "nvidia/nemotron-3-super-120b-a12b:free", "NVIDIA Nemotron 3 Super (120B) — high-performance model", "professional", 1000000),
@@ -121,12 +122,44 @@ export const MODELS: readonly GatewayModel[] = [
   kc("nemotron-safety", "nvidia/nemotron-3.5-content-safety:free", "NVIDIA Nemotron 3.5 Content Safety — moderation model", "sfw", 128000),
   kc("laguna-xs", "poolside/laguna-xs-2.1:free", "Poolside Laguna XS 2.1 — code-optimized model", "professional", 262144),
   kc("laguna-m", "poolside/laguna-m.1:free", "Poolside Laguna M.1 — balanced code model", "professional", 262144),
+  kc("laguna-s", "poolside/laguna-s-2.1:free", "Poolside Laguna S 2.1 — full-size code model", "professional", 262144),
   kc("cohere-north-code", "cohere/north-mini-code:free", "Cohere North Mini Code — lightweight code model", "professional", 256000),
   kc("kilo-auto-free", "kilo-auto/free", "Kilo Auto Free — auto-routes to best available free model", "professional", 262144),
+  kc("kilo-auto-frontier", "kilo-auto/frontier", "Kilo Auto Frontier — routes to most capable model", "professional", 262144),
+  kc("kilo-auto-balanced", "kilo-auto/balanced", "Kilo Auto Balanced — routes to balanced quality/speed model", "professional", 262144),
+  kc("kilo-auto-efficient", "kilo-auto/efficient", "Kilo Auto Efficient — routes to fastest model", "professional", 262144),
+  kc("kilo-auto-small", "kilo-auto/small", "Kilo Auto Small — routes to smallest/cheapest model", "professional", 262144),
+  kc("stepfun-step-37-flash", "stepfun/step-3.7-flash:free", "StepFun Step 3.7 Flash — fast multilingual model", "professional", 262144),
+  kc("ling-30-flash", "inclusionai/ling-3.0-flash:free", "InclusionAI Ling 3.0 Flash — Chinese/English bilingual model", "professional", 262144),
 
   // ─── LLM7.io provider: free anonymous, no key (tested OK) ───────────────
   l7("gpt-oss-20b", "gpt-oss:20b", "GPT-OSS 20B — OpenAI open-weight model, free anonymous access", "professional", 131072),
-  l7("codestral-latest", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
+  l7("l7-codestral", "codestral-latest", "Codestral — Mistral's code generation model, free anonymous", "professional", 256000),
+  l7("l7-gpt-5-4", "gpt-5.4", "GPT-5.4 — flagship via LLM7, free anonymous", "professional", 128000),
+  l7("l7-gpt-5-5", "gpt-5.5", "GPT-5.5 — improved flagship via LLM7, free anonymous", "professional", 128000),
+  l7("l7-gpt-5-6-luna", "gpt-5.6-luna", "GPT-5.6 Luna — creative variant via LLM7, free anonymous", "professional", 128000),
+  l7("l7-gpt-5-6-sol", "gpt-5.6-sol", "GPT-5.6 Sol — solar variant via LLM7, free anonymous", "professional", 128000),
+  l7("l7-gpt-5-6-terra", "gpt-5.6-terra", "GPT-5.6 Terra — grounded variant via LLM7, free anonymous", "professional", 128000),
+  l7("l7-deepseek-v4-flash", "deepseek-v4-flash", "DeepSeek V4 Flash — fast latest DeepSeek via LLM7", "professional", 64000),
+  l7("l7-deepseek-v4-pro", "deepseek-v4-pro", "DeepSeek V4 Pro — full DeepSeek via LLM7, free anonymous", "professional", 64000),
+  l7("l7-gemini-3-1-flash-lite", "gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite — lightweight Google model via LLM7", "professional", 1000000),
+  l7("l7-gemini-3-5-flash-low", "gemini-3.5-flash-low", "Gemini 3.5 Flash Low — efficient Google model via LLM7", "professional", 1000000),
+  l7("l7-gemini-omni-flash", "gemini-omni-flash", "Gemini Omni Flash — multimodal Google model via LLM7", "professional", 1000000),
+  l7("l7-grok-4-5", "grok-4.5", "Grok 4.5 — xAI model via LLM7, free anonymous", "professional", 131000),
+  l7("l7-kimi-k2-7-code", "kimi-k2.7-code", "Kimi K2.7 Code — Moonshot coding model via LLM7", "professional", 262144),
+  l7("l7-kimi-k3", "kimi-k3", "Kimi K3 — Moonshot latest model via LLM7, free anonymous", "professional", 262144),
+  l7("l7-minimax-m2-7", "minimax-m2.7", "MiniMax M2.7 — large Chinese model via LLM7", "professional", 1000000),
+  l7("l7-claude-sonnet-5", "claude-sonnet-5", "Claude Sonnet 5 — Anthropic model via LLM7, free anonymous", "professional", 200000),
+  l7("l7-claude-opus-5", "claude-opus-5", "Claude Opus 5 — Anthropic flagship via LLM7, free anonymous", "professional", 200000),
+  l7("l7-claude-fable-5", "claude-fable-5", "Claude Fable 5 — storytelling variant via LLM7", "professional", 200000),
+  l7("l7-mistral-nemo", "mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct — 12B multilingual via LLM7", "professional", 128000),
+  l7("l7-mistral-small-24b", "mistral-Small-24B-Instruct-2501", "Mistral Small 24B Instruct — compact via LLM7", "professional", 128000),
+  l7("l7-seed-2-0-mini", "seed-2.0-mini", "Seed 2.0 Mini — ByteDance model via LLM7, free anonymous", "professional", 128000),
+  l7("l7-l3-8b-lunaris", "L3-8B-Lunaris-v1-Turbo", "L3 8B Lunaris v1 Turbo — fast roleplay model via LLM7", "sfw", 8000),
+  l7("l7-mimo-v2-5", "XiaomiMiMo/MiMo-V2.5", "Xiaomi MiMo V2.5 — Xiaomi AI model via LLM7", "professional", 128000),
+  l7("l7-mimo-v2-5-pro", "XiaomiMiMo/MiMo-V2.5-Pro", "Xiaomi MiMo V2.5 Pro — enhanced via LLM7", "professional", 128000),
+  l7("l7-inkling", "Inkling", "Inkling — creative writing model via LLM7", "sfw", 32000),
+  l7("l7-inkling-small", "Inkling-Small", "Inkling Small — lightweight creative model via LLM7", "sfw", 32000),
 
   // ─── HeckAI provider: free, no-auth, real SSE streaming ────────────────
   ha("heckai-gemini-3-flash", "google/gemini-3-flash-preview", "Gemini 3 Flash Preview — Google's latest fast model (via HeckAI)", "professional", 1000000),
@@ -177,6 +210,25 @@ export const MODELS: readonly GatewayModel[] = [
   fgImg("fgpt-gpt-image-2", "gpt-image-2", "GPT-Image 2 — OpenAI image generation (FreeGPT.tech)", "general"),
   fgImg("fgpt-nano-banana-2", "nano-banana-2", "Nano Banana 2 — Google Gemini image generation (FreeGPT.tech)", "realism"),
   fgImg("fgpt-flux-2-flex", "flux-2-flex", "Flux 2 Flex — Black Forest Labs photoreal image generation (FreeGPT.tech)", "realism"),
+
+  // ─── OVHcloud AI Endpoints provider: free, no-auth, OpenAI-compatible ────
+  // 15 chat models hosted on OVHcloud Kepler AI (EU). No signup, no key.
+  // 2 RPM per IP per model on the anonymous tier. Credit: OVHcloud.
+  ovh("ovh-mistral-7b", "Mistral-7B-Instruct-v0.3", "Mistral 7B Instruct v0.3 — fast, lightweight (OVHcloud, no key)", "professional", 32000),
+  ovh("ovh-mistral-nemo", "Mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct — 12B model, multilingual (OVHcloud, no key)", "professional", 128000),
+  ovh("ovh-mistral-small-32", "Mistral-Small-3.2-24B-Instruct-2506", "Mistral Small 3.2 24B — latest compact Mistral (OVHcloud, no key)", "professional", 128000),
+  ovh("ovh-llama-3-3-70b", "Meta-Llama-3_3-70B-Instruct", "Llama 3.3 70B Instruct — Meta's latest flagship (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-32b", "Qwen3-32B", "Qwen 3 32B — Alibaba's versatile model (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-5-9b", "Qwen3.5-9B", "Qwen 3.5 9B — fast, efficient (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-5-397b", "Qwen3.5-397B-A17B", "Qwen 3.5 397B A17B — MoE flagship (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-6-27b", "Qwen3.6-27B", "Qwen 3.6 27B — latest Qwen (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-coder-30b", "Qwen3-Coder-30B-A3B-Instruct", "Qwen 3 Coder 30B — specialized for code generation (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen2-5-vl-72b", "Qwen2.5-VL-72B-Instruct", "Qwen 2.5 VL 72B — vision-language model (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-gpt-oss-120b", "gpt-oss-120b", "GPT-OSS 120B — OpenAI's open-weight model (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-gpt-oss-20b", "gpt-oss-20b", "GPT-OSS 20B — lightweight open-weight (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-qwen3-guard-06b", "Qwen3Guard-Gen-0.6B", "Qwen 3 Guard Gen 0.6B — safety/content moderation (OVHcloud, no key)", "professional", 32000),
+  ovh("ovh-qwen3-guard-8b", "Qwen3Guard-Gen-8B", "Qwen 3 Guard Gen 8B — safety/content moderation (OVHcloud, no key)", "professional", 131000),
+  ovh("ovh-ppl", "ppl", "PPL — perplexity/performance model (OVHcloud, no key)", "professional", 32000),
 
   // ─── Gated providers (require user-supplied API key) ──────────────────────
   // Z.AI (GLM) — JWT token from chat.z.ai local storage, sent via x-zai-token
@@ -526,6 +578,33 @@ function fgImg(
   };
 }
 
+/** OVHcloud AI Endpoints model helper. Free, no-auth, OpenAI-compatible.
+ *  Real SSE streaming. 2 RPM per IP per model on the anonymous tier. */
+function ovh(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "ovh",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: false,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Gated model helper — requires the user to supply their own API key. */
 function gated(
   id: string,
@@ -631,6 +710,10 @@ export const PROVIDER_INFO: Record<
   "freegpt": {
     name: "FreeGPT.tech",
     description: "27 free models (GPT-5.4, DeepSeek V4, Gemini, Grok 4, Llama 3.3 70B, Qwen) — WASM-secured, no API key needed",
+  },
+  "ovh": {
+    name: "OVHcloud AI",
+    description: "15 free models (Mistral, Llama 3.3 70B, Qwen 3.5, gpt-oss) — OVHcloud Kepler AI, no signup, no key, 2 RPM/model",
   },
   "heckai": {
     name: "HeckAI",
