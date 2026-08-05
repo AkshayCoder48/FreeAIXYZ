@@ -25,7 +25,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function errorResponse(
   message: string,
@@ -296,8 +296,14 @@ async function streamCompletion(
           /* controller closed */
         }
       };
-      const send = (obj: unknown) =>
+      // Force a microtask yield after each send so the data is flushed
+      // to the network immediately, not buffered until the async function
+      // returns control. Without this, all chunks are batched and sent
+      // at once after the full response is generated.
+      const send = (obj: unknown) => {
         enqueue(`data: ${JSON.stringify(obj)}\n\n`);
+      };
+      const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
       const heartbeat = () => enqueue(`: keep-alive\n\n`);
 
       const heartbeatTimer = setInterval(heartbeat, 500);
@@ -394,6 +400,7 @@ async function streamCompletion(
                   },
                 ],
               });
+              await flush();
             }
             send({
               id,
@@ -408,7 +415,7 @@ async function streamCompletion(
               id,
               created,
               model: model.id,
-            });
+            }, flush);
             send({
               id,
               object: "chat.completion.chunk",
@@ -438,8 +445,10 @@ async function streamCompletion(
 
           if (realStream) {
             // REAL-TIME streaming: emit each upstream delta immediately as it
-            // arrives. No buffering, no re-pacing. The first token is sent to
-            // the client the instant the upstream sends it.
+            // arrives. After each send(), we flush with setTimeout(0) to force
+            // the data to the network — without this, Node.js/Vercel buffers
+            // all enqueued chunks and only flushes when the async function
+            // yields control, causing the "full generation then stream" bug.
             let hasContent = false;
             for await (const delta of provider.stream({
               model,
@@ -465,6 +474,7 @@ async function streamCompletion(
                     },
                   ],
                 });
+                await flush();
               }
             }
             clearInterval(heartbeatTimer);
@@ -503,7 +513,7 @@ async function streamCompletion(
               id,
               created,
               model: model.id,
-            });
+            }, flush);
             send({
               id,
               object: "chat.completion.chunk",
@@ -564,14 +574,15 @@ async function streamCompletion(
   });
 }
 
-/** Stream text as content deltas with minimal delays. Used for non-streaming
- *  providers (Toolbaz) that return the full text at once. Emits quickly so
- *  the client sees the text without long waits. */
+/** Stream text as content deltas with flush between each. Used for non-streaming
+ *  providers (Toolbaz) that return the full text at once. Flushes after each
+ *  chunk so data reaches the client immediately. */
 async function streamText(
   send: (obj: unknown) => void,
   text: string,
   signal: AbortSignal,
   meta: { id: string; created: number; model: string },
+  flush?: () => Promise<void>,
 ) {
   const tokens = tokenizeForStream(text);
   for (const piece of tokens) {
@@ -583,8 +594,8 @@ async function streamText(
       model: meta.model,
       choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
     });
-    // Minimal delay — just enough to not overwhelm the SSE buffer.
-    await sleep(1);
+    if (flush) await flush();
+    else await sleep(1);
   }
 }
 
