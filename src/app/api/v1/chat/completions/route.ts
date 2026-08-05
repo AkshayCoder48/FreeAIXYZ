@@ -93,7 +93,9 @@ export async function POST(request: Request) {
   }
 
   const model = resolveGatewayModel(body.model);
-  const useTools = hasTools(body.tools) && model.capabilities.tools;
+  // Enable tools for ALL models — the prompt-injection approach works for any
+  // text model. FreeGPT models with tools:true get native tool calling.
+  const useTools = hasTools(body.tools);
 
   // No BYOK/gated providers — all models are free, no-key.
   const authToken: string | undefined = undefined;
@@ -317,16 +319,79 @@ async function streamCompletion(
 
       try {
         if (useTools) {
-          // ---- Tool-calling path: buffer full response, parse, emit ----
-          const result = await provider.complete({ model, messages, signal, authToken, tools: tools as ProviderTool[] | undefined, toolChoice });
-          clearInterval(heartbeatTimer);
-          if (signal.aborted) {
-            cleanup();
-            controller.close();
-            return;
+          // ---- Tool-calling path: stream from upstream, accumulate, parse ----
+          // Use provider.stream() for real-time streaming, accumulate deltas,
+          // then parse for tool calls at the end. This avoids the long wait
+          // of provider.complete() for streaming-capable providers.
+          const realStream =
+            model.provider === "nsfwlover" ||
+            model.provider === "surfsense" ||
+            model.provider === "jollygen" ||
+            model.provider === "unlimitedai" ||
+            model.provider === "pollinations" ||
+            model.provider === "kilocode" ||
+            model.provider === "llm7" ||
+            model.provider === "spicywriter" ||
+            model.provider === "freegpt";
+
+          let fullText = "";
+          if (realStream) {
+            // Stream from upstream, emit content deltas in real-time
+            let hasContent = false;
+            for await (const delta of provider.stream({
+              model,
+              messages,
+              signal,
+              authToken,
+              tools: tools as ProviderTool[] | undefined,
+              toolChoice,
+            })) {
+              if (signal.aborted) break;
+              if (delta) {
+                fullText += delta;
+                hasContent = true;
+                // Emit content deltas in real-time — don't wait for full response
+                send({
+                  id,
+                  object: "chat.completion.chunk",
+                  created,
+                  model: model.id,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: delta },
+                      finish_reason: null,
+                    },
+                  ],
+                });
+              }
+            }
+            clearInterval(heartbeatTimer);
+            if (!hasContent) {
+              fullText = "(empty response)";
+            }
+          } else {
+            // Non-streaming provider: fetch full text
+            const result = await provider.complete({ model, messages, signal, authToken, tools: tools as ProviderTool[] | undefined, toolChoice });
+            clearInterval(heartbeatTimer);
+            if (signal.aborted) {
+              cleanup();
+              controller.close();
+              return;
+            }
+            fullText = result.text;
+            // Re-pace the full text for non-streaming providers
+            await streamText(send, fullText, signal, {
+              id,
+              created,
+              model: model.id,
+            });
           }
-          const parsed = parseToolCalls(result.text, generateToolCallId);
+
+          // After streaming, check if the accumulated text contains tool calls
+          const parsed = parseToolCalls(fullText, generateToolCallId);
           if (parsed.toolCalls.length > 0) {
+            // We already streamed the content — now emit the tool calls
             for (let i = 0; i < parsed.toolCalls.length; i++) {
               const tc: OAIToolCall = parsed.toolCalls[i];
               send({
@@ -343,7 +408,7 @@ async function streamCompletion(
                           index: i,
                           id: tc.id,
                           type: "function",
-                          function: { name: tc.function.name, arguments: "" },
+                          function: { name: tc.function.name, arguments: tc.function.arguments },
                         },
                       ],
                     },
@@ -351,27 +416,6 @@ async function streamCompletion(
                   },
                 ],
               });
-              await sleep(20);
-              for (const piece of chunkString(tc.function.arguments, 24)) {
-                send({
-                  id,
-                  object: "chat.completion.chunk",
-                  created,
-                  model: model.id,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: {
-                        tool_calls: [
-                          { index: i, function: { arguments: piece } },
-                        ],
-                      },
-                      finish_reason: null,
-                    },
-                  ],
-                });
-                await sleep(20);
-              }
             }
             send({
               id,
@@ -381,11 +425,9 @@ async function streamCompletion(
               choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
             });
           } else {
-            await streamText(send, parsed.text || result.text, signal, {
-              id,
-              created,
-              model: model.id,
-            });
+            // No tool calls found — content was already streamed in real-time
+            // for streaming providers. For non-streaming providers, streamText
+            // already handled it. Just send the finish event.
             send({
               id,
               object: "chat.completion.chunk",
@@ -541,7 +583,9 @@ async function streamCompletion(
   });
 }
 
-/** Stream text as content deltas, re-pacing with realistic delays between writes. */
+/** Stream text as content deltas with minimal delays. Used for non-streaming
+ *  providers (Toolbaz) that return the full text at once. Emits quickly so
+ *  the client sees the text without long waits. */
 async function streamText(
   send: (obj: unknown) => void,
   text: string,
@@ -558,13 +602,8 @@ async function streamText(
       model: meta.model,
       choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
     });
-    // Short delays: 3-8ms per word, 12ms newlines, 15ms punctuation.
-    // Fast enough that a 500-word response streams in ~2-3s, not 15s.
-    const lastChar = piece[piece.length - 1] ?? "";
-    const isNewline = piece.includes("\n");
-    const isPunct = ".,!?;:。！？".includes(lastChar);
-    const delay = isNewline ? 12 : isPunct ? 15 : 3 + Math.random() * 5;
-    await sleep(delay);
+    // Minimal delay — just enough to not overwhelm the SSE buffer.
+    await sleep(1);
   }
 }
 

@@ -410,6 +410,11 @@ export const freeGptProvider: Provider = {
           `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
         );
       }
+      if (res.status === 401 && txt.includes("订阅")) {
+        throw new Error(
+          `This FreeGPT model requires a subscription. Try a different model — the free-tier models (gpt-4o-mini, gpt-5.4-mini, gpt-5.4-nano, deepseek-chat, etc.) work without subscription.`,
+        );
+      }
       throw new Error(
         `FreeGPT returned HTTP ${res.status}: ${txt.slice(0, 200)} | challenge=${challengeId?.slice(0,8)} exp=${expiresAt} sig=${secureHeaders['x-secure-signature']?.slice(0,12)} fp=${secureHeaders['x-secure-fingerprint']} pow=${secureHeaders['x-secure-pow-hash']?.slice(0,8)}`,
       );
@@ -510,6 +515,11 @@ export const freeGptProvider: Provider = {
       if (res.status === 400 && txt.includes("Provider failed")) {
         throw new Error(
           `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
+        );
+      }
+      if (res.status === 401 && txt.includes("订阅")) {
+        throw new Error(
+          `This FreeGPT model requires a subscription. Try a different model — the free-tier models (gpt-4o-mini, gpt-5.4-mini, gpt-5.4-nano, deepseek-chat, etc.) work without subscription.`,
         );
       }
       throw new Error(
