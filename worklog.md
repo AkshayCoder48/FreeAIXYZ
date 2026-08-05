@@ -1798,3 +1798,42 @@ Stage Summary:
 - 111 no-auth free chat models (0 BYOK, 0 duplicates, 0 fakes)
 - Toolbaz correctly uses re-pacing (non-streaming provider)
 - Deployed to https://freeaixyz4all.vercel.app
+
+---
+Task ID: 17
+Agent: fix-tools-streaming-delays
+Task: Fix tool calling for all models + real-time streaming with tools + remove delays + subscription detection
+
+Work Log:
+- **FIX 1: Tool calling for ALL models**
+  - Changed `useTools = hasTools(body.tools) && model.capabilities.tools` to `useTools = hasTools(body.tools)`
+  - The prompt-injection approach (buildToolSystemPrompt) works for any text model
+  - All 111 models can now make tool calls, not just the 13 with `tools: true`
+  - Verified: Toolbaz returned `finish_reason: "tool_calls"` with `get_weather({"location":"Boston"})`
+
+- **FIX 2: Real-time streaming with tools active**
+  - Tool-calling streaming path was using `provider.complete()` (non-streaming) — caused full generation before any streaming
+  - Changed to use `provider.stream()` for streaming-capable providers
+  - Content deltas are emitted in real-time as they arrive from upstream
+  - Tool calls are parsed from accumulated stream text and emitted at the end
+  - No more "generate full then stream" when tools are active
+  - Verified: FreeGPT streams "Sure", "!", " Here", " you", " go"... token-by-token in real-time
+
+- **FIX 3: Removed artificial delays**
+  - `streamText()` was using `sleep(3-15ms)` per token — caused 5-15s delays after generation
+  - Changed to `sleep(1)` — minimal delay just to not overwhelm SSE buffer
+  - Non-streaming providers (Toolbaz) now emit almost instantly
+  - Verified: 3 chunks in 1.24s (was 15s+ before)
+
+- **FIX 4: FreeGPT subscription error detection**
+  - Added detection for HTTP 401 + "订阅" (subscription) error
+  - Surfaces clear English: "This FreeGPT model requires a subscription. Try a different model..."
+  - Added to both `complete()` and `stream()` paths
+  - Verified: `fgpt-claude-fable-5` returns the clear subscription message
+
+Stage Summary:
+- Tool calling FIXED: all 111 models support tool calls
+- Streaming FIXED: real-time token-by-token, no buffering, no artificial delays
+- Tool streaming FIXED: uses provider.stream() not provider.complete()
+- Subscription detection: clear error for subscription-required models
+- Deployed to https://freeaixyz4all.vercel.app
