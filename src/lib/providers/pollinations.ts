@@ -93,7 +93,7 @@ export const pollinationsProvider: Provider = {
   },
 
   async *stream(req) {
-    const payload = {
+    const payload: Record<string, unknown> = {
       model: req.model.upstream,
       messages: req.messages.map((m) => ({
         role: m.role,
@@ -101,6 +101,10 @@ export const pollinationsProvider: Provider = {
       })),
       stream: true,
     };
+    if (req.tools && req.tools.length > 0) {
+      payload.tools = req.tools;
+      payload.tool_choice = req.toolChoice || "auto";
+    }
 
     const res = await fetchWithRetry(payload, req.signal);
     if (!res.body) {

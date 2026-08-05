@@ -128,15 +128,13 @@ export async function POST(request: Request) {
   }
 
   if (useTools) {
-    // For FreeGPT models, tools are passed natively to the API (not via prompt injection)
-    if (model.provider === "freegpt") {
-      // Tools will be passed through via ProviderCompletionRequest
-    } else {
-      messages.push({
-        role: "system",
-        content: buildToolSystemPrompt(body.tools!, body.tool_choice),
-      });
-    }
+    // Inject tool system prompt for ALL models as a fallback.
+    // For providers that support native tool calling (FreeGPT, KiloCode, LLM7),
+    // tools are ALSO passed natively — the system prompt is a backup.
+    messages.push({
+      role: "system",
+      content: buildToolSystemPrompt(body.tools!, body.tool_choice),
+    });
   }
   for (const m of body.messages) {
     const text = messageToText(m);
@@ -151,9 +149,11 @@ export async function POST(request: Request) {
   const wantsStream = body.stream === true;
   const provider = getProvider(model.provider);
 
-  // Pass tools natively for FreeGPT, otherwise use prompt injection
-  const nativeTools = useTools && model.provider === "freegpt" ? body.tools : undefined;
-  const nativeToolChoice = nativeTools ? (typeof body.tool_choice === "string" ? body.tool_choice : "auto") : undefined;
+  // Pass tools natively for ALL providers that are OpenAI-compatible.
+  // Also inject the system prompt as a fallback for providers that don't
+  // support native tool calling.
+  const nativeTools = useTools ? body.tools : undefined;
+  const nativeToolChoice = useTools ? (typeof body.tool_choice === "string" ? body.tool_choice : "auto") : undefined;
 
   if (wantsStream) {
     return streamCompletion(model, provider, messages, useTools, request, authToken, nativeTools, nativeToolChoice);
@@ -303,7 +303,18 @@ async function streamCompletion(
       const send = (obj: unknown) => {
         enqueue(`data: ${JSON.stringify(obj)}\n\n`);
       };
-      const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+      // CRITICAL: flush forces a macrotask yield so controller.enqueue() data
+      // is immediately flushed to the network. Without this, Vercel/Node.js
+      // buffers ALL chunks and only sends them when the async function returns.
+      // setImmediate is the most reliable for I/O flush in Node.js; fallback to
+      // setTimeout(1) which also guarantees a real macrotask boundary.
+      const flush = () => new Promise<void>((resolve) => {
+        if (typeof setImmediate !== "undefined") {
+          setImmediate(resolve);
+        } else {
+          setTimeout(resolve, 1);
+        }
+      });
       const heartbeat = () => enqueue(`: keep-alive\n\n`);
 
       const heartbeatTimer = setInterval(heartbeat, 500);

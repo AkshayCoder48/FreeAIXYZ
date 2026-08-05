@@ -24,8 +24,21 @@ function parseSseLine(line: string): string | null {
   if (!data || data === "[DONE]") return null;
   try {
     const json = JSON.parse(data);
-    const delta = json?.choices?.[0]?.delta?.content;
-    return typeof delta === "string" ? delta : null;
+    const choice = json?.choices?.[0];
+    if (!choice) return null;
+    // Handle content deltas
+    const content = choice.delta?.content;
+    if (typeof content === "string" && content) return content;
+    // Handle tool_calls deltas — convert to text that the gateway can parse
+    const toolCalls = choice.delta?.tool_calls;
+    if (toolCalls && toolCalls.length > 0) {
+      const formatted = toolCalls.map((tc: { function?: { name?: string; arguments?: string } }) => ({
+        name: tc.function?.name || "",
+        arguments: tc.function?.arguments || "",
+      }));
+      return JSON.stringify({ __tool_calls: formatted });
+    }
+    return null;
   } catch {
     return null;
   }
@@ -74,7 +87,7 @@ export const kiloCodeProvider: Provider = {
   },
 
   async *stream(req) {
-    const payload = {
+    const payload: Record<string, unknown> = {
       model: req.model.upstream,
       messages: req.messages.map((m) => ({
         role: m.role,
@@ -82,6 +95,11 @@ export const kiloCodeProvider: Provider = {
       })),
       stream: true,
     };
+    // Pass tools natively if provided (KiloCode/OpenRouter supports OpenAI tool calling)
+    if (req.tools && req.tools.length > 0) {
+      payload.tools = req.tools;
+      payload.tool_choice = req.toolChoice || "auto";
+    }
 
     const res = await fetchWithRetry(payload, req.signal);
     if (!res.body) {

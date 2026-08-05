@@ -88,11 +88,21 @@ export function buildToolSystemPrompt(
   const descMax = fnTools.length > 20 ? 60 : fnTools.length > 10 ? 80 : 120;
 
   const lines: string[] = [
-    "You are a tool-calling assistant. You have tools available. When a request needs one, respond with ONLY a tool_call block (no other text):",
+    "You are a tool-calling assistant. You have tools available. When a request needs one, you MUST respond with ONLY a tool_call block and NOTHING else:",
     "```tool_call",
     '[{"name":"<tool_name>","arguments":{"<param>":"<value>"}}]',
     "```",
-    "Rules: emit the block with no text before/after. Use ONLY tool names from the list below. Arguments must match the params shown (* = required). If no tool is needed, answer normally.",
+    "CRITICAL RULES:",
+    "1. When you need to call a tool, output ONLY the tool_call block — no explanation, no preamble, no text before or after.",
+    "2. The tool_call block must be a valid JSON array inside triple backticks labeled tool_call.",
+    "3. Use ONLY tool names from the list below. Arguments must match the params shown (* = required).",
+    "4. If multiple tools are needed, include multiple objects in the array.",
+    "5. If no tool is needed, answer normally without the tool_call block.",
+    "",
+    "Example — user asks 'What is the weather in Boston?' with a get_weather tool:",
+    "```tool_call",
+    '[{"name":"get_weather","arguments":{"location":"Boston"}}]',
+    "```",
     "",
     `Tools (${fnTools.length} available):`,
   ];
