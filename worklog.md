@@ -1719,3 +1719,48 @@ Stage Summary:
 - LLM7 cleaned to 5 verified-working models
 - Deployed to https://freeaixyz4all.vercel.app
 - HONEST NOTE: Reaching 200+ models is not possible with only no-auth providers. The free no-signup no-key chat API landscape is extremely limited — most services require signup, are Cloudflare-blocked, or have removed their anonymous tiers. The 111 models represent ALL known working no-auth chat APIs as of testing.
+
+---
+Task ID: 15
+Agent: g4f-space-reverse-engineer
+Task: Find 200+ free no-signup chat models by reverse-engineering actual chat apps
+
+Work Log:
+- Fetched the g4f.dev npm package (@gpt4free/g4f.dev) and examined its source code
+- Discovered the g4f API server endpoint: https://g4f.space/v1 (OpenAI-compatible)
+- This is the official g4f API server that proxies 200+ models from 30+ reverse-engineered
+  chat providers (Blackbox, DuckDuckGo, Airforce, Liaobots, Groq, NVIDIA, Gemini,
+  community-hosted Ollama instances, etc.)
+- Tested the endpoint: GET /v1/models returns 209 models (172 unique), POST /v1/chat/completions
+  works without auth (3 active days per 12 days anonymous limit)
+- Created src/lib/providers/g4fspace.ts — OpenAI-compatible provider with streaming support
+- Added 165 unique chat models (filtered out image/video/embedding/GGUF models and
+  duplicates with existing providers)
+- Added g4f() helper function, g4fspace to ProviderId, PROVIDER_INFO, index.ts, realStream,
+  and models-showcase provider colors
+- Credit: g4f.dev / xtekky/gpt4free (https://github.com/xtekky/gpt4free)
+
+Models added include flagships:
+- GLM-5, GLM-5-Thinking, GLM-5.2, GLM-5.2-Thinking, GLM-4.6, GLM-4.7
+- Gemini 3/3.1/3.5/3.6 Flash/Pro variants (12+ Gemini models)
+- Grok 4.1-Fast, 4.3, 4.5, Grok Uncensored
+- DeepSeek V4 Flash/Pro (with thinking variants), DeepSeek V3.2
+- Kimi K2.6, K2.7, K2.7-Code
+- Qwen 3.6-27B, 3.7-Max/Plus, 3.8-Max
+- Claude 3.5 Sonnet (via Airforce)
+- NVIDIA Nemotron 3 Nano/Super/Ultra
+- Llama 3.1/3.2/3.3 variants (6+ models)
+- Minimax M2.7, M3
+- Mistral Medium 3.5, Mistral Code
+- Gemma 4-31B, various uncensored variants
+- Auto-routing model (g4f-auto)
+- And 140+ more unique models
+
+Stage Summary:
+- **276 total chat models** across 12 providers (0 BYOK, 0 duplicates, 0 fakes)
+- New provider: g4f.space with 165 reverse-engineered models
+- All existing 111 models retained and working
+- g4f.space has a 3-day-per-12-day anonymous limit + may block some cloud IPs
+- When blocked, clear error message is surfaced; models still listed in registry
+- Deployed to https://freeaixyz4all.vercel.app
+- `bun run lint` clean, `npx tsc --noEmit` clean
