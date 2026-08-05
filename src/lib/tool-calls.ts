@@ -250,18 +250,36 @@ export function parseToolCalls(
   // Pattern 1c: __tool_calls format — used by providers (KiloCode, LLM7, FreeGPT)
   // that convert native OpenAI tool_calls deltas into a JSON marker string.
   // Format: {"__tool_calls":[{"name":"...","arguments":"..."}]}
-  // May appear multiple times (one per SSE delta) — accumulate all.
+  // May appear multiple times (one per SSE delta) — merge by index.
+  // OpenAI streams tool_calls incrementally: first delta has the name,
+  // subsequent deltas have argument fragments. We merge by concatenating
+  // arguments per index and using the first non-empty name.
   const toolCallMarkerRe = /\{"__tool_calls":\s*(\[[\s\S]*?\])\}/g;
+  const accumulatedByIndex = new Map<number, { name: string; arguments: string }>();
   while ((match = toolCallMarkerRe.exec(output)) !== null) {
     try {
       const calls = JSON.parse(match[1]) as Array<{ name: string; arguments: string }>;
-      for (const c of calls) {
-        if (c.name) {
-          raw.push({ name: c.name, arguments: c.arguments || {} });
+      for (let i = 0; i < calls.length; i++) {
+        const c = calls[i];
+        const existing = accumulatedByIndex.get(i);
+        if (existing) {
+          // Merge: use non-empty name, concatenate arguments
+          if (c.name) existing.name = c.name;
+          if (c.arguments) existing.arguments += c.arguments;
+        } else {
+          accumulatedByIndex.set(i, {
+            name: c.name || "",
+            arguments: c.arguments || "",
+          });
         }
       }
     } catch {
       /* try next */
+    }
+  }
+  for (const [, val] of accumulatedByIndex) {
+    if (val.name) {
+      raw.push({ name: val.name, arguments: val.arguments || {} });
     }
   }
   text = text.replace(toolCallMarkerRe, "").trim();
