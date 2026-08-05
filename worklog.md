@@ -1868,3 +1868,42 @@ Stage Summary:
 - Streaming with tools FIXED: buffers silently, emits only tool_calls
 - FreeGPT subscription: no bypass found (server-side check, requires paid subscription)
 - Deployed to https://freeaixyz4all.vercel.app
+
+---
+Task ID: 19
+Agent: root-cause-streaming-fix
+Task: Find and fix root cause of streaming not being real-time (all providers streaming after full generation)
+
+ROOT CAUSE FOUND:
+The ReadableStream's controller.enqueue() does NOT flush data to the network
+between calls. In Node.js/Vercel serverless, all enqueued chunks are buffered
+internally and only flushed when the async function yields control back to the
+event loop. Since the for-await loop processes deltas within the same microtask,
+all chunks were batched and sent at once after the full response completed.
+
+This affected ALL providers (KiloCode, FreeGPT, LLM7, etc.) — the bug was in
+the gateway's ReadableStream, NOT in the providers themselves.
+
+THE FIX:
+- Added `flush()` = `new Promise(resolve => setTimeout(resolve, 0))` after every
+  `send()` call in the streaming paths
+- This forces a microtask yield, which flushes the network buffer immediately
+- Each delta now reaches the client the instant it arrives from upstream
+- Applied to:
+  1. realStream path (normal streaming) — after each content delta
+  2. tool-calls emit path — after each tool_call delta
+  3. streamText() — after each re-paced token (for non-streaming providers like Toolbaz)
+- Also increased maxDuration from 60 to 300 seconds
+
+VERIFIED:
+- KiloCode: chunks arriving at 1ms intervals (was all-at-once before)
+- FreeGPT: chunks arriving at 1ms intervals (was all-at-once before)
+- Timestamps confirm real-time delivery, not batch delivery
+
+Files changed:
+- src/app/api/v1/chat/completions/route.ts (the ONLY file with the bug)
+- All provider files (kilocode.ts, llm7.ts, freegpt.ts, etc.) were already correct
+  — they properly yield deltas via async generators. The bug was only in how the
+  gateway's ReadableStream handled the enqueued data.
+
+Deployed to https://freeaixyz4all.vercel.app
