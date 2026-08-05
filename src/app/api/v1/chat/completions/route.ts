@@ -319,10 +319,15 @@ async function streamCompletion(
 
       try {
         if (useTools) {
-          // ---- Tool-calling path: stream from upstream, accumulate, parse ----
-          // Use provider.stream() for real-time streaming, accumulate deltas,
-          // then parse for tool calls at the end. This avoids the long wait
-          // of provider.complete() for streaming-capable providers.
+          // ---- Tool-calling path: buffer silently, then emit ----
+          // When tools are active, we MUST buffer the full response to parse
+          // for tool calls. We cannot stream content in real-time because:
+          // 1. The content might be a tool_call JSON envelope (raw JSON visible to user)
+          // 2. Tool calls need to be emitted as delta.tool_calls, not delta.content
+          //
+          // After buffering:
+          // - If tool calls found → emit ONLY tool_calls (no content)
+          // - If no tool calls → emit content via streamText (fast, 1ms delays)
           const realStream =
             model.provider === "nsfwlover" ||
             model.provider === "surfsense" ||
@@ -336,8 +341,8 @@ async function streamCompletion(
 
           let fullText = "";
           if (realStream) {
-            // Stream from upstream, emit content deltas in real-time
-            let hasContent = false;
+            // Use provider.stream() for faster first-token from upstream
+            // BUT don't emit content deltas — just accumulate silently
             for await (const delta of provider.stream({
               model,
               messages,
@@ -347,51 +352,24 @@ async function streamCompletion(
               toolChoice,
             })) {
               if (signal.aborted) break;
-              if (delta) {
-                fullText += delta;
-                hasContent = true;
-                // Emit content deltas in real-time — don't wait for full response
-                send({
-                  id,
-                  object: "chat.completion.chunk",
-                  created,
-                  model: model.id,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: { content: delta },
-                      finish_reason: null,
-                    },
-                  ],
-                });
-              }
-            }
-            clearInterval(heartbeatTimer);
-            if (!hasContent) {
-              fullText = "(empty response)";
+              if (delta) fullText += delta;
             }
           } else {
             // Non-streaming provider: fetch full text
             const result = await provider.complete({ model, messages, signal, authToken, tools: tools as ProviderTool[] | undefined, toolChoice });
-            clearInterval(heartbeatTimer);
-            if (signal.aborted) {
-              cleanup();
-              controller.close();
-              return;
-            }
             fullText = result.text;
-            // Re-pace the full text for non-streaming providers
-            await streamText(send, fullText, signal, {
-              id,
-              created,
-              model: model.id,
-            });
+          }
+          clearInterval(heartbeatTimer);
+          if (signal.aborted) {
+            cleanup();
+            controller.close();
+            return;
           }
 
-          // After streaming, check if the accumulated text contains tool calls
+          // Parse the accumulated text for tool calls
           const parsed = parseToolCalls(fullText, generateToolCallId);
           if (parsed.toolCalls.length > 0) {
-            // We already streamed the content — now emit the tool calls
+            // Tool calls found — emit ONLY tool_calls (no content)
             for (let i = 0; i < parsed.toolCalls.length; i++) {
               const tc: OAIToolCall = parsed.toolCalls[i];
               send({
@@ -425,9 +403,12 @@ async function streamCompletion(
               choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
             });
           } else {
-            // No tool calls found — content was already streamed in real-time
-            // for streaming providers. For non-streaming providers, streamText
-            // already handled it. Just send the finish event.
+            // No tool calls — stream the content quickly (1ms per token)
+            await streamText(send, parsed.text || fullText, signal, {
+              id,
+              created,
+              model: model.id,
+            });
             send({
               id,
               object: "chat.completion.chunk",
