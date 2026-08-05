@@ -411,15 +411,13 @@ async function streamCompletion(
             model.provider === "kilocode" ||
             model.provider === "llm7" ||
             model.provider === "spicywriter" ||
-            model.provider === "freegpt" ||
-            model.provider === "g4fspace";
+            model.provider === "freegpt";
 
           if (realStream) {
-            // Buffer all upstream deltas, then re-pace as fake word-by-word
-            // streaming with realistic delays. This ensures ALL providers
-            // appear to stream token-by-token, even if the upstream returned
-            // the full text in one chunk.
-            const collectedParts: string[] = [];
+            // REAL-TIME streaming: emit each upstream delta immediately as it
+            // arrives. No buffering, no re-pacing. The first token is sent to
+            // the client the instant the upstream sends it.
+            let hasContent = false;
             for await (const delta of provider.stream({
               model,
               messages,
@@ -429,17 +427,25 @@ async function streamCompletion(
               toolChoice,
             })) {
               if (signal.aborted) break;
-              if (delta) collectedParts.push(delta);
+              if (delta) {
+                hasContent = true;
+                send({
+                  id,
+                  object: "chat.completion.chunk",
+                  created,
+                  model: model.id,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: delta },
+                      finish_reason: null,
+                    },
+                  ],
+                });
+              }
             }
             clearInterval(heartbeatTimer);
-            const fullText = collectedParts.join("");
-            if (fullText) {
-              await streamText(send, fullText, signal, {
-                id,
-                created,
-                model: model.id,
-              });
-            } else {
+            if (!hasContent) {
               send({
                 id,
                 object: "chat.completion.chunk",

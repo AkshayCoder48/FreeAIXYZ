@@ -12,7 +12,6 @@ import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { spicyWriterProvider } from "./spicywriter";
 import { freeGptProvider } from "./freegpt";
-import { g4fSpaceProvider } from "./g4fspace";
 
 // Stub providers for standalone services (search/music). These are listed in
 // the model registry for discovery but called via their own API endpoints.
@@ -37,7 +36,6 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   llm7: llm7Provider,
   spicywriter: spicyWriterProvider,
   freegpt: freeGptProvider,
-  g4fspace: g4fSpaceProvider,
   search: stubProvider,
   music: stubProvider,
 };
