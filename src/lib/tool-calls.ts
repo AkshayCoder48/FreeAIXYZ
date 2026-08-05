@@ -247,6 +247,25 @@ export function parseToolCalls(
     text = text.replace(genericFenceRe, "").trim();
   }
 
+  // Pattern 1c: __tool_calls format — used by providers (KiloCode, LLM7, FreeGPT)
+  // that convert native OpenAI tool_calls deltas into a JSON marker string.
+  // Format: {"__tool_calls":[{"name":"...","arguments":"..."}]}
+  // May appear multiple times (one per SSE delta) — accumulate all.
+  const toolCallMarkerRe = /\{"__tool_calls":\s*(\[[\s\S]*?\])\}/g;
+  while ((match = toolCallMarkerRe.exec(output)) !== null) {
+    try {
+      const calls = JSON.parse(match[1]) as Array<{ name: string; arguments: string }>;
+      for (const c of calls) {
+        if (c.name) {
+          raw.push({ name: c.name, arguments: c.arguments || {} });
+        }
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  text = text.replace(toolCallMarkerRe, "").trim();
+
   // Pattern 2: if no fenced block found, look for a bare JSON array/object
   // that looks like a tool call (has "name" and "arguments" keys).
   if (raw.length === 0) {
