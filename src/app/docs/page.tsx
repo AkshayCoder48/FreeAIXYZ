@@ -1993,6 +1993,7 @@ const NAV: NavItem[] = [
   { id: "music", label: "Music Generation" },
   { id: "image-generation", label: "Image Generation" },
   { id: "code-examples", label: "Code Examples" },
+  { id: "reverse-engineering", label: "Reverse Engineering ↗" },
 ];
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -2001,7 +2002,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {NAV.map((item) => (
         <div key={item.id}>
           <a
-            href={`#${item.id}`}
+            href={item.id === "reverse-engineering" ? "/reverse-engineering" : `#${item.id}`}
             onClick={onNavigate}
             className="block px-3 py-1.5 rounded-md text-muted-foreground hover:text-[#ff9a3c] hover:bg-[#ff9a3c]/5 font-medium"
           >

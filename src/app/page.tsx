@@ -126,9 +126,10 @@ export default function Home() {
           <nav className="hidden md:flex items-center gap-1 text-sm">
             {[
               ["Playground", "#playground"],
-              ["Image Gen", "/models#image-models"],
-              ["Features", "#features"],
-              ["Docs", "/docs#image-generation"],
+              ["Image Studio", "/image"],
+              ["Models", "/models"],
+              ["Docs", "/docs"],
+              ["Reverse Eng", "/reverse-engineering"],
               ["Settings", "/settings"],
             ].map(([label, href]) => (
               <a
@@ -427,14 +428,17 @@ client ◀── { choices, usage }  · or SSE stream`}</code>
             <a href="/chat" className="hover:text-foreground transition-colors">
               Chat
             </a>
-            <a href="/docs#image-generation" className="hover:text-foreground transition-colors">
-              Image Gen
+            <a href="/image" className="hover:text-foreground transition-colors">
+              Image Studio
             </a>
             <a href="/docs" className="hover:text-foreground transition-colors">
               Docs
             </a>
             <a href="/models" className="hover:text-foreground transition-colors">
               Models
+            </a>
+            <a href="/reverse-engineering" className="hover:text-foreground transition-colors">
+              Reverse Eng
             </a>
             <span className="flex items-center gap-1">
               <span className="relative flex h-1.5 w-1.5">

@@ -116,10 +116,10 @@ export default function ImageStudioPage() {
   }, [nsfwUnlocked]);
 
   const groupedModels = useMemo(() => {
-    const groups: Partial<Record<ImageCategory, typeof IMAGE_MODELS>> = {};
+    const groups: Partial<Record<ImageCategory, typeof IMAGE_MODELS[number][]>> = {};
     for (const m of visibleModels) {
-      if (!groups[m.category]) groups[m.category] = [] as never;
-      (groups[m.category] as typeof IMAGE_MODELS).push(m);
+      if (!groups[m.category]) groups[m.category] = [];
+      (groups[m.category] as typeof IMAGE_MODELS[number][]).push(m);
     }
     return groups;
   }, [visibleModels]);
