@@ -10,7 +10,7 @@
  * state, no token reuse). This is what powers the "automatic rotation" behavior.
  */
 
-import { randomBytes } from "crypto";
+// Use Web Crypto API instead of Node.js crypto for Edge runtime compatibility
 
 const TOKEN_ENDPOINT = "https://data.toolbaz.com/token.php";
 const WRITING_ENDPOINT = "https://data.toolbaz.com/writing.php";
@@ -63,11 +63,14 @@ const COLOR_DEPTHS = [24, 30];
 const CORES = [4, 8, 8, 12, 16];
 
 function pick<T>(arr: T[]): T {
-  return arr[randomBytes(1)[0] % arr.length];
+  const bytes = new Uint8Array(1);
+  crypto.getRandomValues(bytes);
+  return arr[bytes[0] % arr.length];
 }
 
 function randomString(length: number, alphabet: string): string {
-  const bytes = randomBytes(length);
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
   let out = "";
   for (let i = 0; i < length; i++) {
     out += alphabet[bytes[i] % alphabet.length];
@@ -117,9 +120,8 @@ function generateFingerprintToken(): string {
   };
 
   const prefix = randomString(6, BASE64_ALPHABET);
-  const encoded = Buffer.from(JSON.stringify(fingerprint), "utf8").toString(
-    "base64",
-  );
+  // Use btoa instead of Buffer for Edge runtime compatibility
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(fingerprint))));
   return prefix + encoded;
 }
 

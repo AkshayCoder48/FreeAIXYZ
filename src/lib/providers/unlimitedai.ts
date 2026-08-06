@@ -14,7 +14,6 @@
  * No [DONE] marker — stream ends when the connection closes.
  */
 
-import { randomUUID } from "crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
 
 const ENDPOINT = "https://app.unlimitedai.chat/api/chat";
@@ -49,7 +48,7 @@ export const unlimitedAiProvider: Provider = {
   async *stream(req) {
     // Build the messages array in the format unlimitedai expects.
     const messages = req.messages.map((m) => ({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       role: m.role,
       content: m.content,
       parts: [{ type: "text", text: m.content }],
@@ -57,12 +56,12 @@ export const unlimitedAiProvider: Provider = {
     }));
 
     const payload = {
-      chatId: randomUUID(),
+      chatId: crypto.randomUUID(),
       messages,
       selectedChatModel: req.model.upstream,
       selectedCharacter: null,
       selectedStory: null,
-      deviceId: randomUUID(),
+      deviceId: crypto.randomUUID(),
       locale: "en",
     };
 

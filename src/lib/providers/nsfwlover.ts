@@ -12,7 +12,6 @@
  * never accumulate state.
  */
 
-import { randomBytes, randomUUID } from "crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
 
 const ENDPOINT = "https://www.nsfwlover.com/api/openai/chat/completions";
@@ -23,7 +22,8 @@ const ALNUM =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 function randStr(len: number): string {
-  const bytes = randomBytes(len);
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
   let out = "";
   for (let i = 0; i < len; i++) out += ALNUM[bytes[i] % ALNUM.length];
   return out;
@@ -49,7 +49,7 @@ function buildPayload(
   );
 
   const inputMessages = convo.map((m, i) => ({
-    id: i === convo.length - 1 ? randStr(20) : randomUUID(),
+    id: i === convo.length - 1 ? randStr(20) : crypto.randomUUID(),
     type: "text",
     date: dateStr,
     role: m.role,

@@ -12,18 +12,21 @@
  *   data: {"done": true, ...}      // ← end marker
  */
 
-import { randomBytes, createHash } from "crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
 
 const ENDPOINT = "https://jollygenapi.space/ai/chat-guest";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
-/** Generate a fresh 64-char hex guest hash (rotated per request). */
-function freshGuestHash(): string {
-  return createHash("sha256")
-    .update(randomBytes(32).toString("hex") + Date.now() + Math.random())
-    .digest("hex");
+/** Generate a fresh 64-char hex guest hash (rotated per request).
+ *  Uses Web Crypto API for Edge runtime compatibility. */
+async function freshGuestHash(): Promise<string> {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const input = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("") + Date.now() + Math.random();
+  const encoded = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 interface JollyEvent {
@@ -82,7 +85,7 @@ export const jollyGenProvider: Provider = {
     const payload = {
       message,
       stream: true,
-      guest_hash: freshGuestHash(),
+      guest_hash: await freshGuestHash(),
     };
 
     const res = await fetch(ENDPOINT, {
