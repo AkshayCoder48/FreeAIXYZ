@@ -11,7 +11,9 @@ import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { spicyWriterProvider } from "./spicywriter";
-import { freeGptProvider } from "./freegpt";
+// FreeGPT provider is NOT imported here — it uses Node.js APIs (eval("require"),
+// fs, path) that break Edge runtime. It's imported directly in the Node.js
+// proxy route: /api/v1/chat/freegpt-proxy
 
 // Stub providers for standalone services (search/music). These are listed in
 // the model registry for discovery but called via their own API endpoints.
@@ -25,7 +27,7 @@ const stubProvider: Provider = {
   },
 };
 
-export const PROVIDERS: Record<ProviderId, Provider> = {
+export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   toolbaz: toolbazProvider,
   nsfwlover: nsfwloverProvider,
   surfsense: surfSenseProvider,
@@ -35,14 +37,18 @@ export const PROVIDERS: Record<ProviderId, Provider> = {
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
   spicywriter: spicyWriterProvider,
-  freegpt: freeGptProvider,
+  // freegpt is handled via Node.js proxy route, not here
   search: stubProvider,
   music: stubProvider,
 };
 
 /** Get the provider instance for a given provider id. */
 export function getProvider(id: ProviderId): Provider {
-  return PROVIDERS[id];
+  const provider = PROVIDERS[id];
+  if (!provider) {
+    throw new Error(`Provider "${id}" is not available on this runtime. FreeGPT is handled via Node.js proxy route.`);
+  }
+  return provider;
 }
 
 export type { Provider, ProviderCompletionRequest, ProviderMessage } from "./types";

@@ -10,7 +10,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { resolveGatewayModel, getProvider } from "@/lib/providers";
+import { resolveGatewayModel } from "@/lib/providers/registry";
+import { freeGptProvider } from "@/lib/providers/freegpt";
 import type { ProviderTool } from "@/lib/providers/types";
 import {
   generateCompletionId,
@@ -35,7 +36,7 @@ interface ProxyRequest {
 export async function POST(request: Request) {
   const body = (await request.json()) as ProxyRequest;
   const model = resolveGatewayModel(body.model);
-  const provider = getProvider("freegpt");
+  const provider = freeGptProvider;
 
   const messages = body.messages.map((m) => ({
     role: m.role as "system" | "user" | "assistant",
