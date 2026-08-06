@@ -723,11 +723,86 @@ export default function ChatPage() {
         content: m.content,
       }));
       const keyHeaders = buildKeyHeaders(model);
+      // Define tools that the AI can use — these are standard file/web tools
+      const tools = [
+        {
+          type: "function" as const,
+          function: {
+            name: "create_file",
+            description: "Create or overwrite a file with the given content",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "File path (e.g. src/app/page.tsx)" },
+                content: { type: "string", description: "Full file content" },
+                overwrite: { type: "boolean", description: "Overwrite if exists" },
+              },
+              required: ["path", "content"],
+            },
+          },
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "read_file",
+            description: "Read the contents of a file",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "File path to read" },
+              },
+              required: ["path"],
+            },
+          },
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "list_files",
+            description: "List files in a directory",
+            parameters: {
+              type: "object",
+              properties: {
+                path: { type: "string", description: "Directory path" },
+              },
+              required: ["path"],
+            },
+          },
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "web_search",
+            description: "Search the web for information",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string", description: "Search query" },
+              },
+              required: ["query"],
+            },
+          },
+        },
+        {
+          type: "function" as const,
+          function: {
+            name: "run_terminal",
+            description: "Run a terminal command",
+            parameters: {
+              type: "object",
+              properties: {
+                command: { type: "string", description: "Terminal command to execute" },
+              },
+              required: ["command"],
+            },
+          },
+        },
+      ];
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...keyHeaders },
         signal: controller.signal,
-        body: JSON.stringify({ model, messages: apiMessages, stream }),
+        body: JSON.stringify({ model, messages: apiMessages, stream, tools }),
       });
 
       if (!res.ok) {
