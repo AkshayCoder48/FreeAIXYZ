@@ -27,9 +27,11 @@
  * Rate limit: 8 requests/minute per client IP (best-effort, in-memory).
  */
 
-import path from "node:path";
-import { randomUUID, randomBytes } from "node:crypto";
 import type { Provider, ProviderCompletionRequest } from "./types";
+
+// Node.js modules are imported lazily inside functions so this file can be
+// bundled for Edge runtime without breaking. The actual calls only happen
+// in the Node.js proxy route.
 
 const BASE_URL = "https://standalone.freegpt.win:3001";
 const CHALLENGE_PATH = "/api/challenge";
@@ -82,15 +84,17 @@ async function ensureSignerLoaded(): Promise<SignerModule> {
   if (signerLoaded && signerModule) return signerModule;
   if (!signerLoadPromise) {
     signerLoadPromise = (async () => {
+      // Dynamic import of Node.js modules — only runs in Node.js runtime
+      const nodePath = await import("node:path");
       const dynamicRequire = eval("require") as NodeRequire;
-      const signerPath = path.join(
+      const signerPath = nodePath.join(
         process.cwd(),
         "src",
         "lib",
         "freegpt-signer.cjs",
       );
       const mod: SignerModule = dynamicRequire(signerPath);
-      const wasmPath = path.join(process.cwd(), "wasm_signer_bg.wasm");
+      const wasmPath = nodePath.join(process.cwd(), "wasm_signer_bg.wasm");
       await mod.initWasm(wasmPath);
       signerModule = mod;
       signerLoaded = true;
@@ -124,7 +128,10 @@ function rateLimitCheck(ip: string): boolean {
 
 /** Random hex nonce, 32 chars (16 bytes). */
 function makeNonce(): string {
-  return randomBytes(16).toString("hex");
+  // Use Web Crypto API (available in both Edge and Node.js)
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Best-effort client IP extraction from request headers. */
@@ -329,7 +336,7 @@ export const freeGptProvider: Provider = {
     const signer = await ensureSignerLoaded();
 
     // 1. Fresh UUID per request
-    const uuid = randomUUID();
+    const uuid = crypto.randomUUID();
 
     // 2. Fetch challenge
     const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
@@ -439,7 +446,7 @@ export const freeGptProvider: Provider = {
     const signer = await ensureSignerLoaded();
 
     // 1. Fresh UUID per request
-    const uuid = randomUUID();
+    const uuid = crypto.randomUUID();
 
     // 2. Fetch challenge
     const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);

@@ -23,9 +23,8 @@ import {
   hasTools,
 } from "@/lib/tool-calls";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
 function errorResponse(
   message: string,
@@ -147,11 +146,33 @@ export async function POST(request: Request) {
   }
 
   const wantsStream = body.stream === true;
+
+  // FreeGPT needs Node.js runtime (WASM signer) — proxy to Node.js route
+  if (model.provider === "freegpt") {
+    const origin = new URL(request.url).origin;
+    const proxyBody = {
+      model: body.model,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      stream: wantsStream,
+      tools: useTools ? body.tools : undefined,
+      toolChoice: useTools ? (typeof body.tool_choice === "string" ? body.tool_choice : "auto") : undefined,
+    };
+    const proxyRes = await fetch(`${origin}/api/v1/chat/freegpt-proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(proxyBody),
+      signal: request.signal,
+    });
+    // Return the proxy response as-is (preserves streaming or JSON)
+    return new Response(proxyRes.body, {
+      status: proxyRes.status,
+      headers: proxyRes.headers,
+    });
+  }
+
   const provider = getProvider(model.provider);
 
   // Pass tools natively for ALL providers that are OpenAI-compatible.
-  // Also inject the system prompt as a fallback for providers that don't
-  // support native tool calling.
   const nativeTools = useTools ? body.tools : undefined;
   const nativeToolChoice = useTools ? (typeof body.tool_choice === "string" ? body.tool_choice : "auto") : undefined;
 
