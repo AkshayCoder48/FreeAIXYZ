@@ -11,6 +11,7 @@ import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { spicyWriterProvider } from "./spicywriter";
+import { openCodeProvider } from "./opencode";
 // FreeGPT provider is NOT imported here — it uses Node.js APIs (eval("require"),
 // fs, path) that break Edge runtime. It's imported directly in the Node.js
 // proxy route: /api/v1/chat/freegpt-proxy
@@ -37,6 +38,7 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
   spicywriter: spicyWriterProvider,
+  opencode: openCodeProvider,
   // freegpt is handled via Node.js proxy route, not here
   search: stubProvider,
   music: stubProvider,
