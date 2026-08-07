@@ -49,6 +49,9 @@ const PROVIDER_COLORS: Partial<Record<ProviderId, string>> = {
   spicywriter: "text-rose-400",
   freegpt: "text-purple-500",
   opencode: "text-teal-500",
+  freechat: "text-lime-500",
+  miklium: "text-indigo-500",
+  swarm: "text-orange-600",
   search: "text-cyan-500",
   music: "text-pink-500",
 };

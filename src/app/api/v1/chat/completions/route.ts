@@ -358,7 +358,9 @@ async function streamCompletion(
           model.provider === "llm7" ||
           model.provider === "spicywriter" ||
           model.provider === "freegpt" ||
-          model.provider === "opencode";
+          model.provider === "opencode" ||
+          model.provider === "freechat" ||
+          model.provider === "swarm";
 
         let fullText = "";
         if (realStream) {
@@ -443,7 +445,9 @@ async function streamCompletion(
           model.provider === "llm7" ||
           model.provider === "spicywriter" ||
           model.provider === "freegpt" ||
-          model.provider === "opencode";
+          model.provider === "opencode" ||
+          model.provider === "freechat" ||
+          model.provider === "swarm";
 
         if (realStream) {
           // REAL-TIME streaming: each upstream delta is written to the

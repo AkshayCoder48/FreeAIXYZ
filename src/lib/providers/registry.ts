@@ -27,6 +27,9 @@ export type ProviderId =
   | "spicywriter"
   | "freegpt"
   | "opencode"
+  | "freechat"
+  | "miklium"
+  | "swarm"
   | "search"
   | "music";
 
@@ -219,6 +222,28 @@ export const MODELS: readonly GatewayModel[] = [
   oc("oc-nemotron-3-ultra-free", "nemotron-3-ultra-free", "NVIDIA Nemotron 3 Ultra Free (OpenCode)", "reasoning", 1000000),
   oc("oc-laguna-s-2-1-free", "laguna-s-2.1-free", "Poolside Laguna S 2.1 Free (OpenCode)", "professional", 262144),
   oc("oc-longcat-2-0-free", "longcat-2.0-free", "LongCat 2.0 Free (OpenCode)", "professional", 128000),
+
+  // ─── FreeChat provider: free no-auth via llmproxy.org ───────────────────
+  // 1 model, SSE streaming + non-streaming. Credit: FreeChat.org
+  fc("fc-v3", "v3", "FreeChat v3 — general chat via llmproxy.org (no key)", "professional", 8000),
+
+  // ─── Miklium provider: free no-auth chatbot on Vercel ───────────────────
+  // 5 models, non-streaming. Credit: Miklium (miklium.vercel.app)
+  mk("mk-miklium", "miklium", "Miklium — default personality chatbot (no key)", "sfw", 8000),
+  mk("mk-personalityless", "personalityless", "Miklium Personalityless — neutral chatbot (no key)", "sfw", 8000),
+  mk("mk-male", "male", "Miklium Male — male personality chatbot (no key)", "sfw", 8000),
+  mk("mk-female", "female", "Miklium Female — female personality chatbot (no key)", "sfw", 8000),
+  mk("mk-all", "all", "Miklium All — multi-personality chatbot (no key)", "sfw", 8000),
+
+  // ─── Swarm provider: community llama.cpp swarm via g4f-dev ──────────────
+  // 7 GGUF models, OpenAI-compatible, SSE streaming + tools. Credit: g4f-dev
+  swm("sw-qwen3-6-35b-iq3", "Qwen3.6-35B-A3B-UD-IQ3_S.gguf", "Qwen 3.6 35B IQ3 — community swarm (no key)", "professional", 131000),
+  swm("sw-qwen3-6-35b-iq4", "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf", "Qwen 3.6 35B IQ4 XS — community swarm (no key)", "professional", 131000),
+  swm("sw-qwen3-6-35b-q4", "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf", "Qwen 3.6 35B Q4 XL — community swarm (no key)", "professional", 131000),
+  swm("sw-qwen3-6-35b-uncensored", "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf", "Qwen 3.6 35B Uncensored — community swarm (no key)", "nsfw", 131000),
+  swm("sw-qwen3-5-9b", "Qwen3.5-9B-Q4_K_M.gguf", "Qwen 3.5 9B — community swarm (no key)", "professional", 131000),
+  swm("sw-qwen3-5-35b-uncensored", "Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf", "Qwen 3.5 35B Uncensored — community swarm (no key)", "nsfw", 131000),
+  swm("sw-qwen2-5-7b", "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "Qwen 2.5 7B Instruct — community swarm (no key)", "professional", 131000),
 
   // ─── Standalone services: web search + music generation ────────────────
   // These use separate API endpoints (not chat completions).
@@ -552,6 +577,21 @@ function oc(
   };
 }
 
+/** FreeChat model helper. Free, no-auth. Credit: FreeChat.org */
+function fc(id: string, upstream: string, description: string, category: GatewayModel["category"], contextWindow: number): GatewayModel {
+  return { id, provider: "freechat", upstream, description, category, contextWindow, capabilities: { streaming: true, tools: false, systemPrompt: true, multiTurn: true, vision: false, webSearch: false } };
+}
+
+/** Miklium model helper. Free, no-auth, non-streaming. Credit: Miklium */
+function mk(id: string, upstream: string, description: string, category: GatewayModel["category"], contextWindow: number): GatewayModel {
+  return { id, provider: "miklium", upstream, description, category, contextWindow, capabilities: { streaming: false, tools: false, systemPrompt: false, multiTurn: false, vision: false, webSearch: false } };
+}
+
+/** Swarm model helper. Free, no-auth, OpenAI-compatible. Credit: g4f-dev */
+function swm(id: string, upstream: string, description: string, category: GatewayModel["category"], contextWindow: number): GatewayModel {
+  return { id, provider: "swarm", upstream, description, category, contextWindow, capabilities: { streaming: true, tools: true, systemPrompt: true, multiTurn: true, vision: false, webSearch: false } };
+}
+
 /** Standalone service model (search, music, etc.) — listed for discovery but
  * called via their own endpoints, NOT via /v1/chat/completions. */
 function svc(
@@ -627,7 +667,19 @@ export const PROVIDER_INFO: Record<
   },
   "opencode": {
     name: "OpenCode.ai",
-    description: "49 free models (Claude Opus 5, GPT-5.6, Gemini 3.6, Grok 4.5, DeepSeek V4, GLM-5.2, Kimi K3) — OpenAI-compatible, no signup, no key, streaming + tools",
+    description: "8 free models (DeepSeek V4 Flash, Ling 3.0, Nemotron Ultra, Laguna S, LongCat, MiMo, Big Pickle) — OpenAI-compatible, no signup, no key, streaming + tools",
+  },
+  "freechat": {
+    name: "FreeChat",
+    description: "1 free model (v3) via llmproxy.org — no signup, no key, SSE streaming",
+  },
+  "miklium": {
+    name: "Miklium",
+    description: "5 free personality models (miklium, personalityless, male, female, all) — no signup, no key",
+  },
+  "swarm": {
+    name: "Swarm",
+    description: "7 free community GGUF models (Qwen 3.5/3.6, uncensored variants) via g4f-dev swarm — no signup, no key, streaming + tools",
   },
   "jollygen": {
     name: "JollyGen",
