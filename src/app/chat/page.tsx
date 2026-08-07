@@ -800,7 +800,11 @@ export default function ChatPage() {
       ];
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...keyHeaders },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+          ...keyHeaders,
+        },
         signal: controller.signal,
         body: JSON.stringify({ model, messages: apiMessages, stream, tools }),
       });

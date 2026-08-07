@@ -159,7 +159,10 @@ export async function POST(request: Request) {
     };
     const proxyRes = await fetch(`${origin}/api/v1/chat/freegpt-proxy`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": wantsStream ? "text/event-stream" : "application/json",
+      },
       body: JSON.stringify(proxyBody),
       signal: request.signal,
     });
