@@ -128,12 +128,14 @@ export async function POST(request: Request) {
 
   if (useTools) {
     // Inject tool system prompt for ALL models as a fallback.
-    // For providers that support native tool calling (FreeGPT, KiloCode, LLM7),
-    // tools are ALSO passed natively — the system prompt is a backup.
-    messages.push({
-      role: "system",
-      content: buildToolSystemPrompt(body.tools!, body.tool_choice),
-    });
+    // Skip for providers where the system prompt causes template errors (swarm).
+    const skipSystemPrompt = model.provider === "swarm";
+    if (!skipSystemPrompt) {
+      messages.push({
+        role: "system",
+        content: buildToolSystemPrompt(body.tools!, body.tool_choice),
+      });
+    }
   }
   for (const m of body.messages) {
     const text = messageToText(m);
