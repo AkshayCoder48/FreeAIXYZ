@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,24 +14,31 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
+  title: "Anime AI Studio - Free AI Anime Image Generator",
+  description:
+    "Generate stunning anime artwork for free with AI. Powered by Pollinations.ai & AIAnime.io — unlimited, no login required.",
+  keywords: [
+    "anime",
+    "AI",
+    "image generator",
+    "anime art",
+    "AI art",
+    "free",
+    "Pollinations",
+    "AIAnime",
+  ],
+  authors: [{ name: "Anime AI Studio" }],
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "Anime AI Studio - Free AI Anime Image Generator",
+    description:
+      "Generate stunning anime artwork for free with AI. Unlimited, no login required.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "Anime AI Studio - Free AI Anime Image Generator",
+    description:
+      "Generate stunning anime artwork for free with AI. Unlimited, no login required.",
   },
 };
 
@@ -41,12 +48,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
         {children}
-        <Toaster />
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
   );
