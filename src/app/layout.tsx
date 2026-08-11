@@ -1,44 +1,50 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Nunito, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const nunito = Nunito({
+  variable: "--font-brand",
   subsets: ["latin"],
+  weight: ["400", "600", "700", "800", "900"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const dmSans = DM_Sans({
+  variable: "--font-body",
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-code",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Anime AI Studio - Free AI Anime Image Generator",
+  title: "FreeAI4All — Free AI Inference Platform",
   description:
-    "Generate stunning anime artwork for free with AI. Powered by Pollinations.ai & AIAnime.io — unlimited, no login required.",
+    "Free, unlimited AI inference platform. OpenAI-compatible API with 90+ models across 15+ providers. No API key required.",
   keywords: [
-    "anime",
-    "AI",
-    "image generator",
-    "anime art",
-    "AI art",
-    "free",
-    "Pollinations",
-    "AIAnime",
+    "free AI",
+    "OpenAI compatible API",
+    "free inference",
+    "free GPT",
+    "free AI API",
+    "chat completions API",
+    "no auth AI",
+    "AI playground",
   ],
-  authors: [{ name: "Anime AI Studio" }],
-  openGraph: {
-    title: "Anime AI Studio - Free AI Anime Image Generator",
-    description:
-      "Generate stunning anime artwork for free with AI. Unlimited, no login required.",
-    type: "website",
+  authors: [{ name: "FreeAI4All" }],
+  icons: {
+    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "Anime AI Studio - Free AI Anime Image Generator",
+  openGraph: {
+    title: "FreeAI4All — Free AI Inference Platform",
     description:
-      "Generate stunning anime artwork for free with AI. Unlimited, no login required.",
+      "Free AI inference with 90+ models. OpenAI-compatible, no key required.",
+    type: "website",
   },
 };
 
@@ -48,12 +54,27 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${nunito.variable} ${dmSans.variable} ${jetbrains.variable} antialiased bg-background text-foreground`}
+        suppressHydrationWarning
       >
-        {children}
-        <Toaster richColors position="bottom-right" />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
+        <SonnerToaster
+          position="bottom-right"
+          toastOptions={{
+            classNames: {
+              toast: "border-border bg-popover text-popover-foreground rounded-[20px]",
+            },
+          }}
+        />
       </body>
     </html>
   );
