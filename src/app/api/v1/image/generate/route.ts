@@ -20,6 +20,7 @@ import {
   type ImageModel,
 } from "@/lib/providers/image-registry";
 import { getRotatedHeaders } from "@/lib/ip-rotation";
+import { translateDreemyMsg, translateDreemyError } from "@/lib/providers/dreemy-i18n";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -715,7 +716,7 @@ async function mintDreemyGuestToken(signal?: AbortSignal): Promise<{
   };
 
   if (createData.code !== "200" || !createData.data?.guestUid || !createData.data?.guestKey) {
-    throw new Error(`Dreemy createGuest returned error: ${createData.msg || JSON.stringify(createData).slice(0, 200)}`);
+    throw new Error(`Dreemy createGuest returned error: ${translateDreemyMsg(createData.msg) || JSON.stringify(createData).slice(0, 200)}`);
   }
 
   const { guestUid, guestKey } = createData.data;
@@ -740,11 +741,11 @@ async function mintDreemyGuestToken(signal?: AbortSignal): Promise<{
   };
 
   if (loginData.code !== "200" || !loginData.data?.idToken) {
-    throw new Error(`Dreemy loginByGuest returned error: ${loginData.msg || JSON.stringify(loginData).slice(0, 200)}`);
+    throw new Error(`Dreemy loginByGuest returned error: ${translateDreemyMsg(loginData.msg) || JSON.stringify(loginData).slice(0, 200)}`);
   }
 
   // Step 3: Get account integral
-  let integral = 100; // default guest integral
+  let integral = 0; // default guest integral (Dreemy guests now get 0 credits)
   try {
     const accountRes = await fetch(`${DREEMY_BASE}/api/auth/getAccount`, {
       method: "GET",
@@ -834,36 +835,58 @@ async function handleDreemy(model: ImageModel, req: ImageRequest, signal?: Abort
     });
 
     if (createRes.status === 401) {
+      // Dreemy 401 returns {"code":"401","msg":"\u672a\u767b\u5f55"} — translate it
+      let errMsg = "Invalid or expired dreemy_token. Re-login to dreemy.ai or omit dreemy_token for auto-mint.";
+      try {
+        const errData = await createRes.json() as { msg?: string };
+        if (errData.msg) errMsg = translateDreemyMsg(errData.msg);
+      } catch {}
       return NextResponse.json(
-        { error: "Dreemy: Invalid or expired dreemy_token. Re-login to dreemy.ai or omit dreemy_token for auto-mint.", hint: "Get a fresh token from dreemy.ai or let the gateway auto-mint a guest token." },
+        { error: `Dreemy: ${errMsg}`, hint: "Get a fresh token from dreemy.ai or let the gateway auto-mint a guest token." },
         { status: 401 },
       );
     }
 
     if (!createRes.ok) {
       const errText = await createRes.text().catch(() => "");
+      // Translate Chinese/Japanese in raw error text if present
+      const translatedErr = translateDreemyMsg(errText) || errText;
       return NextResponse.json(
-        { error: `Dreemy: Image creation failed (HTTP ${createRes.status}): ${errText.slice(0, 300)}` },
+        { error: `Dreemy: Image creation failed (HTTP ${createRes.status}): ${translatedErr.slice(0, 300)}` },
         { status: 502 },
       );
     }
 
     const createData = await createRes.json() as {
-      code?: number;
+      code?: number | string;
       data?: { code?: number; result?: { id?: number; status?: number }; msg?: string };
       msg?: string;
     };
 
-    // Dreemy returns HTTP 200 even on errors. Check data.code.
+    // Dreemy returns HTTP 200 even on errors. Check response-level code first.
+    // code="401" means auth error (even though HTTP status is 200)
+    const responseCode = String(createData.code ?? "");
+    if (responseCode === "401" || responseCode === "403") {
+      const errMsg = translateDreemyMsg(createData.msg) || "Authentication failed";
+      return NextResponse.json(
+        { error: `Dreemy: ${errMsg}`, hint: "Your dreemy_token is invalid or expired. Re-login to dreemy.ai or omit dreemy_token for auto-mint." },
+        { status: 401 },
+      );
+    }
+
+    // Check data.code for quota/rate limit errors.
     // data.code=1 means accepted, data.code=-1 or -5 means rejected (quota/rate)
     const innerCode = createData.data?.code;
     if (innerCode === -1 || innerCode === -5) {
-      const errMsg = createData.data?.msg || createData.msg || "Quota exceeded or rate limited";
+      const errMsg = translateDreemyError(
+        createData.data?.msg || createData.msg,
+        innerCode,
+      );
       return NextResponse.json(
         {
           error: `Dreemy: ${errMsg}`,
           hint: autoMinted
-            ? `Guest token has ${integral ?? 100} integral. modelId=${modelId} costs ${modelId === 1 ? 40 : 20} per 2K image. Use a registered account token (dreemy_token) for more credits.`
+            ? `Guest token has ${integral ?? 0} integral. modelId=${modelId} costs ${modelId === 1 ? 40 : 20} per 2K image. Use a registered account token (dreemy_token) for more credits.`
             : "Your dreemy_token may have insufficient credits. Try a fresh token or register at dreemy.ai.",
           integral,
           auto_minted: autoMinted,
@@ -874,8 +897,10 @@ async function handleDreemy(model: ImageModel, req: ImageRequest, signal?: Abort
 
     const jobId = createData.data?.result?.id;
     if (!jobId) {
+      // Translate any Chinese msg in the response before returning
+      const topMsg = createData.msg ? translateDreemyMsg(createData.msg) : undefined;
       return NextResponse.json(
-        { error: `Dreemy: No job ID in response`, raw: createData },
+        { error: `Dreemy: No job ID in response${topMsg ? ` — ${topMsg}` : ""}`, raw: createData },
         { status: 502 },
       );
     }
