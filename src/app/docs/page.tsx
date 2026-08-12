@@ -1991,6 +1991,7 @@ const NAV: NavItem[] = [
   { id: "web-search", label: "Web Search" },
   { id: "music", label: "Music Generation" },
   { id: "image-generation", label: "Image Generation" },
+  { id: "image-manipulation", label: "Image Manipulation" },
   { id: "code-examples", label: "Code Examples" },
   { id: "reverse-engineering", label: "Reverse Engineering ↗" },
 ];
@@ -2458,10 +2459,9 @@ curl ${origin}/api/v1/chat/completions \\
                 POST /api/v1/image/generate
               </code>{" "}
               — generate AI images from text prompts.{" "}
-              <strong className="text-foreground">160+ models</strong> across 5
-              style families: anime, realism, NSFW anime, NSFW realism, and
-              mixed/artistic. Powered by AI Horde (free, anonymous, no signup),
-              Pollinations gen, and FreeGPT.tech.
+              <strong className="text-foreground">7 models</strong> across 4
+              style families: anime, realism, mixed/artistic, and general. Powered by
+              Pollinations, FreeGPT.tech, and Casper Technology — all free, no API key.
             </p>
 
             <div className="border border-foreground p-6">
@@ -2470,26 +2470,19 @@ curl ${origin}/api/v1/chat/completions \\
               </div>
               <ul className="text-sm text-muted-foreground space-y-1.5" style={{ fontFamily: "var(--font-body), serif" }}>
                 <li>
-                  <strong className="text-foreground">AI Horde</strong> — 161+
-                  community SD/SDXL/Flux models. Free anonymous access (API key{" "}
-                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>0000000000</code>). Async
-                  submit→poll→fetch flow (30s–3min per image).
+                  <strong className="text-foreground">Pollinations</strong> — 1 free model (Flux).
+                  Synchronous, unlimited, instant (~0.3-1s per image).
                 </li>
                 <li>
-                  <strong className="text-foreground">Pollinations gen</strong> —
-                  the new <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>gen.pollinations.ai</code>{" "}
-                  endpoint. 4 free anon models: flux, kontext, klein,
-                  dreamshaper. Synchronous.
+                  <strong className="text-foreground">FreeGPT.tech</strong> — 4 image models
+                  (GPT-Image 2, Nano Banana 2, Flux 2 Flex, Gemini Flash Image)
+                  via the WASM-secured chat endpoint.
                 </li>
                 <li>
-                  <strong className="text-foreground">FreeGPT.tech</strong> — 3
-                  image models (GPT-Image 2, Nano Banana 2, Flux 2 Flex) via the
-                  WASM-secured chat endpoint.
-                </li>
-                <li>
-                  <strong className="text-foreground">nekos.life / purrbot</strong> —
-                  anime image fetchers (existing art, zero latency). Useful as
-                  fast fallbacks for the anime / NSFW anime categories.
+                  <strong className="text-foreground">Casper Tech</strong> — 2 AI image models
+                  (DeepAI Text2Img, Magic Studio) via ai-image-gen.xcasper.space.
+                  Free, no API key. Also provides mask edit, variation, and
+                  image-to-prompt APIs.
                 </li>
               </ul>
             </div>
@@ -2500,16 +2493,13 @@ curl ${origin}/api/v1/chat/completions \\
                   Request body
                 </div>
                 <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "prompt": "1girl, cute anime girl, blue hair",  // required
-  "model": "horde-meinamix",        // default: pollgen-flux
-  "width": 512,                     // optional
-  "height": 768,                    // optional
+  "prompt": "A beautiful sunset over mountains",  // required
+  "model": "poll-flux",             // default: poll-flux
+  "width": 1024,                     // optional
+  "height": 1024,                    // optional
   "seed": 42,                       // pollinations only
   "nologo": true,                   // pollinations only
-  "negative_prompt": "blurry",      // horde only
-  "steps": 30,                      // horde only (default 30)
-  "cfg_scale": 7,                   // horde only (default 7)
-  "nsfw": false                     // REQUIRED: true for NSFW models (18+)
+  "enhance": true                   // pollinations only
 }`}</pre>
               </div>
               <div className="border border-foreground p-6">
@@ -2519,18 +2509,15 @@ curl ${origin}/api/v1/chat/completions \\
                 <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "success": true,
   "images": [
-    { "url": "https://...webp", "format": "webp" }
+    { "url": "https://...jpeg", "format": "jpeg" }
   ],
-  "model": "horde-meinamix",
-  "model_name": "MeinaMix",
-  "category": "anime",
-  "provider": "aihorde",
-  "prompt": "1girl, cute anime girl...",
-  "width": 512,
-  "height": 768,
-  "seed": "1524206340",
-  "censored": false,
-  "queue_note": "AI Horde anonymous tier..."
+  "model": "poll-flux",
+  "model_name": "Flux (Pollinations)",
+  "category": "mixed",
+  "provider": "pollinations-gen",
+  "prompt": "A beautiful sunset over mountains",
+  "width": 1024,
+  "height": 1024
 }`}</pre>
               </div>
             </div>
@@ -2551,7 +2538,7 @@ curl ${origin}/api/v1/chat/completions \\
             </div>
 
             <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
-              Browse all 160+ image models and their categories on the{" "}
+              Browse all 7 image models and their categories on the{" "}
               <a href="/models#image-models" className="text-foreground hover:underline transition-colors duration-100">
                 Models page
               </a>
@@ -2565,6 +2552,63 @@ curl ${origin}/api/v1/chat/completions \\
               browser.
             </p>
             <CodeTabs snippets={snippets.imageGen} />
+          </section>
+
+          {/* Casper Tech Image Manipulation */}
+          <section id="image-manipulation" className="scroll-mt-20 space-y-4">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
+              Image Manipulation (Casper Tech)
+            </h2>
+            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+              Free image manipulation APIs powered by{" "}
+              <a href="https://ai-image-gen.xcasper.space" target="_blank" rel="noopener noreferrer" className="text-foreground hover:underline">Casper Technology</a>.{" "}
+              No API key required.
+            </p>
+
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="border border-foreground p-5 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  Mask Edit
+                </div>
+                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  POST /api/v1/image/mask
+                </code>
+                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
+                  Edit specific regions of an image using a text prompt and mask overlay.
+                </p>
+                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  params: image, mask, prompt
+                </div>
+              </div>
+              <div className="border border-foreground p-5 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  Variation
+                </div>
+                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  POST /api/v1/image/variation
+                </code>
+                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
+                  Generate creative variations from a reference image with optional prompt guidance.
+                </p>
+                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  params: image, prompt?
+                </div>
+              </div>
+              <div className="border border-foreground p-5 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  Image-to-Prompt
+                </div>
+                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  POST /api/v1/image/analyze
+                </code>
+                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
+                  AI extracts colours, lighting &amp; composition to craft a generation prompt and palette.
+                </p>
+                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  params: image → returns &#123;prompt, palette&#125;
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* Code Examples summary */}

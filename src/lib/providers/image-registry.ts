@@ -8,13 +8,21 @@
  * Providers:
  *   - pollinations-gen — image.pollinations.ai (1 model, unlimited)
  *   - freegpt          — FreeGPT.tech image models (4 real AI models)
+ *   - casper-tech      — Casper Technology via ai-image-gen.xcasper.space (2 models)
  *
- * Total: 5 base models.
+ * Total: 7 base models.
+ *
+ * Casper Tech also provides image manipulation endpoints (not generation models):
+ *   - POST /v1/image/mask/generate      — Image + mask edit
+ *   - POST /v1/image/variation/generate — Image variation
+ *   - POST /v1/image/analyze/generate   — Image-to-prompt analysis
+ * These are exposed as separate API routes, not as generation models.
  */
 
 export type ImageProviderId =
   | "pollinations-gen"
-  | "freegpt";
+  | "freegpt"
+  | "casper-tech";
 
 export type ImageCategory =
   | "anime"
@@ -51,9 +59,16 @@ const FREEGPT_MODELS: ImageModel[] = [
   { id: "freegpt-gemini-flash-image", name: "Gemini Flash Image (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gemini-3.1-flash-image", width: 1024, height: 1024, nsfw: false, description: "Google Gemini 3.1 Flash Image via FreeGPT.tech — fast, high-quality" },
 ];
 
+// ─── Casper Tech image models (2 AI generators, free, no key) ──────────────
+const CASPER_MODELS: ImageModel[] = [
+  { id: "casper-deepai", name: "DeepAI Text2Img (Casper)", provider: "casper-tech", category: "general", upstreamModel: "deepai", width: 1024, height: 1024, nsfw: false, description: "DeepAI engine via Casper Tech — fast text-to-image generation, no API key required" },
+  { id: "casper-magic", name: "Magic Studio (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "bing", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Magic Studio — high-quality creative image generation via Bing engine" },
+];
+
 export const IMAGE_MODELS: readonly ImageModel[] = [
   ...POLL_MODELS,
   ...FREEGPT_MODELS,
+  ...CASPER_MODELS,
 ];
 
 /** Quick lookup by id. */
@@ -70,6 +85,9 @@ export function imageModelCounts(): Record<ImageCategory, number> {
   return counts;
 }
 
+/** Casper Tech base URL for image generation and manipulation APIs. */
+export const CASPER_BASE_URL = "https://ai-image-gen.xcasper.space";
+
 export const IMAGE_PROVIDER_INFO: Record<
   ImageProviderId,
   { name: string; description: string }
@@ -81,5 +99,9 @@ export const IMAGE_PROVIDER_INFO: Record<
   freegpt: {
     name: "FreeGPT.tech",
     description: "4 real AI image models (GPT-Image 2, Nano Banana 2, Flux 2 Flex, Gemini Flash Image) via FreeGPT.tech's WASM-secured endpoint. No key needed.",
+  },
+  "casper-tech": {
+    name: "Casper Tech",
+    description: "2 AI image models (DeepAI Text2Img, Magic Studio) via ai-image-gen.xcasper.space. Free, no API key. Also provides mask edit, variation, and image-to-prompt APIs.",
   },
 };

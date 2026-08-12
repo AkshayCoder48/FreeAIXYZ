@@ -41,6 +41,7 @@ const CATEGORY_META: Record<
 const PROVIDER_COLORS: Partial<Record<ImageProviderId, string>> = {
   "pollinations-gen": "text-orange-500",
   freegpt: "text-purple-500",
+  "casper-tech": "text-emerald-500",
 };
 
 const CATEGORY_ORDER: ImageCategory[] = [

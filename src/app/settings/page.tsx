@@ -150,6 +150,9 @@ export default function SettingsPage() {
               { name: "Swarm", models: 7, auth: "None" },
               { name: "FreeChat", models: 1, auth: "None" },
               { name: "Miklium", models: 5, auth: "None" },
+              { name: "GPT-OSS", models: 2, auth: "None" },
+              { name: "Vexa AI", models: 2, auth: "None" },
+              { name: "Casper Tech", models: 2, auth: "None" },
             ].map((p) => (
               <div
                 key={p.name}
