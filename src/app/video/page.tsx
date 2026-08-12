@@ -116,7 +116,7 @@ export default function VideoStudioPage() {
   }, [dreemyToken]);
 
   const hasByokCredentials = byokToken.trim() && byokDeviceId.trim();
-  const hasDreemyCredentials = dreemyToken.trim(); // dreemy_token is optional (auto-mint), but BYOK is supported
+  const hasDreemyCredentials = dreemyToken.trim(); // Dreemy guests have 0 credits — BYOK required
 
   const counts = useMemo(() => videoModelCounts(), []);
 
@@ -135,7 +135,7 @@ export default function VideoStudioPage() {
   );
 
   const isDreemyModel = selectedModelObj?.provider === "dreemy";
-  const hasRequiredCredentials = isDreemyModel || hasByokCredentials;
+  const hasRequiredCredentials = isDreemyModel ? hasDreemyCredentials : hasByokCredentials;
 
   const onModelChange = useCallback((modelId: string) => {
     setSelectedModel(modelId);
@@ -152,14 +152,9 @@ export default function VideoStudioPage() {
     }
     if (!hasRequiredCredentials) {
       toast.error(isDreemyModel
-        ? "Dreemy works without a token (auto-guest) but you can provide your own for more credits."
+        ? "Dreemy requires your x-auth-token (guests have 0 credits). Enter your dreemy.ai token below."
         : "NSFW Gateway requires your JWT token and Device ID. Enter them below.");
-      // For Dreemy, allow proceeding without token (auto-mint)
-      if (isDreemyModel) {
-        // continue — auto-mint will be used
-      } else {
-        return;
-      }
+      return;
     }
     if (selectedModelObj.needsImage && !resourceId.trim()) {
       toast.error("This model requires a source image resourceId.");
@@ -320,11 +315,11 @@ export default function VideoStudioPage() {
                   <Badge variant="outline" className="text-[9px] text-emerald-500 border-emerald-500/30 bg-emerald-500/5 rounded-[16px]">connected</Badge>
                 )}
                 {!hasDreemyCredentials && (
-                  <Badge variant="outline" className="text-[9px] text-sky-500 border-sky-500/30 bg-sky-500/5 rounded-[16px]">auto-mint</Badge>
+                  <Badge variant="outline" className="text-[9px] text-red-500 border-red-500/30 bg-red-500/5 rounded-[16px]">no token</Badge>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Optional. If no token is provided, a guest token is auto-minted (0 credits). For more credits, provide your own x-auth-token from dreemy.ai.
+                <strong className="text-red-500">Required.</strong> Dreemy guests have 0 credits — you must provide your own x-auth-token from a registered dreemy.ai account with credits.
               </p>
               <div className="space-y-2">
                 <div>

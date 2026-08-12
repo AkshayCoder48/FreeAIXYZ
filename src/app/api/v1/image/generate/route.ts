@@ -788,6 +788,23 @@ async function handleDreemy(model: ImageModel, req: ImageRequest, signal?: Abort
       guestUid = minted.guestUid;
       integral = minted.integral;
       autoMinted = true;
+
+      // Dreemy guests now get 0 integral — no free credits.
+      // Fail fast instead of wasting time on a guaranteed -1 rejection.
+      if (minted.integral <= 0) {
+        return NextResponse.json(
+          {
+            error: "Dreemy: Guest accounts have 0 credits. Dreemy no longer provides free credits to guests.",
+            hint: "Provide your own dreemy_token (x-auth-token) from a registered account with credits. Sign up at dreemy.ai and purchase credits (2000 integral = $18.99).",
+            docs: "https://www.dreemy.ai",
+            provider: "dreemy",
+            auth_type: "BYOK",
+            required: "dreemy_token",
+            integral: 0,
+          },
+          { status: 402 }, // 402 Payment Required — not a rate limit
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       return NextResponse.json(
@@ -875,23 +892,28 @@ async function handleDreemy(model: ImageModel, req: ImageRequest, signal?: Abort
     }
 
     // Check data.code for quota/rate limit errors.
-    // data.code=1 means accepted, data.code=-1 or -5 means rejected (quota/rate)
+    // data.code=1 means accepted, data.code=-1 means insufficient credits, data.code=-5 means rate limited
     const innerCode = createData.data?.code;
     if (innerCode === -1 || innerCode === -5) {
       const errMsg = translateDreemyError(
         createData.data?.msg || createData.msg,
         innerCode,
       );
+      // -1 = insufficient credits → 402 Payment Required
+      // -5 = rate limited → 429 Too Many Requests
+      const httpStatus = innerCode === -1 ? 402 : 429;
       return NextResponse.json(
         {
           error: `Dreemy: ${errMsg}`,
-          hint: autoMinted
-            ? `Guest token has ${integral ?? 0} integral. modelId=${modelId} costs ${modelId === 1 ? 40 : 20} per 2K image. Use a registered account token (dreemy_token) for more credits.`
-            : "Your dreemy_token may have insufficient credits. Try a fresh token or register at dreemy.ai.",
+          hint: innerCode === -1
+            ? (autoMinted
+              ? `Guest accounts have 0 credits. Use a registered dreemy_token with credits. modelId=${modelId} costs ${modelId === 1 ? 40 : 20} integral per 2K image.`
+              : `Your dreemy_token has insufficient credits (integral: ${integral ?? 0}). modelId=${modelId} costs ${modelId === 1 ? 40 : 20} per 2K image. Purchase more at dreemy.ai.`)
+            : "Too many requests — please wait and try again later.",
           integral,
           auto_minted: autoMinted,
         },
-        { status: 429 },
+        { status: httpStatus },
       );
     }
 
