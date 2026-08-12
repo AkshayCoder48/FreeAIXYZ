@@ -39,12 +39,18 @@ const CATEGORY_META: Record<
   "nsfw-mixed": { label: "Mature Mixed", color: "text-fuchsia-500", icon: ShieldAlert },
   mixed: { label: "Mixed / Artistic", color: "text-purple-500", icon: Sparkles },
   general: { label: "General", color: "text-primary", icon: ImageIcon },
+  "unrestricted-anime": { label: "Unrestricted Anime", color: "text-rose-500", icon: ShieldAlert },
+  "unrestricted-realism": { label: "Unrestricted Realism", color: "text-red-500", icon: ShieldAlert },
+  "unrestricted-mixed": { label: "Unrestricted Mixed", color: "text-fuchsia-500", icon: ShieldAlert },
 };
 
 const PROVIDER_COLORS: Partial<Record<ImageProviderId, string>> = {
   "pollinations-gen": "text-orange-500",
   freegpt: "text-purple-500",
   freegen: "text-cyan-500",
+  "nsfw-gateway": "text-amber-500",
+  freepikai: "text-emerald-500",
+  aianime: "text-pink-500",
 };
 
 const CATEGORY_ORDER: ImageCategory[] = [
@@ -55,6 +61,9 @@ const CATEGORY_ORDER: ImageCategory[] = [
   "nsfw-anime",
   "nsfw-realism",
   "nsfw-mixed",
+  "unrestricted-anime",
+  "unrestricted-realism",
+  "unrestricted-mixed",
 ];
 
 export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean }) {
@@ -140,7 +149,7 @@ export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean
             const meta = CATEGORY_META[cat];
             const count = counts[cat];
             if (count === 0) return null;
-            if (!allowNsfw && (cat === "nsfw-anime" || cat === "nsfw-realism")) return null;
+            if (!allowNsfw && (cat === "nsfw-anime" || cat === "nsfw-realism" || cat === "nsfw-mixed" || cat === "unrestricted-anime" || cat === "unrestricted-realism" || cat === "unrestricted-mixed")) return null;
             return (
               <Button
                 key={cat}
