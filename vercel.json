@@ -1,5 +1,5 @@
 {
-  "buildCommand": "next build",
+  "framework": "nextjs",
   "headers": [
     {
       "source": "/api/chat",
