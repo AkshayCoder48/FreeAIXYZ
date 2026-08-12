@@ -31,8 +31,8 @@ export type ProviderId =
   | "miklium"
   | "swarm"
   | "freeaixyz"
-  | "search"
-  | "music";
+  | "gptoss"
+  | "vexa";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -248,9 +248,13 @@ export const MODELS: readonly GatewayModel[] = [
   fxyz("fxyz-meta-search", "meta-search", "Meta Llama + Web Search via FreeAIXYZ — grounded answers with live search", "professional", 128000, { webSearch: true, vision: true }),
   fxyz("fxyz-qwen-search", "qwen-search", "Qwen + Web Search via FreeAIXYZ — grounded answers with live search", "professional", 262144, { webSearch: true, vision: true }),
 
-  // ─── Standalone services: web search + music generation ────────────────
-  svc("web-search", "/api/v1/search", "DuckDuckGo web search — returns titles, URLs, and snippets. POST {query} or GET ?q=...", "search", 0),
-  svc("music-generate", "/api/v1/music/generate", "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST {prompt, lyrics?, duration?}", "music", 0),
+  // ─── GPT-OSS provider: OpenAI-compatible with reasoning support ────────
+  go("go-120b", "gpt-oss-120b", "GPT-OSS 120B — large open-weight reasoning model, real token streaming with chain-of-thought", "reasoning", 32000),
+  go("go-20b", "gpt-oss-20b", "GPT-OSS 20B — fast open-weight model, real token streaming", "professional", 131072),
+
+  // ─── Vexa AI provider: free multi-provider AI, no key ──────────────────
+  vx("vx-vexa", "vexa", "Vexa — default free model via DeepAI, real token streaming", "professional", 8000),
+  vx("vx-gpt-4-1-nano", "gpt-4.1-nano", "GPT-4.1 nano via Vexa — lightweight OpenAI model", "professional", 128000),
 ];
 
 /** Toolbaz model helper. Note: Toolbaz returns full text at once (no real streaming). */
@@ -608,28 +612,54 @@ function fxyz(
   };
 }
 
-/** Standalone service model. */
-function svc(
+/** GPT-OSS model helper. Real SSE streaming with reasoning support. */
+function go(
   id: string,
   upstream: string,
   description: string,
-  provider: "search" | "music",
+  category: GatewayModel["category"],
   contextWindow: number,
 ): GatewayModel {
   return {
     id,
-    provider,
+    provider: "gptoss",
     upstream,
     description,
-    category: "professional",
+    category,
     contextWindow,
     capabilities: {
-      streaming: false,
+      streaming: true,
       tools: false,
-      systemPrompt: false,
-      multiTurn: false,
+      systemPrompt: true,
+      multiTurn: true,
       vision: false,
-      webSearch: provider === "search",
+      webSearch: false,
+    },
+  };
+}
+
+/** Vexa AI model helper. Free, no-auth, real SSE streaming. */
+function vx(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "vexa",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: false,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
     },
   };
 }
@@ -712,9 +742,13 @@ export const PROVIDER_INFO: Record<
     name: "LLM7.io",
     description: "Free anonymous no-key access to GPT-OSS, Minimax, Codestral",
   },
-  "music": {
-    name: "Music Generation",
-    description: "ACE-Step 1.5 AI music generation — real API key, returns base64 audio. POST /api/v1/music/generate",
+  "gptoss": {
+    name: "GPT-OSS",
+    description: "2 free models (GPT-OSS 120B reasoning, GPT-OSS 20B fast) — OpenAI-compatible, reasoning_content support, no API key",
+  },
+  "vexa": {
+    name: "Vexa AI",
+    description: "15+ free models via multi-provider routing (DeepAI, Pollinations, AIFree, TalkAI, Toolbaz) — no account, no API key, SSE streaming",
   },
   "auroraai": {
     name: "AuroraAI",
@@ -723,10 +757,6 @@ export const PROVIDER_INFO: Record<
   "pollinations": {
     name: "Pollinations",
     description: "Free no-auth OpenAI-compatible API with real token streaming and reasoning",
-  },
-  "search": {
-    name: "Web Search",
-    description: "DuckDuckGo web search — returns titles, URLs, snippets. POST /api/v1/search {query}",
   },
   "spicywriter": {
     name: "SpicyWriter",

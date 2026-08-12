@@ -318,6 +318,10 @@ function tokenizeForStream(text: string): string[] {
  * the full response and yield it once (e.g., toolbaz, miklium) must NOT
  * be listed here — they get the simulated re-pacing path instead.
  *
+ * NOTE: freegpt and freeaixyz are NOT listed here because they are
+ * handled via separate Node.js proxy routes (freegpt-proxy / freeaixyz-proxy)
+ * before reaching this streaming logic.
+ *
  * Providers with real upstream SSE/NDJSON streaming:
  *   auroraai    — OpenAI-shaped SSE from nsfwlover.com
  *   surfsense   — Custom SSE (text-delta events) from surfsense.com
@@ -327,11 +331,11 @@ function tokenizeForStream(text: string): string[] {
  *   kilocode    — OpenAI SSE via OpenRouter from api.kilo.ai
  *   llm7        — OpenAI SSE from api.llm7.io
  *   spicywriter — Plain-text SSE from spicywriter.com
- *   freegpt     — OpenAI SSE via WASM-secured proxy (freegpt-proxy route)
  *   opencode    — OpenAI SSE from opencode.ai (with Pollinations fallback)
  *   freechat    — OpenAI SSE from llmproxy.org
  *   swarm       — OpenAI SSE from g4f-dev workers
- *   freeaixyz   — Custom SSE via curl proxy (freeaixyz-proxy route)
+ *   gptoss      — OpenAI SSE from GPT-OSS workers (reasoning_content support)
+ *   vexa        — OpenAI-shaped SSE from vexa-ai.pages.dev
  */
 function isRealStreamProvider(provider: string): boolean {
   return [
@@ -343,11 +347,11 @@ function isRealStreamProvider(provider: string): boolean {
     "kilocode",
     "llm7",
     "spicywriter",
-    "freegpt",
     "opencode",
     "freechat",
     "swarm",
-    "freeaixyz",
+    "gptoss",
+    "vexa",
   ].includes(provider);
 }
 
@@ -389,11 +393,17 @@ async function streamCompletion(
   // returned immediately with the readable stream. This is the KEY to
   // real-time streaming on Vercel.
   (async () => {
-    const enqueue = (bytes: string) => {
+    /** Write bytes to the TransformStream writer with proper error handling.
+     *  Awaits writer.ready for backpressure before writing, ensuring each
+     *  chunk is flushed to the network individually rather than buffered. */
+    const enqueue = async (bytes: string): Promise<void> => {
       try {
-        return writer.write(encoder.encode(bytes));
+        // Wait for the writer to be ready (backpressure) before writing.
+        // This ensures each chunk is flushed individually.
+        await writer.ready;
+        await writer.write(encoder.encode(bytes));
       } catch {
-        return Promise.resolve();
+        // Writer may be closed/errored — ignore (stream is done).
       }
     };
     const send = (obj: unknown) => enqueue(`data: ${JSON.stringify(obj)}\n\n`);
@@ -645,8 +655,10 @@ async function streamText(
 ) {
   const tokens = tokenizeForStream(text);
   // Inter-chunk delay (ms) — small enough to feel real-time, large enough
-  // to defeat proxy/CDN buffering. 20ms ≈ 50 chunks/sec.
-  const STREAM_DELAY = 20;
+  // to defeat proxy/CDN buffering. 30ms ≈ 33 chunks/sec. The delay gives
+  // the network layer time to flush each chunk individually; smaller values
+  // risk the runtime coalescing multiple writes into a single TCP packet.
+  const STREAM_DELAY = 30;
   for (const piece of tokens) {
     if (signal.aborted) break;
     await send({

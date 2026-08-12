@@ -16,21 +16,11 @@ import { freeChatProvider } from "./freechat";
 import { mikliumProvider } from "./miklium";
 import { swarmProvider } from "./swarm";
 import { freeaixyzProvider } from "./freeaixyz";
+import { gptOssProvider } from "./gptoss";
+import { vexaProvider } from "./vexa";
 // FreeGPT provider is NOT imported here — it uses Node.js APIs (eval("require"),
 // fs, path) that break Edge runtime. It's imported directly in the Node.js
 // proxy route: /api/v1/chat/freegpt-proxy
-
-// Stub providers for standalone services (search/music). These are listed in
-// the model registry for discovery but called via their own API endpoints.
-const stubProvider: Provider = {
-  id: "toolbaz",
-  async complete() {
-    throw new Error("This is a standalone service. Use the dedicated API endpoint instead.");
-  },
-  async *stream() {
-    throw new Error("This is a standalone service. Use the dedicated API endpoint instead.");
-  },
-};
 
 export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   toolbaz: toolbazProvider,
@@ -47,9 +37,9 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   miklium: mikliumProvider,
   swarm: swarmProvider,
   freeaixyz: freeaixyzProvider,
+  gptoss: gptOssProvider,
+  vexa: vexaProvider,
   // freegpt is handled via Node.js proxy route, not here
-  search: stubProvider,
-  music: stubProvider,
 };
 
 /** Get the provider instance for a given provider id. */

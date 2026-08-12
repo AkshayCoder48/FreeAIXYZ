@@ -1,14 +1,13 @@
 /**
- * Web Search API — standalone endpoint that returns search results.
+ * Web Search API — returns search results from multiple providers.
  *
- * Distinct service, NOT combined into chat models.
- * Clients call this to get raw search results, then feed them to any model.
+ * Providers: DuckDuckGo HTML, Google fallback, Miklium AI search.
  *
  * Endpoint: POST /api/v1/search
- * Body: { query: string, num?: number }
- * Response: { results: [{ title, url, snippet }], query, count }
+ * Body: { query: string, num?: number, engine?: "duckduckgo"|"google"|"miklium" }
+ * Response: { results: [{ title, url, snippet }], query, count, engine }
  *
- * GET /api/v1/search?q=...&num=... also works.
+ * GET /api/v1/search?q=...&num=...&engine=... also works.
  */
 
 import { NextResponse } from "next/server";
@@ -22,10 +21,42 @@ interface SearchResult {
   snippet: string;
 }
 
-/** Perform a search using DuckDuckGo's HTML endpoint (more scrape-friendly). */
-async function search(query: string, num: number = 8): Promise<SearchResult[]> {
+/** Miklium AI-powered search — synthesizes answer from web results. */
+async function mikliumSearch(query: string): Promise<SearchResult[]> {
   try {
-    // DuckDuckGo HTML endpoint — returns simple HTML with results
+    const res = await fetch("https://miklium.vercel.app/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    // Miklium search returns { success, response } or { results }
+    if (data.results && Array.isArray(data.results)) {
+      return data.results.map((r: { title?: string; url?: string; snippet?: string; link?: string }) => ({
+        title: r.title || "",
+        url: r.url || r.link || "",
+        snippet: r.snippet || "",
+      })).filter((r: SearchResult) => r.url);
+    }
+    // If Miklium returns a synthesized answer instead of links
+    if (data.response || data.success) {
+      return [{
+        title: `Miklium AI Search: ${query}`,
+        url: `https://miklium.vercel.app`,
+        snippet: data.response || data.answer || "",
+      }];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/** DuckDuckGo HTML search — reliable, no API key. */
+async function duckduckgoSearch(query: string, num: number = 8): Promise<SearchResult[]> {
+  try {
     const res = await fetch(
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
       {
@@ -41,22 +72,15 @@ async function search(query: string, num: number = 8): Promise<SearchResult[]> {
     const html = await res.text();
     const results: SearchResult[] = [];
 
-    // DuckDuckGo HTML format:
-    // <a class="result__a" href="//duckduckgo.com/l/?uddg=ENCODED_URL&rut=...">Title</a>
-    // Split by "result__a" to get each result block
     const linkBlocks = html.split(/class="result__a"/i);
     for (const block of linkBlocks.slice(1, num + 1)) {
-      // Extract href from the current block
       const hrefMatch = block.match(/href="([^"]+)"/i);
-      // Extract title text (between > and </a>)
       const titleMatch = block.match(/>([\s\S]*?)<\/a>/i);
-      // Extract snippet from the same result block
       const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
 
       if (hrefMatch && titleMatch) {
         const title = titleMatch[1].replace(/<[^>]+>/g, "").trim();
         let url = hrefMatch[1];
-        // DDG wraps URLs: //duckduckgo.com/l/?uddg=ENCODED_URL
         const uddgMatch = url.match(/uddg=([^&]+)/);
         if (uddgMatch) {
           url = decodeURIComponent(uddgMatch[1]);
@@ -70,20 +94,14 @@ async function search(query: string, num: number = 8): Promise<SearchResult[]> {
         }
       }
     }
-
-    // Fallback: Google search
-    if (results.length === 0) {
-      return googleFallback(query, num);
-    }
-
     return results;
   } catch {
     return [];
   }
 }
 
-/** Fallback: Google search via HTML scraping. */
-async function googleFallback(query: string, num: number): Promise<SearchResult[]> {
+/** Google search fallback. */
+async function googleSearch(query: string, num: number): Promise<SearchResult[]> {
   try {
     const res = await fetch(
       `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${num}`,
@@ -109,16 +127,46 @@ async function googleFallback(query: string, num: number): Promise<SearchResult[
       const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "";
       if (title && url) results.push({ title, url, snippet: "" });
     }
-
     return results;
   } catch {
     return [];
   }
 }
 
-/** POST /api/v1/search — { query, num? } → { results } */
+/** Unified search — tries engines in order, falls back on failure. */
+async function search(query: string, num: number = 8, engine?: string): Promise<{ results: SearchResult[]; engine: string }> {
+  // Miklium AI search (synthesized answers)
+  if (engine === "miklium") {
+    const results = await mikliumSearch(query);
+    if (results.length > 0) return { results, engine: "miklium" };
+    // Fall through to DDG
+  }
+
+  // DuckDuckGo (default, most reliable)
+  if (!engine || engine === "duckduckgo") {
+    const results = await duckduckgoSearch(query, num);
+    if (results.length > 0) return { results, engine: "duckduckgo" };
+    // Fall through to Google
+  }
+
+  // Google fallback
+  if (!engine || engine === "google") {
+    const results = await googleSearch(query, num);
+    if (results.length > 0) return { results, engine: "google" };
+  }
+
+  // Last resort: try Miklium if not tried yet
+  if (engine !== "miklium") {
+    const results = await mikliumSearch(query);
+    if (results.length > 0) return { results, engine: "miklium" };
+  }
+
+  return { results: [], engine: "none" };
+}
+
+/** POST /api/v1/search — { query, num?, engine? } → { results } */
 export async function POST(request: Request) {
-  let body: { query?: string; num?: number };
+  let body: { query?: string; num?: number; engine?: string };
   try {
     body = await request.json();
   } catch {
@@ -131,29 +179,32 @@ export async function POST(request: Request) {
   }
 
   const num = Math.min(body.num || 8, 20);
-  const results = await search(query, num);
+  const { results, engine: usedEngine } = await search(query, num, body.engine);
 
   return NextResponse.json({
     query,
     count: results.length,
     results,
+    engine: usedEngine,
   });
 }
 
-/** GET /api/v1/search?q=...&num=... */
+/** GET /api/v1/search?q=...&num=...&engine=... */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const query = url.searchParams.get("q") || "";
   const num = Math.min(parseInt(url.searchParams.get("num") || "8"), 20);
+  const engine = url.searchParams.get("engine") || undefined;
 
   if (!query) {
     return NextResponse.json({
       service: "Web Search API",
-      usage: "POST /api/v1/search with { query: string, num?: number }",
-      example: "GET /api/v1/search?q=latest+news&num=8",
+      engines: ["duckduckgo", "google", "miklium"],
+      usage: "POST /api/v1/search with { query: string, num?: number, engine?: string }",
+      example: "GET /api/v1/search?q=latest+news&num=8&engine=miklium",
     });
   }
 
-  const results = await search(query, num);
-  return NextResponse.json({ query, count: results.length, results });
+  const { results, engine: usedEngine } = await search(query, num, engine);
+  return NextResponse.json({ query, count: results.length, results, engine: usedEngine });
 }

@@ -57,7 +57,8 @@ function providerHealth(provider: string): "healthy" | "degraded" | "unhealthy" 
  * Filters out known-broken models and non-chat services.
  */
 function isModelVisible(m: GatewayModel): boolean {
-  // Always hide standalone service models (search/music)
+  // Always hide standalone service models (no longer in registry, but
+  // keep as a safety check in case of stale cached model data)
   if (m.provider === "search" || m.provider === "music") return false;
   // Hide known unhealthy models
   if (KNOWN_UNHEALTHY.has(m.id)) return false;

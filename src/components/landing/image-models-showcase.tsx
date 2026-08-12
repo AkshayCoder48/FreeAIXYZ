@@ -34,22 +34,13 @@ const CATEGORY_META: Record<
 > = {
   anime: { label: "Anime", color: "text-pink-500", icon: Sparkles },
   realism: { label: "Realism", color: "text-sky-500", icon: ImageIcon },
-  "nsfw-anime": { label: "Mature Anime", color: "text-rose-500", icon: ShieldAlert },
-  "nsfw-realism": { label: "Mature Realism", color: "text-red-500", icon: ShieldAlert },
-  "nsfw-mixed": { label: "Mature Mixed", color: "text-fuchsia-500", icon: ShieldAlert },
   mixed: { label: "Mixed / Artistic", color: "text-purple-500", icon: Sparkles },
   general: { label: "General", color: "text-primary", icon: ImageIcon },
-  "unrestricted-anime": { label: "Unrestricted Anime", color: "text-rose-500", icon: ShieldAlert },
-  "unrestricted-realism": { label: "Unrestricted Realism", color: "text-red-500", icon: ShieldAlert },
-  "unrestricted-mixed": { label: "Unrestricted Mixed", color: "text-fuchsia-500", icon: ShieldAlert },
 };
 
 const PROVIDER_COLORS: Partial<Record<ImageProviderId, string>> = {
   "pollinations-gen": "text-orange-500",
   freegpt: "text-purple-500",
-  freegen: "text-cyan-500",
-  freepikai: "text-emerald-500",
-  aianime: "text-pink-500",
 };
 
 const CATEGORY_ORDER: ImageCategory[] = [
@@ -57,12 +48,6 @@ const CATEGORY_ORDER: ImageCategory[] = [
   "realism",
   "mixed",
   "general",
-  "nsfw-anime",
-  "nsfw-realism",
-  "nsfw-mixed",
-  "unrestricted-anime",
-  "unrestricted-realism",
-  "unrestricted-mixed",
 ];
 
 export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean }) {
@@ -71,11 +56,8 @@ export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean
   const [categoryFilter, setCategoryFilter] = useState<ImageCategory | "all">("all");
 
   const visible = useMemo(() => {
-    if (allowNsfw) return IMAGE_MODELS;
-    return IMAGE_MODELS.filter(
-      (m) => m.category !== "nsfw-anime" && m.category !== "nsfw-realism",
-    );
-  }, [allowNsfw]);
+    return IMAGE_MODELS;
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -148,7 +130,6 @@ export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean
             const meta = CATEGORY_META[cat];
             const count = counts[cat];
             if (count === 0) return null;
-            if (!allowNsfw && (cat === "nsfw-anime" || cat === "nsfw-realism" || cat === "nsfw-mixed" || cat === "unrestricted-anime" || cat === "unrestricted-realism" || cat === "unrestricted-mixed")) return null;
             return (
               <Button
                 key={cat}
