@@ -12,6 +12,8 @@ import {
   Sparkles,
   ShieldCheck,
   Music,
+  VideoIcon,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -138,6 +140,7 @@ export default function SettingsPage() {
               { name: "Swarm", models: 7, auth: "None", color: "from-lime-400 to-lime-600" },
               { name: "FreeChat", models: 1, auth: "None", color: "from-pink-400 to-pink-600" },
               { name: "Miklium", models: 5, auth: "None", color: "from-sky-400 to-sky-600" },
+              { name: "NSFW Gateway", models: 5, auth: "BYOK (JWT token)", color: "from-amber-400 to-amber-600" },
             ].map((p) => (
               <div
                 key={p.name}
@@ -184,6 +187,33 @@ export default function SettingsPage() {
             Params: prompt, lyrics, duration, language, instrumental, bpm, key, seed, sampleMode, batchSize.
             The API key is auto-fetched per request — no user input needed.
           </p>
+        </div>
+
+        {/* Video Generation Info */}
+        <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-6 sm:p-8 shadow-clay-card space-y-4 border border-primary/5">
+          <h2
+            className="text-xl font-bold flex items-center gap-3"
+            style={{ fontFamily: "var(--font-brand), sans-serif" }}
+          >
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-clay-button">
+              <VideoIcon className="h-5 w-5 text-white" />
+            </div>
+            Video Generation (BYOK)
+          </h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            AI video generation via NSFW Gateway (gateway.nsfwimg2video.com). 4 models: text2video, image2video, anime-girl, fast-face-swap.
+          </p>
+          <code className="block text-sm text-primary bg-primary/5 border border-primary/10 rounded-[20px] px-4 py-3 font-semibold" style={{ fontFamily: "var(--font-code), monospace" }}>
+            POST /api/v1/video/generate
+          </code>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Params: prompt, model, byok_token (required), byok_device_id (required), resourceId (for image-based models), duration (seconds).
+            BYOK = Bring Your Own Key — user provides their JWT token from nsfwimg2video.com.
+          </p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Key className="h-3.5 w-3.5 text-amber-500" />
+            <span>Get your token from nsfwimg2video.com — DevTools console: <code className="bg-muted px-1 rounded text-[10px]">copy(document.cookie.match(/access_token=([^;]+)/)?.[1])</code></span>
+          </div>
         </div>
 
         <div className="flex justify-center">

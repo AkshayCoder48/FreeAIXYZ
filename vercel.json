@@ -46,6 +46,13 @@
         { "key": "X-Accel-Buffering", "value": "no" },
         { "key": "Cache-Control", "value": "no-cache, no-transform" }
       ]
+    },
+    {
+      "source": "/api/v1/video/generate",
+      "headers": [
+        { "key": "X-Accel-Buffering", "value": "no" },
+        { "key": "Cache-Control", "value": "no-cache, no-transform" }
+      ]
     }
   ]
 }

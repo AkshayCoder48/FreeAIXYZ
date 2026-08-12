@@ -8,6 +8,7 @@ import {
   Menu,
   Cpu,
   ImageIcon,
+  VideoIcon,
   BookOpen,
   Settings,
   MessageSquare,
@@ -26,6 +27,7 @@ const NAV_LINKS = [
   { href: "/chat", label: "Playground", icon: MessageSquare },
   { href: "/models", label: "Models", icon: Cpu },
   { href: "/image", label: "Image Studio", icon: ImageIcon },
+  { href: "/video", label: "Video Studio", icon: VideoIcon },
   { href: "/docs", label: "Docs", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

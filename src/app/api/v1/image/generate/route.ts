@@ -37,6 +37,11 @@ interface ImageRequest {
   size?: string; // FreeGen aspect ratio: square, widescreen_169, etc.
   style?: string; // FreepikAI style: Photorealistic, Digital Art, etc.
   aspect?: string; // FreepikAI aspect: "1:1", "16:9", "9:16", "4:3"
+  // NSFW Gateway BYOK
+  byok_token?: string; // JWT token for nsfw-gateway
+  byok_device_id?: string; // device-id for nsfw-gateway
+  resourceId?: string; // source image ID for image2video etc
+  duration?: number; // video duration in seconds
 }
 
 const DEFAULT_MODEL_ID = "poll-flux";
@@ -651,6 +656,202 @@ async function handleAIAnime(model: ImageModel, req: ImageRequest, signal?: Abor
   );
 }
 
+// ─── NSFW Gateway handler (gateway.nsfwimg2video.com, BYOK JWT token) ──────────
+// User provides their own JWT token + device-id from nsfwimg2video.com.
+// Gateway has CORS: * — browser can call directly, but we also support server-side.
+// Auth: raw JWT in lowercase `authorization` header (NO "Bearer " prefix).
+
+const NSFW_GW_BASE = "https://gateway.nsfwimg2video.com/web";
+const NSFW_GW_POLL_INTERVAL_MS = 3000;
+const NSFW_GW_POLL_MAX_MS = 180000; // 3 min max poll time
+
+async function handleNsfwGateway(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
+  const prompt = req.prompt || "";
+  const token = req.byok_token;
+  const deviceId = req.byok_device_id;
+
+  if (!token || !deviceId) {
+    return NextResponse.json(
+      {
+        error: "NSFW Gateway requires BYOK credentials. Pass byok_token (JWT) and byok_device_id in the request body.",
+        hint: "Get your token from nsfwimg2video.com — run in DevTools console: copy(document.cookie.match(/access_token=([^;]+)/)?.[1])",
+        docs: "https://gateway.nsfwimg2video.com",
+      },
+      { status: 401 },
+    );
+  }
+
+  const upstreamModel = model.upstreamModel || "wf";
+  const now = Date.now();
+
+  // Build form-urlencoded body
+  const formParams = new URLSearchParams();
+  formParams.set("prompt", prompt);
+  if (req.width) formParams.set("width", String(req.width));
+  if (req.height) formParams.set("height", String(req.height));
+  if (req.duration) formParams.set("duration", String(req.duration));
+  if (req.resourceId) formParams.set("resourceId", req.resourceId);
+
+  // For wf model, additional params
+  if (upstreamModel === "wf") {
+    formParams.set("text", prompt); // wf uses 'text' instead of 'prompt' for the main text field
+    if (!req.width) formParams.set("width", "1024");
+    if (!req.height) formParams.set("height", "1024");
+    formParams.set("resultCount", "1");
+  }
+
+  const authHeaders = {
+    authorization: token, // Raw JWT, lowercase, NO "Bearer " prefix
+    "x-device-id": deviceId,
+    "x-time": String(now),
+    "x-country": "US",
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  // Step 1: Create task
+  const createUrl = `${NSFW_GW_BASE}/users/me/models/${upstreamModel}/tasks?locale=en`;
+  try {
+    const createRes = await fetch(createUrl, {
+      method: "POST",
+      headers: authHeaders,
+      body: formParams.toString(),
+      signal: signal ?? AbortSignal.timeout(30000),
+    });
+
+    if (createRes.status === 401) {
+      return NextResponse.json(
+        { error: "NSFW Gateway: Invalid or expired token. Re-login to nsfwimg2video.com and get a fresh token." },
+        { status: 401 },
+      );
+    }
+
+    if (!createRes.ok) {
+      const errText = await createRes.text().catch(() => "");
+      return NextResponse.json(
+        { error: `NSFW Gateway: Task creation failed (HTTP ${createRes.status}): ${errText.slice(0, 300)}` },
+        { status: 502 },
+      );
+    }
+
+    const createData = await createRes.json() as {
+      success: boolean;
+      errorCode?: number;
+      data?: { taskId?: string; progress?: { index?: number; left?: string; progress?: number } };
+      errorMsg?: string;
+    };
+
+    if (!createData.success || !createData.data?.taskId) {
+      return NextResponse.json(
+        { error: `NSFW Gateway: Task creation failed — ${createData.errorMsg || "unknown"}`, raw: createData },
+        { status: 502 },
+      );
+    }
+
+    const taskId = createData.data.taskId;
+
+    // Step 2: Poll until complete (status 2) or timeout
+    const pollUrl = `${NSFW_GW_BASE}/users/me/tasks/${taskId}?locale=en`;
+    const pollStart = Date.now();
+
+    while (Date.now() - pollStart < NSFW_GW_POLL_MAX_MS) {
+      if (signal?.aborted) break;
+
+      await new Promise((r) => setTimeout(r, NSFW_GW_POLL_INTERVAL_MS));
+
+      const pollHeaders = {
+        authorization: token,
+        "x-device-id": deviceId,
+        "x-time": String(Date.now()),
+        "x-country": "US",
+      };
+
+      try {
+        const pollRes = await fetch(pollUrl, {
+          method: "GET",
+          headers: pollHeaders,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!pollRes.ok) continue;
+
+        const pollData = await pollRes.json() as {
+          success: boolean;
+          data?: {
+            taskId?: string;
+            status?: number; // 0=queued, 1=processing, 2=complete
+            progress?: { index?: number; left?: string; progress?: number };
+            fileInfos?: { type?: string; fileUrl?: string }[];
+          };
+          errorMsg?: string;
+        };
+
+        const status = pollData.data?.status;
+        const progress = pollData.data?.progress?.progress ?? 0;
+
+        if (status === 2 && pollData.data?.fileInfos) {
+          // Complete! Find the image/video URL
+          const imageFile = pollData.data.fileInfos.find((f) => f.type === "cover" || f.type === "image");
+          const videoFile = pollData.data.fileInfos.find((f) => f.type === "video");
+          const anyFile = pollData.data.fileInfos[0];
+
+          const resultUrl = imageFile?.fileUrl || videoFile?.fileUrl || anyFile?.fileUrl;
+
+          if (resultUrl) {
+            const isVideo = videoFile?.fileUrl === resultUrl;
+            return NextResponse.json({
+              success: true,
+              images: [{ url: resultUrl, format: isVideo ? "mp4" : "jpg" }],
+              model: model.id,
+              model_name: model.name,
+              category: model.category,
+              provider: "nsfw-gateway",
+              prompt,
+              task_id: taskId,
+              status: "completed",
+              progress: 100,
+              fileInfos: pollData.data.fileInfos,
+            });
+          }
+        }
+
+        // Still processing — continue polling
+        if (status === 0 || status === 1) continue;
+
+        // Unknown status — break and return what we have
+        break;
+      } catch {
+        continue;
+      }
+    }
+
+    // Timeout — return task_id with polling info so client can continue
+    return NextResponse.json({
+      success: true,
+      images: [{ url: `nsgw://task/${taskId}`, format: "pending" }],
+      model: model.id,
+      model_name: model.name,
+      category: model.category,
+      provider: "nsfw-gateway",
+      prompt,
+      task_id: taskId,
+      status: "processing",
+      progress: 0,
+      poll: {
+        url: pollUrl,
+        headers: { authorization: "<your-token>", "x-device-id": deviceId, "x-time": "<current ms>", "x-country": "US" },
+        interval_ms: NSFW_GW_POLL_INTERVAL_MS,
+        note: "Task is still generating. Poll the URL with the same auth headers until status=2 and fileInfos is populated.",
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json(
+      { error: `NSFW Gateway failed: ${msg}` },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   let body: ImageRequest;
   try { body = (await request.json()) as ImageRequest; } catch {
@@ -683,6 +884,7 @@ export async function POST(request: Request) {
       case "freepikai": return await handleFreepikAI(model, body, request.signal);
       case "freegen": return await handleFreeGen(model, body, request.signal);
       case "aianime": return await handleAIAnime(model, body, request.signal);
+      case "nsfw-gateway": return await handleNsfwGateway(model, body, request.signal);
       default: return NextResponse.json({ error: `Provider ${model.provider} not implemented` }, { status: 400 });
     }
   } catch (e) {

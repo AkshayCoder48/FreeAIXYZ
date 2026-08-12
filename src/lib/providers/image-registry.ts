@@ -2,16 +2,17 @@
  * Image model registry — REAL AI generators only, base models only.
  *
  * No style-prompt variants. Each underlying model is one entry.
- * All providers are 100% free, no signup, no API key, instant (no queues).
- * No image fetchers. No BYOK. No AI Horde.
+ * Most providers are 100% free, no signup, no API key, instant (no queues).
+ * No image fetchers. No AI Horde.
  *
  * Providers:
  *   - pollinations-gen — image.pollinations.ai (5 real AI models, unlimited)
  *   - freegpt          — FreeGPT.tech image models (4 real AI models)
  *   - freepikai        — FreepikAI.net 4MP image gen (6 style models, Turnstile-verified)
  *   - freegen          — FreeGen WebSocket task queue (1 model)
+ *   - nsfw-gateway     — NSFW Gateway BYOK (1 text-to-image model: wf)
  *
- * Total: 16 base models.
+ * Total: 17 base models.
  */
 
 export type ImageProviderId =
@@ -19,7 +20,8 @@ export type ImageProviderId =
   | "freegpt"
   | "freepikai"
   | "freegen"
-  | "aianime";
+  | "aianime"
+  | "nsfw-gateway";
 
 export type ImageCategory =
   | "anime"
@@ -86,12 +88,20 @@ const AIANIME_MODELS: ImageModel[] = [
   { id: "aianime-text2image", name: "AIAnime Text2Image", provider: "aianime", category: "anime", upstreamModel: "text2image", width: 1024, height: 1024, nsfw: false, description: "AIAnime Text-to-Image via api.aianime.io — anime/illustration focused, IP rotation for rate limit bypass" },
 ];
 
+// ─── NSFW Gateway models (gateway.nsfwimg2video.com, BYOK) ────────────────────
+// BYOK = Bring Your Own Key. User provides their JWT token from nsfwimg2video.com.
+// The gateway has CORS: * so browser can call directly. Token stays in sessionStorage.
+const NSFW_GATEWAY_MODELS: ImageModel[] = [
+  { id: "nsgw-wf", name: "WF Image Gen (NSFW Gateway)", provider: "nsfw-gateway", category: "unrestricted-mixed", upstreamModel: "wf", width: 1024, height: 1024, nsfw: true, description: "Text-to-Image via NSFW Gateway WF model — BYOK (bring your own JWT token from nsfwimg2video.com), unrestricted generation" },
+];
+
 export const IMAGE_MODELS: readonly ImageModel[] = [
   ...POLL_MODELS,
   ...FREEGPT_MODELS,
   ...FREEPIKAI_MODELS,
   ...FREEGEN_MODELS,
   ...AIANIME_MODELS,
+  ...NSFW_GATEWAY_MODELS,
 ];
 
 /** Quick lookup by id. */
@@ -132,5 +142,9 @@ export const IMAGE_PROVIDER_INFO: Record<
   aianime: {
     name: "AIAnime",
     description: "Text-to-Image generation via api.aianime.io. Anime/illustration focused with automatic IP rotation for rate limit bypass. Returns job_id for async polling.",
+  },
+  "nsfw-gateway": {
+    name: "NSFW Gateway",
+    description: "Image & Video generation via gateway.nsfwimg2video.com. BYOK (bring your own JWT token) — user provides their token from nsfwimg2video.com. 5 models: text2video, image2video, anime-girl, wf (image), fast-face-swap. CORS open, browser-direct calls.",
   },
 };
