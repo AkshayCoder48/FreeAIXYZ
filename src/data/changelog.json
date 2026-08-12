@@ -422,14 +422,14 @@
         },
         {
           "category": "Improved",
-          "message": "feat: update DashboardPage to use cf_pages_project_name",
+          "message": "feat: update DashboardPage to use hosting_site_name",
           "sha": "0290c57e9fcb99ec894f3a131cc2730397c194f9",
           "shortSha": "0290c57",
           "url": "https://github.com/BuildingTechAlternatives/OpenThorn/commit/0290c57e9fcb99ec894f3a131cc2730397c194f9"
         },
         {
           "category": "Improved",
-          "message": "feat: update ProjectBuilderPage to use deploySite + cf_pages_project_name",
+          "message": "feat: update ProjectBuilderPage to use deploySite + hosting_site_name",
           "sha": "93031ad455b359c63cbe82a5a891ccd861b65698",
           "shortSha": "93031ad",
           "url": "https://github.com/BuildingTechAlternatives/OpenThorn/commit/93031ad455b359c63cbe82a5a891ccd861b65698"
@@ -464,7 +464,7 @@
         },
         {
           "category": "Improved",
-          "message": "db: rename netlify_site_id to cf_pages_project_name",
+          "message": "db: rename netlify_site_id to hosting_site_name (provider-neutral)",
           "sha": "1221d692b6f6e2d61e8aa0110227e95bb0a97fb4",
           "shortSha": "1221d69",
           "url": "https://github.com/BuildingTechAlternatives/OpenThorn/commit/1221d692b6f6e2d61e8aa0110227e95bb0a97fb4"

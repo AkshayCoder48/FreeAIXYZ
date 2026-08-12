@@ -1,74 +1,103 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-const fetchMock = vi.fn()
+// Mock the Puter.js browser SDK global
+const mockHostingCreate = vi.fn()
+const mockHostingUpdate = vi.fn()
+const mockHostingGet = vi.fn()
+const mockFsWrite = vi.fn()
+const mockFsMkdir = vi.fn()
+const mockAuthIsSignedIn = vi.fn().mockReturnValue(true)
+const mockAuthGetUser = vi.fn().mockResolvedValue({ uuid: 'test-uuid', username: 'testuser' })
 
-vi.stubGlobal('fetch', fetchMock)
-
-vi.mock('../supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: async () => ({ data: { session: { access_token: 'test-token' } } }),
-    },
+vi.stubGlobal('puter', {
+  auth: {
+    isSignedIn: mockAuthIsSignedIn,
+    signIn: vi.fn().mockResolvedValue({ success: true, username: 'testuser' }),
+    getUser: mockAuthGetUser,
+    signOut: vi.fn(),
   },
-}))
+  fs: {
+    write: mockFsWrite,
+    mkdir: mockFsMkdir,
+    read: vi.fn(),
+  },
+  hosting: {
+    create: mockHostingCreate,
+    update: mockHostingUpdate,
+    get: mockHostingGet,
+    delete: vi.fn(),
+    list: vi.fn().mockResolvedValue([]),
+  },
+  randName: vi.fn().mockReturnValue('happy-river-4281'),
+})
 
-describe('deploySite', () => {
+describe('deploySite (Puter.js browser SDK)', () => {
   beforeEach(() => {
     vi.resetModules()
-    fetchMock.mockReset()
+    mockHostingCreate.mockReset()
+    mockHostingUpdate.mockReset()
+    mockHostingGet.mockReset()
+    mockFsWrite.mockReset()
+    mockFsMkdir.mockReset()
   })
 
-  it('posts deploy requests to the same-origin deploy endpoint', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        siteId: 'ot-abc12345-xyz123',
-        url: 'https://ot-abc12345-xyz123.pages.dev',
-      }),
+  it('creates a new site via Puter.js browser SDK', async () => {
+    mockFsMkdir.mockResolvedValue({ uid: 'dir-1', name: 'openthorn-my-site' })
+    mockFsWrite.mockResolvedValue({ uid: 'file-1', name: 'index.html' })
+    mockHostingCreate.mockResolvedValue({
+      uid: 'site-1',
+      subdomain: 'my-site',
+      root_dir: { uid: 'dir-1', name: 'openthorn-my-site' },
     })
 
     const { deploySite } = await import('../deploy')
-    const result = await deploySite('project-12345678', '<!doctype html><html>OpenThorn</html>')
+    const result = await deploySite('project-1234', '<html>Hello</html>', null, 'My Site')
 
     expect(result).toEqual({
-      siteId: 'ot-abc12345-xyz123',
-      url: 'https://ot-abc12345-xyz123.pages.dev',
+      url: 'https://my-site.puter.site',
+      siteId: 'my-site',
     })
-    expect(fetchMock).toHaveBeenCalledWith('/api/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
-      body: JSON.stringify({
-        projectId: 'project-12345678',
-        html: '<!doctype html><html>OpenThorn</html>',
-      }),
-    })
+    expect(mockFsMkdir).toHaveBeenCalledWith('openthorn-my-site', { createMissingParents: true })
+    expect(mockFsWrite).toHaveBeenCalledWith('openthorn-my-site/index.html', '<html>Hello</html>', { overwrite: true })
+    expect(mockHostingCreate).toHaveBeenCalledWith('my-site', 'openthorn-my-site')
   })
 
-  it('reuses an existing CF Pages project when one is saved', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        siteId: 'ot-existing-abc',
-        url: 'https://ot-existing-abc.pages.dev',
-      }),
+  it('re-deploys to an existing Puter.js site using hosting.update', async () => {
+    mockHostingGet.mockResolvedValue({
+      uid: 'site-1',
+      subdomain: 'my-existing-site',
+      root_dir: { uid: 'dir-1', name: 'openthorn-my-existing-site' },
+    })
+    mockFsWrite.mockResolvedValue({ uid: 'file-1', name: 'index.html' })
+    mockHostingUpdate.mockResolvedValue({
+      uid: 'site-1',
+      subdomain: 'my-existing-site',
+      root_dir: { uid: 'dir-1', name: 'openthorn-my-existing-site' },
     })
 
     const { deploySite } = await import('../deploy')
-    const result = await deploySite('project-1', '<html></html>', 'ot-existing-abc')
+    const result = await deploySite('project-1', '<html>Updated</html>', 'my-existing-site', 'My Site')
 
     expect(result).toEqual({
-      siteId: 'ot-existing-abc',
-      url: 'https://ot-existing-abc.pages.dev',
+      url: 'https://my-existing-site.puter.site',
+      siteId: 'my-existing-site',
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalledWith('/api/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
-      body: JSON.stringify({
-        projectId: 'project-1',
-        html: '<html></html>',
-        existingSiteId: 'ot-existing-abc',
-      }),
-    })
+    expect(mockHostingGet).toHaveBeenCalledWith('my-existing-site')
+    expect(mockFsWrite).toHaveBeenCalledWith('openthorn-my-existing-site/index.html', '<html>Updated</html>', { overwrite: true })
+    expect(mockHostingUpdate).toHaveBeenCalledWith('my-existing-site', 'openthorn-my-existing-site')
+  })
+})
+
+describe('Puter auth helpers', () => {
+  it('isPuterSignedIn returns true when Puter user is signed in', async () => {
+    mockAuthIsSignedIn.mockReturnValue(true)
+    const { isPuterSignedIn } = await import('../deploy')
+    expect(isPuterSignedIn()).toBe(true)
+  })
+
+  it('isPuterSignedIn returns false when Puter user is not signed in', async () => {
+    mockAuthIsSignedIn.mockReturnValue(false)
+    const { isPuterSignedIn } = await import('../deploy')
+    expect(isPuterSignedIn()).toBe(false)
   })
 })

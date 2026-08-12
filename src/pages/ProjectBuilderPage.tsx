@@ -431,7 +431,7 @@ export default function ProjectBuilderPage() {
   // Public Supabase config (url + anon key) for the connected backend, injected
   // into preview + deploy so generated apps can use @openthorn/db.
   const [backendConfig, setBackendConfig] = useState<{ url: string; anonKey: string } | null>(null)
-  const [cfPagesProjectName, setCfPagesProjectName] = useState<string | null>(null)
+  const [hostingSiteName, setHostingSiteName] = useState<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const titleShouldSaveRef = useRef(true)
   const initialAgentStartedRef = useRef(false)
@@ -532,7 +532,7 @@ export default function ProjectBuilderPage() {
       // Verify ownership before upserting to prevent IDOR
       const { data: existing, error: existingError } = await supabase
         .from('projects')
-        .select('user_id, title, files, chat_history, agent_history, cf_pages_project_name, generating, generating_by, selected_model')
+        .select('user_id, title, files, chat_history, agent_history, hosting_site_name, generating, generating_by, selected_model')
         .eq('id', projectId)
         .maybeSingle()
 
@@ -643,7 +643,7 @@ export default function ProjectBuilderPage() {
         setTitle(existing.title)
       }
 
-      setCfPagesProjectName(typeof existing?.cf_pages_project_name === 'string' ? existing.cf_pages_project_name : null)
+      setHostingSiteName(typeof existing?.hosting_site_name === 'string' ? existing.hosting_site_name : null)
 
       // Restore persisted model selection (navigation state takes priority)
       if (!state.selectedModel && existing?.selected_model) {
@@ -1065,13 +1065,13 @@ export default function ProjectBuilderPage() {
         throw new Error(`Build failed: ${result.errors[0]}`)
       }
 
-      const deploy = await deploySite(projectId!, result.html, cfPagesProjectName)
+      const deploy = await deploySite(projectId!, result.html, hostingSiteName, title)
       setDeployUrl(deploy.url)
 
-      if (deploy.siteId !== cfPagesProjectName && user && projectId) {
+      if (deploy.siteId !== hostingSiteName && user && projectId) {
         const { error } = await supabase
           .from('projects')
-          .update({ cf_pages_project_name: deploy.siteId })
+          .update({ hosting_site_name: deploy.siteId })
           .eq('id', projectId)
           .eq('user_id', user.id)
 
@@ -1079,14 +1079,14 @@ export default function ProjectBuilderPage() {
           throw new Error(`Deploy succeeded, but saving the site failed: ${error.message}`)
         }
 
-        setCfPagesProjectName(deploy.siteId)
+        setHostingSiteName(deploy.siteId)
       }
       setDeployState('deployed')
     } catch (err) {
       setDeployError(err instanceof Error ? err.message : 'Deploy failed')
       setDeployState('error')
     }
-  }, [cfPagesProjectName, projectFiles, projectId, user, backendConfig])
+  }, [hostingSiteName, projectFiles, projectId, user, backendConfig])
 
 
   const handleDownloadZip = useCallback(async () => {

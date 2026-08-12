@@ -8,7 +8,7 @@ Never add `Co-Authored-By` lines to commit messages. Thomas is the sole develope
 
 ## Project
 
-**OpenThorn** (package/repo name: `bloom`) — a BYOK (bring-your-own-key) AI website builder. Users connect their own LLM provider API keys; a custom agent generates complete websites, previews them in-browser via esbuild-wasm, and deploys them to Cloudflare Pages. The product name is OpenThorn; internal naming (package, dev plugin, some paths) still uses "bloom". Custom DOM events are namespaced `openthorn:` (e.g. `openthorn:require-auth`).
+**OpenThorn** (package/repo name: `bloom`) — a BYOK (bring-your-own-key) AI website builder. Users connect their own LLM provider API keys; a custom agent generates complete websites, previews them in-browser via esbuild-wasm, and deploys them to Puter.js hosting (free, unlimited, browser-authenticated — no server-side tokens). Code execution and filesystem operations use E2B cloud sandboxes via a serverless hand-off architecture. The product name is OpenThorn; internal naming (package, dev plugin, some paths) still uses "bloom". Custom DOM events are namespaced `openthorn:` (e.g. `openthorn:require-auth`).
 
 ## Commands
 
@@ -25,7 +25,7 @@ Tests live in `src/lib/__tests__/`. There is no test watcher script; use `npx vi
 
 ## Architecture
 
-React 19 + TypeScript + Vite 6 SPA. React Router v7, CSS Modules per component/page, Framer Motion for animation. Supabase provides auth, Postgres (with RLS on every table), Realtime (collaboration presence), and storage. Serverless API runs on Vercel Functions; user-generated sites deploy to Cloudflare Pages.
+React 19 + TypeScript + Vite 6 SPA. React Router v7, CSS Modules per component/page, Framer Motion for animation. Supabase provides auth, Postgres (with RLS on every table), Realtime (collaboration presence), and storage. Serverless API runs on Vercel Functions; user-generated sites deploy to Puter.js hosting via browser SDK (no server deploy endpoint). Code execution and filesystem use E2B cloud sandboxes.
 
 ### The agent (the core of the product)
 
@@ -45,7 +45,7 @@ Key behaviors to preserve when modifying the agent: multi-provider support (18 p
 
 ### API layer — dual implementation
 
-The serverless endpoints in `api/` (`deploy.ts`, `provider-keys.ts`) share logic through `api/_shared.ts` (Supabase JWT verification, per-user rate limiting — in-memory in dev, Upstash Redis in prod — and AES-256-GCM encryption with per-user derived keys from `KEY_ENCRYPTION_SECRET`).
+The serverless endpoints in `api/` (`provider-keys.ts`, `e2b-sandbox.ts`) share logic through `api/_shared.ts` (Supabase JWT verification, per-user in-memory rate limiting, E2B sandbox configuration, and AES-256-GCM encryption with per-user derived keys from `KEY_ENCRYPTION_SECRET`). Deploy is handled entirely client-side via the Puter.js browser SDK (`puter.fs.write` + `puter.hosting.create/update`) — no server deploy endpoint exists.
 
 **Important:** `vite.config.ts` contains dev middleware shims that re-implement these endpoints by importing from `api/_shared.ts`, so `/api/*` behaves identically in `vite dev` and on Vercel. When changing endpoint behavior, update both the `api/` function and the corresponding shim in `vite.config.ts`, and keep shared logic in `_shared.ts`.
 
@@ -69,7 +69,7 @@ Schema lives in `supabase/migrations/` (applied via `supabase db push` or the da
 
 ## Environment
 
-Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `KEY_ENCRYPTION_SECRET` (48 bytes, `openssl rand -base64 48`). Optional: `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` for production rate limiting; `SUPABASE_OAUTH_CLIENT_ID`/`SUPABASE_OAUTH_CLIENT_SECRET` to enable BYO-Supabase backends (the "Authorize Supabase" flow in `api/supabase-oauth.ts` — connection storage reuses `SUPABASE_SERVICE_ROLE_KEY` and `KEY_ENCRYPTION_SECRET`). See `.env.example`.
+Required: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `KEY_ENCRYPTION_SECRET` (48 bytes, `openssl rand -base64 48`). Optional: `E2B_API_KEY` for cloud sandbox code execution/filesystem (with `E2B_TEMPLATE`, `E2B_TIMEOUT_MS`); `FIREBASE_PROJECT_ID`/`FIREBASE_KEY` for push notifications on background sandbox completion; `SUPABASE_OAUTH_CLIENT_ID`/`SUPABASE_OAUTH_CLIENT_SECRET` to enable BYO-Supabase backends. No Puter.js server config needed — auth and hosting are handled by the browser SDK. See `.env.example`.
 
 ## Conventions
 

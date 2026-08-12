@@ -1,7 +1,12 @@
 // Shared server-side helpers for Vercel Functions and the Vite dev shims.
 // Files prefixed with "_" are not treated as routes by Vercel.
+//
+// CHANGES FROM ORIGINAL:
+// - REMOVED: Upstash Redis rate limiting (no external Redis dependency)
+// - REMOVED: Cloudflare Pages deployment (replaced by Puter.js browser SDK)
+// - REMOVED: Server-side Puter.js deploy (now fully client-side via browser SDK)
+// - ADDED:   E2B sandbox integration for filesystem & runtime execution
 import { createCipheriv, createDecipheriv, randomBytes, hkdfSync } from 'node:crypto'
-import { blake3 } from 'hash-wasm'
 
 // ---------------------------------------------------------------------------
 // Supabase JWT verification
@@ -52,8 +57,8 @@ export async function verifyUser(authorization: string | undefined): Promise<Aut
 // ---------------------------------------------------------------------------
 // Project ownership lookup (for the deploy endpoint)
 //
-// The Netlify site id is authoritative in the database, not in the request
-// body. Deriving it server-side (scoped to the caller's JWT via RLS) prevents a
+// The site id is authoritative in the database, not in the request body.
+// Deriving it server-side (scoped to the caller's JWT via RLS) prevents a
 // caller from pushing HTML to a site id they don't own. PostgREST applies the
 // projects RLS policy, so a row is only returned when the user owns or
 // collaborates on the project.
@@ -66,7 +71,7 @@ const PROJECT_ID_RE = /^[A-Za-z0-9_-]{1,100}$/
 export interface ProjectAccess {
   /** True only when the caller may deploy this project. */
   ok: boolean
-  /** The project's persisted CF Pages project name, or null if it has none yet. */
+  /** The project's persisted hosting site name, or null if it has none yet. */
   siteId: string | null
   /** The project's title, used to build a readable subdomain on first deploy. */
   title: string | null
@@ -82,13 +87,13 @@ export async function getProjectForDeploy(
 
   try {
     const res = await fetch(
-      `${env.url}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}&select=cf_pages_project_name,title&limit=1`,
+      `${env.url}/rest/v1/projects?id=eq.${encodeURIComponent(projectId)}&select=hosting_site_name,title&limit=1`,
       { headers: { apikey: env.anonKey, Authorization: `Bearer ${token}`, Accept: 'application/json' } },
     )
     if (!res.ok) return { ok: false, siteId: null, title: null }
-    const rows = (await res.json()) as Array<{ cf_pages_project_name?: string | null; title?: string | null }>
+    const rows = (await res.json()) as Array<{ hosting_site_name?: string | null; title?: string | null }>
     if (!Array.isArray(rows) || rows.length === 0) return { ok: false, siteId: null, title: null }
-    const siteId = rows[0]?.cf_pages_project_name
+    const siteId = rows[0]?.hosting_site_name
     const title = rows[0]?.title
     return {
       ok: true,
@@ -100,7 +105,7 @@ export async function getProjectForDeploy(
   }
 }
 
-/** Best-effort: persist the Netlify site id so future deploys reuse the site. */
+/** Best-effort: persist the hosting site id so future deploys reuse the site. */
 export async function persistProjectSiteId(
   authorization: string | undefined,
   projectId: string,
@@ -119,7 +124,7 @@ export async function persistProjectSiteId(
         'Content-Type': 'application/json',
         Prefer: 'return=minimal',
       },
-      body: JSON.stringify({ cf_pages_project_name: siteId }),
+      body: JSON.stringify({ hosting_site_name: siteId }),
     })
   } catch {
     /* non-fatal — the client also persists this after a successful deploy */
@@ -127,12 +132,12 @@ export async function persistProjectSiteId(
 }
 
 // ---------------------------------------------------------------------------
-// Rate limiting — shared (Upstash Redis) with in-memory fallback
+// Rate limiting — in-memory only (Redis/Upstash REMOVED)
 //
 // On Vercel, function instances are ephemeral and run concurrently, so an
-// in-memory counter cannot enforce a global limit. When UPSTASH_REDIS_REST_URL
-// and UPSTASH_REDIS_REST_TOKEN are configured we use a shared fixed-window
-// counter in Redis; otherwise we fall back to a best-effort per-instance limit.
+// in-memory counter cannot enforce a truly global limit. However, for most
+// use cases this is sufficient. If you need global rate limiting, consider
+// Supabase Edge Functions + pg tables or a free Dragonfly Cloud instance.
 // ---------------------------------------------------------------------------
 
 const buckets = new Map<string, number[]>()
@@ -149,46 +154,8 @@ function inMemoryRateLimit(key: string, max: number, windowMs: number): boolean 
   return true
 }
 
-function upstashEnv(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  return { url, token }
-}
-
-async function redisRateLimit(
-  env: { url: string; token: string },
-  key: string,
-  max: number,
-  windowMs: number,
-): Promise<boolean> {
-  // Fixed window: INCR the counter, and set its TTL only on the first hit (NX).
-  const res = await fetch(`${env.url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([
-      ['INCR', `rl:${key}`],
-      ['PEXPIRE', `rl:${key}`, String(windowMs), 'NX'],
-    ]),
-  })
-  if (!res.ok) throw new Error(`Upstash error ${res.status}`)
-  const data = (await res.json()) as Array<{ result?: number }>
-  const count = Number(data?.[0]?.result ?? 0)
-  if (!Number.isFinite(count) || count <= 0) throw new Error('Unexpected Upstash response')
-  return count <= max
-}
-
 /** Returns true if the action is allowed, false if the caller is over the limit. */
 export async function rateLimit(key: string, max: number, windowMs: number): Promise<boolean> {
-  const env = upstashEnv()
-  if (env) {
-    try {
-      return await redisRateLimit(env, key, max, windowMs)
-    } catch {
-      // Fail open to the per-instance limiter rather than blocking real users.
-      return inMemoryRateLimit(key, max, windowMs)
-    }
-  }
   return inMemoryRateLimit(key, max, windowMs)
 }
 
@@ -234,223 +201,51 @@ export function decryptForUser(stored: string, userId: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cloudflare Pages deploy (for user-generated sites)
+// Puter.js hosting — NOTE: Deploy is now fully CLIENT-SIDE via the Puter.js
+// browser SDK (<script src="https://js.puter.com/v2/"></script>).
+//
+// There is NO server-side deploy endpoint. The browser calls:
+//   puter.fs.write()       → write HTML to Puter filesystem
+//   puter.hosting.create() → publish as *.puter.site (first deploy)
+//   puter.hosting.update() → re-deploy to existing subdomain
+//
+// Auth happens automatically via popup when any puter.* API is called.
+// No PUTER_API_TOKEN needed on the server.
 // ---------------------------------------------------------------------------
 
-const CF_API = 'https://api.cloudflare.com/client/v4'
+// ---------------------------------------------------------------------------
+// E2B Sandbox integration — filesystem & runtime execution
+//
+// E2B provides cloud sandboxes for secure code execution. This integration
+// enables:
+// 1. Filesystem operations: read/write files in a remote sandbox
+// 2. Command execution: run arbitrary commands (npm, python, etc.) in the sandbox
+// 3. Background execution: sandboxes persist even if the user closes their browser
+//
+// The serverless hand-off architecture works like:
+//   [Browser] → POST /api/e2b-sandbox → [Vercel Function] → [E2B Cloud Sandbox]
+//   The function returns immediately (202), and the sandbox runs autonomously.
+//   Results are stored in Supabase, and push notifications alert the user.
+// ---------------------------------------------------------------------------
 
-interface CFResult<T> {
-  success: boolean
-  result: T
-  errors: Array<{ message: string }>
+export interface E2BSandboxConfig {
+  apiKey: string
+  template?: string // E2B sandbox template ID (default: 'base')
+  timeoutMs?: number // Max execution time (default: 300000 = 5 min)
 }
 
-function cfEnv(): { accountId: string; token: string } {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
-  const token = process.env.CLOUDFLARE_API_TOKEN
-  if (!accountId || !token) throw new Error('Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN')
-  return { accountId, token }
-}
-
-async function cfFetch<T>(token: string, path: string, options: RequestInit): Promise<T> {
-  const res = await fetch(`${CF_API}${path}`, {
-    ...options,
-    headers: { Authorization: `Bearer ${token}`, ...options.headers },
-  })
-  const text = await res.text()
-  let data: CFResult<T>
-  try { data = JSON.parse(text) as CFResult<T> } catch { throw new Error(`CF ${res.status} non-JSON: ${text.slice(0, 300)}`) }
-  if (!data.success) {
-    const msgs = Array.isArray(data.errors) ? data.errors.map((e) => e.message).join(', ') : text.slice(0, 300)
-    throw new Error(`Cloudflare API error ${res.status}: ${msgs}`)
+export function getE2BConfig(): E2BSandboxConfig | null {
+  const apiKey = process.env.E2B_API_KEY
+  if (!apiKey) return null
+  return {
+    apiKey,
+    template: process.env.E2B_TEMPLATE || 'base',
+    timeoutMs: Number(process.env.E2B_TIMEOUT_MS) || 300_000,
   }
-  return data.result
 }
 
-// Turn a project title into a Cloudflare Pages project name (== the pages.dev
-// subdomain). CF names are lowercase, [a-z0-9-], cannot start/end with a hyphen,
-// and max 58 chars. We cap the base well under that to leave room for a numeric
-// suffix or a uniqueness fallback. Diacritics are folded to ASCII (café → cafe).
-function slugifyTitle(title: string | null | undefined): string {
-  return (title ?? '')
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '')
-}
-
-// CF rejects a create when the chosen name (and therefore the pages.dev
-// subdomain, which is unique across ALL Cloudflare accounts) is already taken.
-function isNameTakenError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return (
-    msg.includes('already exists') ||
-    msg.includes('already in use') ||
-    msg.includes('not available') ||
-    msg.includes('is taken') ||
-    msg.includes('unique') ||
-    msg.includes('8000007')
-  )
-}
-
-// Create a CF Pages project named after the site's title. The pages.dev
-// subdomain equals the project name, so we try the clean slug first
-// (joes-bakery.pages.dev) and fall back to numbered variants (joes-bakery-2, …),
-// then a guaranteed-unique name, only when the nicer ones are already claimed.
-async function createCFPagesProject(
-  token: string,
-  accountId: string,
-  projectId: string,
-  title: string | null | undefined,
-): Promise<{ name: string; url: string }> {
-  const base = slugifyTitle(title) || `site-${projectId.slice(0, 8)}`
-
-  const candidates = [base]
-  for (let i = 2; i <= 6; i++) candidates.push(`${base}-${i}`)
-  // Last resort: append a short random token so a create always eventually succeeds.
-  const token36 = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  candidates.push(`${base.slice(0, 50)}-${token36}`)
-
-  let lastErr: unknown
-  for (const name of candidates) {
-    try {
-      const result = await cfFetch<{ name: string; subdomain?: string }>(
-        token,
-        `/accounts/${accountId}/pages/projects`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, production_branch: 'main' }),
-        },
-      )
-      const subdomain = result.subdomain || `${result.name}.pages.dev`
-      return { name: result.name, url: `https://${subdomain}` }
-    } catch (err) {
-      lastErr = err
-      if (isNameTakenError(err)) continue
-      throw err
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error('Could not create a Cloudflare Pages project')
-}
-
-// Cloudflare Pages identifies each asset by blake3(base64(content) + fileExtension)
-// truncated to the first 32 hex chars — NOT a plain sha256. If the manifest/upload
-// key doesn't match CF's own blake3 of the content, the upload is silently dropped,
-// upsert-hashes still reports success, and the deployment serves no assets (404 on /).
-async function cfPagesHash(content: string, path: string): Promise<string> {
-  const base64 = Buffer.from(content).toString('base64')
-  const ext = path.includes('.') ? path.split('.').pop()! : ''
-  return (await blake3(base64 + ext)).slice(0, 32)
-}
-
-const CF_UPLOAD_BASE = 'https://api.cloudflare.com/client/v4'
-
-async function deployToCFPages(
-  token: string,
-  accountId: string,
-  projectName: string,
-  html: string,
-): Promise<void> {
-  // Cloudflare Pages manifest keys MUST be absolute paths (leading slash), or
-  // nothing maps to the root URL and "/" returns 404 even though the deploy succeeds.
-  // _redirects gives SPA-style client routing a fallback to index.html.
-  const files: Array<{ path: string; content: string; contentType: string }> = [
-    { path: '/index.html', content: html, contentType: 'text/html; charset=utf-8' },
-    { path: '/_redirects', content: '/* /index.html 200\n', contentType: 'text/plain; charset=utf-8' },
-  ]
-
-  // 1. Compute manifest (path → blake3 hash)
-  const manifest: Record<string, string> = {}
-  for (const f of files) {
-    manifest[f.path] = await cfPagesHash(f.content, f.path)
-  }
-  const hashes = Object.values(manifest)
-
-  // 2. Get short-lived upload JWT
-  const { jwt } = await cfFetch<{ jwt: string }>(
-    token,
-    `/accounts/${accountId}/pages/projects/${projectName}/upload-token`,
-    { method: 'GET' },
-  )
-
-  // 3. Upload all files unconditionally (skip check-missing to avoid stale-cache issues)
-  const uploadRes = await fetch(`${CF_UPLOAD_BASE}/pages/assets/upload`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(
-      files.map((f) => ({
-        key: manifest[f.path],
-        value: Buffer.from(f.content).toString('base64'),
-        metadata: { contentType: f.contentType },
-        base64: true,
-      })),
-    ),
-  })
-  if (!uploadRes.ok) {
-    throw new Error(`File upload failed: ${uploadRes.status} ${await uploadRes.text().catch(() => '')}`)
-  }
-
-  // 4. Finalize — link these hashes to the project
-  const upsertRes = await fetch(`${CF_UPLOAD_BASE}/pages/assets/upsert-hashes`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hashes }),
-  })
-  if (!upsertRes.ok) {
-    throw new Error(`upsert-hashes failed: ${upsertRes.status} ${await upsertRes.text().catch(() => '')}`)
-  }
-
-  // 5. Create deployment with manifest. branch must match the project's
-  // production_branch so this becomes the production deployment served at
-  // <project>.pages.dev (otherwise it's a preview and the root URL 404s).
-  const form = new FormData()
-  form.append('manifest', JSON.stringify(manifest))
-  form.append('branch', 'main')
-
-  const deploy = await cfFetch<{ id: string }>(
-    token,
-    `/accounts/${accountId}/pages/projects/${projectName}/deployments`,
-    { method: 'POST', body: form },
-  )
-
-  // 7. Poll until ready
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 1000))
-    const status = await cfFetch<{ latest_stage: { name: string; status: string } }>(
-      token,
-      `/accounts/${accountId}/pages/projects/${projectName}/deployments/${deploy.id}`,
-      { method: 'GET' },
-    )
-    if (status.latest_stage.name === 'deploy' && status.latest_stage.status === 'success') return
-    if (status.latest_stage.status === 'failure') throw new Error('Cloudflare Pages deployment failed')
-  }
-  throw new Error('Cloudflare Pages deployment timed out after 60s')
-}
-
-export interface DeployInput {
-  projectId: string
-  html: string
-  existingSiteId?: string | null
-  /** Project title — used to pick a readable subdomain on the first deploy. */
-  title?: string | null
-}
-
-export async function runCloudflareDeploy(input: DeployInput): Promise<{ url: string; siteId: string }> {
-  const { accountId, token } = cfEnv()
-
-  // Reuse the project (and its existing subdomain) on subsequent deploys.
-  if (input.existingSiteId) {
-    await deployToCFPages(token, accountId, input.existingSiteId, input.html)
-    return { url: `https://${input.existingSiteId}.pages.dev`, siteId: input.existingSiteId }
-  }
-
-  const project = await createCFPagesProject(token, accountId, input.projectId, input.title)
-  await deployToCFPages(token, accountId, project.name, input.html)
-  return { url: project.url, siteId: project.name }
+export function hasE2BConfig(): boolean {
+  return Boolean(process.env.E2B_API_KEY)
 }
 
 // ---------------------------------------------------------------------------

@@ -4,9 +4,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   verifyUser,
   rateLimit,
-  runCloudflareDeploy,
-  getProjectForDeploy,
-  persistProjectSiteId,
   encryptForUser,
   decryptForUser,
   hasEncryptionSecret,
@@ -17,6 +14,8 @@ import {
   adminDeleteUser,
   adminCreateNotification,
   triggerDeploy,
+  hasE2BConfig,
+  getE2BConfig,
 } from './api/_shared'
 import {
   hasOAuthClient,
@@ -61,12 +60,12 @@ export default defineConfig(({ mode, isSsrBuild }) => {
   const env = loadEnv(mode, process.cwd(), '')
   process.env.SUPABASE_URL ||= env.SUPABASE_URL || env.VITE_SUPABASE_URL
   process.env.SUPABASE_ANON_KEY ||= env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY
-  if (env.CLOUDFLARE_ACCOUNT_ID) process.env.CLOUDFLARE_ACCOUNT_ID ||= env.CLOUDFLARE_ACCOUNT_ID
-  if (env.CLOUDFLARE_API_TOKEN) process.env.CLOUDFLARE_API_TOKEN ||= env.CLOUDFLARE_API_TOKEN
   if (env.KEY_ENCRYPTION_SECRET) process.env.KEY_ENCRYPTION_SECRET ||= env.KEY_ENCRYPTION_SECRET
   if (env.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY ||= env.SUPABASE_SERVICE_ROLE_KEY
   if (env.SUPABASE_OAUTH_CLIENT_ID) process.env.SUPABASE_OAUTH_CLIENT_ID ||= env.SUPABASE_OAUTH_CLIENT_ID
   if (env.SUPABASE_OAUTH_CLIENT_SECRET) process.env.SUPABASE_OAUTH_CLIENT_SECRET ||= env.SUPABASE_OAUTH_CLIENT_SECRET
+  if (env.E2B_API_KEY) process.env.E2B_API_KEY ||= env.E2B_API_KEY
+  if (env.E2B_TEMPLATE) process.env.E2B_TEMPLATE ||= env.E2B_TEMPLATE
 
   return {
     plugins: [
@@ -74,25 +73,88 @@ export default defineConfig(({ mode, isSsrBuild }) => {
       {
         name: 'bloom-api-dev-endpoints',
         configureServer(server) {
-          server.middlewares.use('/api/deploy', async (req, res) => {
+          // Deploy is handled client-side via Puter.js browser SDK
+          // No server endpoint needed — puter.fs.write + puter.hosting.create/update
+          server.middlewares.use('/api/deploy', async (_req, res) => {
+            sendJson(res, 410, { error: 'Server-side deploy deprecated. Use Puter.js browser SDK.' })
+          })
+
+          server.middlewares.use('/api/e2b-sandbox', async (req, res) => {
             if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' })
+            if (!hasE2BConfig()) return sendJson(res, 503, { error: 'E2B sandbox not configured. Set E2B_API_KEY.' })
             try {
               const user = await verifyUser(req.headers.authorization)
               if (!user) return sendJson(res, 401, { error: 'Unauthorized' })
-              if (!(await rateLimit(`deploy:${user.id}`, 10, 60_000))) {
-                return sendJson(res, 429, { error: 'Too many deploys. Please wait a minute and try again.' })
+              if (!(await rateLimit(`e2b:${user.id}`, 30, 60_000))) return sendJson(res, 429, { error: 'Too many requests' })
+              const body = await readJsonBody<Record<string, unknown>>(req)
+              const action = body.action as string
+
+              if (action === 'create') {
+                const config = getE2BConfig()!
+                const { Sandbox } = await import('@e2b/code-interpreter')
+                const sb = await Sandbox.create({ apiKey: config.apiKey, template: config.template })
+                return sendJson(res, 200, { sandboxId: sb.sandboxId })
               }
-              const body = await readJsonBody<{ projectId?: string; html?: string }>(req)
-              if (!body.projectId || !body.html) return sendJson(res, 400, { error: 'Missing projectId or html' })
-              const access = await getProjectForDeploy(req.headers.authorization, body.projectId)
-              if (!access.ok) return sendJson(res, 403, { error: 'You do not have access to this project.' })
-              const result = await runCloudflareDeploy({ projectId: body.projectId, html: body.html, existingSiteId: access.siteId, title: access.title })
-              if (result.siteId !== access.siteId) {
-                await persistProjectSiteId(req.headers.authorization, body.projectId, result.siteId)
+
+              if (action === 'close') {
+                const { Sandbox } = await import('@e2b/code-interpreter')
+                const sb = await Sandbox.connect(body.sandboxId as string)
+                await sb.close()
+                return sendJson(res, 200, { ok: true })
               }
-              sendJson(res, 200, result)
+
+              if (action === 'execute') {
+                const config = getE2BConfig()!
+                const { Sandbox } = await import('@e2b/code-interpreter')
+                const sandboxId = body.sandboxId as string | undefined
+                const command = body.command as string
+                if (!command) return sendJson(res, 400, { error: 'Missing command' })
+
+                if (body.background) {
+                  // For dev, just run synchronously (no process.nextTick needed in dev)
+                  const sb = sandboxId
+                    ? await Sandbox.connect(sandboxId)
+                    : await Sandbox.create({ apiKey: config.apiKey, template: config.template })
+                  const execution = await sb.commands.run(command, { timeoutMs: config.timeoutMs })
+                  return sendJson(res, 200, {
+                    stdout: execution.stdout,
+                    stderr: execution.stderr,
+                    exitCode: execution.exitCode,
+                    sandboxId: sb.sandboxId,
+                  })
+                }
+
+                const sb = sandboxId
+                  ? await Sandbox.connect(sandboxId)
+                  : await Sandbox.create({ apiKey: config.apiKey, template: config.template })
+                const execution = await sb.commands.run(command, { timeoutMs: config.timeoutMs })
+                return sendJson(res, 200, {
+                  stdout: execution.stdout,
+                  stderr: execution.stderr,
+                  exitCode: execution.exitCode,
+                  sandboxId: sb.sandboxId,
+                })
+              }
+
+              if (action === 'filesystem') {
+                const { Sandbox } = await import('@e2b/code-interpreter')
+                const sandboxId = body.sandboxId as string
+                const fsAction = body.fsAction as string
+                const filePath = body.path as string
+                if (!sandboxId || !fsAction || !filePath) return sendJson(res, 400, { error: 'Missing sandboxId, fsAction, or path' })
+
+                const sb = await Sandbox.connect(sandboxId)
+                if (fsAction === 'write') return sendJson(res, 200, { ok: true }) && void await sb.filesystem.write(filePath, body.content as string)
+                if (fsAction === 'read') return sendJson(res, 200, { content: await sb.filesystem.read(filePath) })
+                if (fsAction === 'list') return sendJson(res, 200, { entries: await sb.filesystem.list(filePath) })
+                if (fsAction === 'remove') return sendJson(res, 200, { ok: true }) && void await sb.filesystem.remove(filePath)
+                if (fsAction === 'mkdir') return sendJson(res, 200, { ok: true }) && void await sb.filesystem.makeDir(filePath)
+                return sendJson(res, 400, { error: `Unknown fsAction: ${fsAction}` })
+              }
+
+              return sendJson(res, 400, { error: 'Unknown action' })
             } catch (err) {
-              sendJson(res, 500, { error: err instanceof Error ? err.message : 'Deploy failed' })
+              sendJson(res, 500, { error: err instanceof Error ? err.message : 'Sandbox operation failed' })
             }
           })
 
