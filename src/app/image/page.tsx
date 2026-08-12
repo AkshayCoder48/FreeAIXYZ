@@ -12,17 +12,12 @@ import {
   Download,
   Copy,
   Check,
-  Lock,
-  Unlock,
   Terminal,
   ExternalLink,
   Sparkles,
   Square,
   Palette,
   Maximize2,
-  Key,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,7 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Nav } from "@/components/nav";
@@ -52,9 +46,6 @@ import {
 const CATEGORY_LABELS: Record<ImageCategory, string> = {
   anime: "Anime",
   realism: "Realism",
-  "unrestricted-anime": "Unrestricted Anime",
-  "unrestricted-realism": "Unrestricted Realism",
-  "unrestricted-mixed": "Unrestricted Mixed",
   mixed: "Mixed / Artistic",
   general: "General",
 };
@@ -64,17 +55,11 @@ const CATEGORY_ORDER: ImageCategory[] = [
   "realism",
   "mixed",
   "general",
-  "unrestricted-anime",
-  "unrestricted-realism",
-  "unrestricted-mixed",
 ];
 
 const CATEGORY_COLORS: Record<ImageCategory, string> = {
   anime: "text-pink-500 border-pink-500/30 bg-pink-500/5",
   realism: "text-sky-500 border-sky-500/30 bg-sky-500/5",
-  "unrestricted-anime": "text-rose-500 border-rose-500/30 bg-rose-500/5",
-  "unrestricted-realism": "text-red-500 border-red-500/30 bg-red-500/5",
-  "unrestricted-mixed": "text-fuchsia-500 border-fuchsia-500/30 bg-fuchsia-500/5",
   mixed: "text-purple-500 border-purple-500/30 bg-purple-500/5",
   general: "text-primary border-primary/30 bg-primary/5",
 };
@@ -98,48 +83,16 @@ export default function ImageStudioPage() {
   const [selectedModel, setSelectedModel] = useState<string>("poll-flux");
   const [width, setWidth] = useState(768);
   const [height, setHeight] = useState(768);
-  const [matureUnlocked, setMatureUnlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<GeneratedImage[]>([]);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // BYOK state for NSFW Gateway
-  const [byokToken, setByokToken] = useState("");
-  const [byokDeviceId, setByokDeviceId] = useState("");
-  const [showToken, setShowToken] = useState(false);
-
-  // Load BYOK from sessionStorage on mount
-  useEffect(() => {
-    const savedToken = sessionStorage.getItem("nsgw_token");
-    const savedDeviceId = sessionStorage.getItem("nsgw_device_id");
-    if (savedToken) setByokToken(savedToken);
-    if (savedDeviceId) setByokDeviceId(savedDeviceId);
-  }, []);
-
-  // Save BYOK to sessionStorage when changed
-  useEffect(() => {
-    if (byokToken) sessionStorage.setItem("nsgw_token", byokToken);
-    else sessionStorage.removeItem("nsgw_token");
-  }, [byokToken]);
-  useEffect(() => {
-    if (byokDeviceId) sessionStorage.setItem("nsgw_device_id", byokDeviceId);
-    else sessionStorage.removeItem("nsgw_device_id");
-  }, [byokDeviceId]);
-
-  const hasByokCredentials = byokToken.trim() && byokDeviceId.trim();
-
   const counts = useMemo(() => imageModelCounts(), []);
 
   const visibleModels = useMemo(() => {
-    if (matureUnlocked) return IMAGE_MODELS;
-    return IMAGE_MODELS.filter(
-      (m) =>
-        m.category !== "unrestricted-anime" &&
-        m.category !== "unrestricted-realism" &&
-        m.category !== "unrestricted-mixed",
-    );
-  }, [matureUnlocked]);
+    return IMAGE_MODELS;
+  }, []);
 
   const groupedModels = useMemo(() => {
     const groups: Partial<Record<ImageCategory, typeof IMAGE_MODELS[number][]>> = {};
@@ -154,7 +107,6 @@ export default function ImageStudioPage() {
     () => IMAGE_MODELS.find((m) => m.id === selectedModel),
     [selectedModel],
   );
-  const isByokModel = selectedModelObj?.provider === "nsfw-gateway";
 
   const onModelChange = useCallback((modelId: string) => {
     setSelectedModel(modelId);
@@ -175,24 +127,12 @@ export default function ImageStudioPage() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
-    const isMature =
-      selectedModelObj.category === "unrestricted-anime" ||
-      selectedModelObj.category === "unrestricted-realism" ||
-      selectedModelObj.category === "unrestricted-mixed";
-
     const body: Record<string, unknown> = {
       prompt: prompt.trim(),
       model: selectedModel,
       width,
       height,
-      nsfw: isMature ? true : undefined,
     };
-
-    // Add BYOK credentials for nsfw-gateway
-    if (isByokModel) {
-      body.byok_token = byokToken.trim();
-      body.byok_device_id = byokDeviceId.trim();
-    }
 
     const startedAt = Date.now();
     try {
@@ -365,85 +305,6 @@ export default function ImageStudioPage() {
                 </div>
               </div>
             </div>
-
-            {/* Mature models unlock */}
-            <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-5 shadow-clay-card space-y-3 border border-primary/5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {matureUnlocked ? (
-                    <Unlock className="h-4 w-4 text-rose-500" />
-                  ) : (
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Label className="text-sm font-bold" style={{ fontFamily: "var(--font-brand), sans-serif" }}>Mature models</Label>
-                </div>
-                <Switch
-                  checked={matureUnlocked}
-                  onCheckedChange={setMatureUnlocked}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {matureUnlocked
-                  ? "Unlocked — mature models are visible. You confirm you are 18+ and consent to adult content."
-                  : `Locked — ${counts["unrestricted-anime"] + counts["unrestricted-realism"] + counts["unrestricted-mixed"]} mature models hidden. Toggle to reveal (18+).`}
-              </p>
-            </div>
-
-            {/* BYOK Credentials — NSFW Gateway */}
-            {(isByokModel || (matureUnlocked && IMAGE_MODELS.some(m => m.provider === "nsfw-gateway"))) && (
-              <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-5 shadow-clay-card space-y-3 border border-amber-500/20">
-                <div className="flex items-center gap-2">
-                  <Key className="h-4 w-4 text-amber-500" />
-                  <Label className="text-sm font-bold" style={{ fontFamily: "var(--font-brand), sans-serif" }}>NSFW Gateway — BYOK</Label>
-                  {hasByokCredentials && (
-                    <Badge variant="outline" className="text-[9px] text-emerald-500 border-emerald-500/30 bg-emerald-500/5 rounded-[16px]">connected</Badge>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Bring Your Own Key from nsfwimg2video.com. Token stays in sessionStorage (dies on tab close).
-                </p>
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">JWT Token</Label>
-                    <div className="relative">
-                      <Input
-                        type={showToken ? "text" : "password"}
-                        value={byokToken}
-                        onChange={(e) => setByokToken(e.target.value)}
-                        placeholder="Paste your access_token JWT here…"
-                        className="h-10 pr-10 rounded-[20px] bg-[#EFEBF5] dark:bg-[#2D2440] shadow-clay-pressed border-0 text-xs font-mono focus:bg-white dark:focus:bg-[#332B45] focus:ring-4 focus:ring-amber-500/20 transition-all duration-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowToken(!showToken)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Device ID</Label>
-                    <Input
-                      type="text"
-                      value={byokDeviceId}
-                      onChange={(e) => setByokDeviceId(e.target.value)}
-                      placeholder="Your user/device ID from nsfwimg2video.com"
-                      className="h-10 rounded-[20px] bg-[#EFEBF5] dark:bg-[#2D2440] shadow-clay-pressed border-0 text-xs font-mono focus:bg-white dark:focus:bg-[#332B45] focus:ring-4 focus:ring-amber-500/20 transition-all duration-200"
-                    />
-                  </div>
-                  <details className="text-[10px] text-muted-foreground">
-                    <summary className="cursor-pointer hover:text-foreground transition-colors">How to get your token</summary>
-                    <ol className="mt-1.5 ml-3 list-decimal space-y-0.5 leading-relaxed">
-                      <li>Open <a href="https://www.nsfwimg2video.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">nsfwimg2video.com</a> and sign in</li>
-                      <li>Open DevTools Console (F12)</li>
-                      <li>Run: <code className="bg-muted px-1 rounded text-[9px]">copy(document.cookie.match(/access_token=([^;]+)/)?.[1])</code></li>
-                      <li>Paste the token above. Your Device ID is your username from the JWT.</li>
-                    </ol>
-                  </details>
-                </div>
-              </div>
-            )}
 
             {/* Generate button */}
             <div className="flex gap-2">

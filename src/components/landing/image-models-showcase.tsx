@@ -48,7 +48,6 @@ const PROVIDER_COLORS: Partial<Record<ImageProviderId, string>> = {
   "pollinations-gen": "text-orange-500",
   freegpt: "text-purple-500",
   freegen: "text-cyan-500",
-  "nsfw-gateway": "text-amber-500",
   freepikai: "text-emerald-500",
   aianime: "text-pink-500",
 };

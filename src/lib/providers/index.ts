@@ -48,8 +48,6 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   swarm: swarmProvider,
   freeaixyz: freeaixyzProvider,
   // freegpt is handled via Node.js proxy route, not here
-  // dreemy is handled via dedicated image/video generation endpoints, not here
-  dreemy: stubProvider,
   search: stubProvider,
   music: stubProvider,
 };

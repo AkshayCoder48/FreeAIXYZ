@@ -31,7 +31,6 @@ export type ProviderId =
   | "miklium"
   | "swarm"
   | "freeaixyz"
-  | "dreemy"
   | "search"
   | "music";
 
@@ -700,10 +699,6 @@ export const PROVIDER_INFO: Record<
   "freeaixyz": {
     name: "FreeAIXYZ Text API",
     description: "8+ free models (GPT, Gemini, DeepSeek, Claude, Grok, Perplexity, Meta, Qwen) — streaming, web search, vision, context retention, self-healing nonces",
-  },
-  "dreemy": {
-    name: "Dreemy.ai",
-    description: "AI Image & Video generation via dreemy.ai. 2 image models + 2 video models. BYOK (dreemy_token) or auto-mint guest token (100 credits). Async job polling.",
   },
   "jollygen": {
     name: "JollyGen",
