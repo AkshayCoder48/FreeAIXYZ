@@ -10,9 +10,10 @@
  *   - freegpt          — FreeGPT.tech image models (4 real AI models)
  *   - freepikai        — FreepikAI.net 4MP image gen (6 style models, Turnstile-verified)
  *   - freegen          — FreeGen WebSocket task queue (1 model)
+ *   - dreemy           — Dreemy.ai image gen (2 models, BYOK or auto guest mint)
  *   - nsfw-gateway     — NSFW Gateway BYOK (1 text-to-image model: wf)
  *
- * Total: 17 base models.
+ * Total: 19 base models.
  */
 
 export type ImageProviderId =
@@ -21,6 +22,7 @@ export type ImageProviderId =
   | "freepikai"
   | "freegen"
   | "aianime"
+  | "dreemy"
   | "nsfw-gateway";
 
 export type ImageCategory =
@@ -30,7 +32,8 @@ export type ImageCategory =
   | "general"
   | "unrestricted-anime"
   | "unrestricted-realism"
-  | "unrestricted-mixed";
+  | "unrestricted-mixed"
+  | "unrestricted-anime-byok";
 
 export interface ImageModel {
   id: string;
@@ -88,6 +91,17 @@ const AIANIME_MODELS: ImageModel[] = [
   { id: "aianime-text2image", name: "AIAnime Text2Image", provider: "aianime", category: "anime", upstreamModel: "text2image", width: 1024, height: 1024, nsfw: false, description: "AIAnime Text-to-Image via api.aianime.io — anime/illustration focused, IP rotation for rate limit bypass" },
 ];
 
+// ─── Dreemy models (dreemy.ai, BYOK or auto guest mint) ────────────────────────
+// Dreemy.ai — AI image & video generation platform.
+// Auth: Auto-mint guest token (createGuest → loginByGuest → x-auth-token) or
+// BYOK (user provides their own dreemy_token).
+// Guest gets 100 integral = ~5 images at 2K. modelId=1 (Dreemy AI, 40 credits) or
+// modelId=2 (Dreemy Spicy, 20 credits). Async job with polling.
+const DREEMY_MODELS: ImageModel[] = [
+  { id: "dreemy-ai", name: "Dreemy AI", provider: "dreemy", category: "mixed", upstreamModel: "1", width: 2048, height: 2048, nsfw: false, description: "Dreemy AI image generation (modelId=1) — safe/default, 40 credits per 2K image. BYOK or auto guest token (100 credits = ~2 images)." },
+  { id: "dreemy-spicy", name: "Dreemy Spicy", provider: "dreemy", category: "unrestricted-anime-byok", upstreamModel: "2", width: 2048, height: 2048, nsfw: true, description: "Dreemy Spicy image generation (modelId=2) — unrestricted, 20 credits per 2K image. BYOK or auto guest token (100 credits = ~5 images)." },
+];
+
 // ─── NSFW Gateway models (gateway.nsfwimg2video.com, BYOK) ────────────────────
 // BYOK = Bring Your Own Key. User provides their JWT token from nsfwimg2video.com.
 // The gateway has CORS: * so browser can call directly. Token stays in sessionStorage.
@@ -101,6 +115,7 @@ export const IMAGE_MODELS: readonly ImageModel[] = [
   ...FREEPIKAI_MODELS,
   ...FREEGEN_MODELS,
   ...AIANIME_MODELS,
+  ...DREEMY_MODELS,
   ...NSFW_GATEWAY_MODELS,
 ];
 
@@ -114,6 +129,7 @@ export function imageModelCounts(): Record<ImageCategory, number> {
   const counts: Record<ImageCategory, number> = {
     anime: 0, realism: 0, mixed: 0, general: 0,
     "unrestricted-anime": 0, "unrestricted-realism": 0, "unrestricted-mixed": 0,
+    "unrestricted-anime-byok": 0,
   };
   for (const m of IMAGE_MODELS) counts[m.category]++;
   return counts;
@@ -142,6 +158,10 @@ export const IMAGE_PROVIDER_INFO: Record<
   aianime: {
     name: "AIAnime",
     description: "Text-to-Image generation via api.aianime.io. Anime/illustration focused with automatic IP rotation for rate limit bypass. Returns job_id for async polling.",
+  },
+  dreemy: {
+    name: "Dreemy.ai",
+    description: "AI Image & Video generation via dreemy.ai. 2 image models (Dreemy AI safe, Dreemy Spicy unrestricted). BYOK (pass dreemy_token) or auto-mint guest token (100 credits). Async job polling. 2K resolution.",
   },
   "nsfw-gateway": {
     name: "NSFW Gateway",

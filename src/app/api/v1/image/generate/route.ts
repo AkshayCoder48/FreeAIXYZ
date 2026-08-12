@@ -7,6 +7,7 @@
  *   - freegpt          — FreeGPT.tech image models (4 models)
  *   - freepikai        — FreepikAI.net 4MP image gen (6 style models, Turnstile-verified)
  *   - freegen          — FreeGen WebSocket task queue (1 model, 7 aspect ratios)
+ *   - dreemy           — Dreemy.ai image gen (2 models, BYOK or auto guest mint)
  *
  * Endpoint: POST /api/v1/image/generate
  * Body: { prompt, model?, width?, height?, seed?, nologo?, nsfw?, size? }
@@ -40,6 +41,10 @@ interface ImageRequest {
   // NSFW Gateway BYOK
   byok_token?: string; // JWT token for nsfw-gateway
   byok_device_id?: string; // device-id for nsfw-gateway
+  // Dreemy BYOK
+  dreemy_token?: string; // x-auth-token for dreemy.ai (optional — auto-mint if omitted)
+  dreemy_model_id?: number; // Override modelId (1 or 2)
+  dreemy_template_id?: number; // resourceId/template id (default 44 = text_to_image_22)
   resourceId?: string; // source image ID for image2video etc
   duration?: number; // video duration in seconds
 }
@@ -656,6 +661,333 @@ async function handleAIAnime(model: ImageModel, req: ImageRequest, signal?: Abor
   );
 }
 
+// ─── Dreemy handler (dreemy.ai, BYOK or auto guest mint) ──────────────────────
+// Dreemy.ai — AI image & video generation platform.
+// Auth flow: createGuest → loginByGuest → x-auth-token (HS384 JWT, ~30 day expiry).
+// Guest gets 100 integral. modelId=1 costs 40, modelId=2 costs 20 per 2K image.
+// If dreemy_token is provided, use it directly. Otherwise, auto-mint a guest token.
+// Async job pattern: POST /api/aiImage/create/v2 → poll GET /api/aiImage/{id}
+
+const DREEMY_BASE = "https://www.dreemy.ai";
+const DREEMY_POLL_INTERVAL_MS = 3000;
+const DREEMY_POLL_MAX_MS = 180000; // 3 min max poll time
+
+/** Generate a random 32-hex string for x-finger header. */
+function randomFinger(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Mint a Dreemy guest token: createGuest → loginByGuest → idToken. */
+async function mintDreemyGuestToken(signal?: AbortSignal): Promise<{
+  token: string;
+  guestUid: string;
+  finger: string;
+  integral: number;
+}> {
+  const finger = randomFinger();
+  const commonHeaders = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-platform": "web",
+    "x-version": "999.0.0",
+    "x-language": "en",
+    "x-finger": finger,
+  };
+
+  // Step 1: Create guest
+  const createRes = await fetch(`${DREEMY_BASE}/api/auth/createGuest`, {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({}),
+    signal: signal ?? AbortSignal.timeout(15000),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text().catch(() => "");
+    throw new Error(`Dreemy createGuest failed (HTTP ${createRes.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const createData = await createRes.json() as {
+    code?: string;
+    data?: { guestUid?: string; guestKey?: string };
+    msg?: string;
+  };
+
+  if (createData.code !== "200" || !createData.data?.guestUid || !createData.data?.guestKey) {
+    throw new Error(`Dreemy createGuest returned error: ${createData.msg || JSON.stringify(createData).slice(0, 200)}`);
+  }
+
+  const { guestUid, guestKey } = createData.data;
+
+  // Step 2: Login by guest → get idToken
+  const loginRes = await fetch(`${DREEMY_BASE}/api/auth/loginByGuest`, {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({ guestUid, guestKey }),
+    signal: signal ?? AbortSignal.timeout(15000),
+  });
+
+  if (!loginRes.ok) {
+    const errText = await loginRes.text().catch(() => "");
+    throw new Error(`Dreemy loginByGuest failed (HTTP ${loginRes.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const loginData = await loginRes.json() as {
+    code?: string;
+    data?: { idToken?: string };
+    msg?: string;
+  };
+
+  if (loginData.code !== "200" || !loginData.data?.idToken) {
+    throw new Error(`Dreemy loginByGuest returned error: ${loginData.msg || JSON.stringify(loginData).slice(0, 200)}`);
+  }
+
+  // Step 3: Get account integral
+  let integral = 100; // default guest integral
+  try {
+    const accountRes = await fetch(`${DREEMY_BASE}/api/auth/getAccount`, {
+      method: "GET",
+      headers: { ...commonHeaders, "x-auth-token": loginData.data.idToken },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (accountRes.ok) {
+      const accountData = await accountRes.json() as {
+        code?: string;
+        data?: { integral?: number };
+      };
+      if (accountData.data?.integral !== undefined) {
+        integral = accountData.data.integral;
+      }
+    }
+  } catch {}
+
+  return { token: loginData.data.idToken, guestUid, finger, integral };
+}
+
+async function handleDreemy(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
+  const prompt = req.prompt || "";
+  const modelId = req.dreemy_model_id || Number(model.upstreamModel) || 2;
+
+  // Get auth token: either user-provided (BYOK) or auto-minted guest
+  let authToken: string;
+  let finger: string;
+  let guestUid: string | undefined;
+  let integral: number | undefined;
+  let autoMinted = false;
+
+  if (req.dreemy_token) {
+    authToken = req.dreemy_token;
+    finger = randomFinger();
+  } else {
+    try {
+      const minted = await mintDreemyGuestToken(signal);
+      authToken = minted.token;
+      finger = minted.finger;
+      guestUid = minted.guestUid;
+      integral = minted.integral;
+      autoMinted = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return NextResponse.json(
+        {
+          error: `Dreemy auto-mint failed: ${msg}`,
+          hint: "Pass your own dreemy_token in the request body. Get it from dreemy.ai: create guest via POST /api/auth/createGuest, then login via POST /api/auth/loginByGuest.",
+          docs: "https://www.dreemy.ai",
+        },
+        { status: 401 },
+      );
+    }
+  }
+
+  const dreemyHeaders = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-auth-token": authToken,
+    "x-platform": "web",
+    "x-version": "999.0.0",
+    "x-language": "en",
+    "x-finger": finger,
+  };
+
+  // Build create body
+  const templateId = req.dreemy_template_id ?? 44; // default template: text_to_image_22
+  const createBody = {
+    prompt,
+    resolution: "2K",
+    number: 1,
+    aspectRatio: "1:1",
+    modelId,
+    imageUrls: [] as string[],
+    resourceId: templateId,
+    resourceType: "3", // template
+    permission: "1", // public
+  };
+
+  // Step 1: Create image job
+  try {
+    const createRes = await fetch(`${DREEMY_BASE}/api/aiImage/create/v2`, {
+      method: "POST",
+      headers: dreemyHeaders,
+      body: JSON.stringify(createBody),
+      signal: signal ?? AbortSignal.timeout(30000),
+    });
+
+    if (createRes.status === 401) {
+      return NextResponse.json(
+        { error: "Dreemy: Invalid or expired dreemy_token. Re-login to dreemy.ai or omit dreemy_token for auto-mint.", hint: "Get a fresh token from dreemy.ai or let the gateway auto-mint a guest token." },
+        { status: 401 },
+      );
+    }
+
+    if (!createRes.ok) {
+      const errText = await createRes.text().catch(() => "");
+      return NextResponse.json(
+        { error: `Dreemy: Image creation failed (HTTP ${createRes.status}): ${errText.slice(0, 300)}` },
+        { status: 502 },
+      );
+    }
+
+    const createData = await createRes.json() as {
+      code?: number;
+      data?: { code?: number; result?: { id?: number; status?: number }; msg?: string };
+      msg?: string;
+    };
+
+    // Dreemy returns HTTP 200 even on errors. Check data.code.
+    // data.code=1 means accepted, data.code=-1 or -5 means rejected (quota/rate)
+    const innerCode = createData.data?.code;
+    if (innerCode === -1 || innerCode === -5) {
+      const errMsg = createData.data?.msg || createData.msg || "Quota exceeded or rate limited";
+      return NextResponse.json(
+        {
+          error: `Dreemy: ${errMsg}`,
+          hint: autoMinted
+            ? `Guest token has ${integral ?? 100} integral. modelId=${modelId} costs ${modelId === 1 ? 40 : 20} per 2K image. Use a registered account token (dreemy_token) for more credits.`
+            : "Your dreemy_token may have insufficient credits. Try a fresh token or register at dreemy.ai.",
+          integral,
+          auto_minted: autoMinted,
+        },
+        { status: 429 },
+      );
+    }
+
+    const jobId = createData.data?.result?.id;
+    if (!jobId) {
+      return NextResponse.json(
+        { error: `Dreemy: No job ID in response`, raw: createData },
+        { status: 502 },
+      );
+    }
+
+    // Step 2: Poll until complete (status=2) or timeout
+    const pollStart = Date.now();
+
+    while (Date.now() - pollStart < DREEMY_POLL_MAX_MS) {
+      if (signal?.aborted) break;
+
+      await new Promise((r) => setTimeout(r, DREEMY_POLL_INTERVAL_MS));
+
+      try {
+        const pollRes = await fetch(`${DREEMY_BASE}/api/aiImage/${jobId}`, {
+          method: "GET",
+          headers: dreemyHeaders,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!pollRes.ok) continue;
+
+        const pollData = await pollRes.json() as {
+          code?: string;
+          data?: {
+            code?: number;
+            result?: {
+              id?: number;
+              status?: number; // 1=pending, 2=success, 3=failed
+              resultImages?: { url?: string; imageUrl?: string }[];
+            };
+          };
+        };
+
+        const status = pollData.data?.result?.status;
+
+        if (status === 2) {
+          // Success! Extract image URLs
+          const images = pollData.data?.result?.resultImages || [];
+          const imageUrls = images
+            .map((img) => img.url || img.imageUrl)
+            .filter(Boolean) as string[];
+
+          if (imageUrls.length > 0) {
+            return NextResponse.json({
+              success: true,
+              images: imageUrls.map((url) => ({ url, format: "jpg" })),
+              model: model.id,
+              model_name: model.name,
+              category: model.category,
+              provider: "dreemy",
+              prompt,
+              job_id: jobId,
+              model_id: modelId,
+              resolution: "2K",
+              status: "completed",
+              auto_minted: autoMinted,
+              integral_remaining: integral !== undefined ? integral - (modelId === 1 ? 40 : 20) : undefined,
+            });
+          }
+
+          // No images despite status=2 — treat as failure
+          return NextResponse.json(
+            { error: "Dreemy: Job completed but no images returned", raw: pollData },
+            { status: 502 },
+          );
+        }
+
+        if (status === 3) {
+          // Failed
+          return NextResponse.json(
+            { error: "Dreemy: Image generation failed (status=3)", job_id: jobId },
+            { status: 502 },
+          );
+        }
+
+        // Still pending (status=1) — continue polling
+        continue;
+      } catch {
+        continue;
+      }
+    }
+
+    // Timeout — return job_id with polling info
+    return NextResponse.json({
+      success: true,
+      images: [{ url: `dreemy://job/${jobId}`, format: "pending" }],
+      model: model.id,
+      model_name: model.name,
+      category: model.category,
+      provider: "dreemy",
+      prompt,
+      job_id: jobId,
+      model_id: modelId,
+      resolution: "2K",
+      status: "processing",
+      auto_minted: autoMinted,
+      poll: {
+        url: `${DREEMY_BASE}/api/aiImage/${jobId}`,
+        headers: { "x-auth-token": "<your-token>", "x-finger": finger, "x-platform": "web", "x-version": "999.0.0", "x-language": "en" },
+        interval_ms: DREEMY_POLL_INTERVAL_MS,
+        note: "Image is still generating. Poll the URL with the same auth headers until result.status=2 and resultImages is populated.",
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json(
+      { error: `Dreemy image generation failed: ${msg}` },
+      { status: 500 },
+    );
+  }
+}
+
 // ─── NSFW Gateway handler (gateway.nsfwimg2video.com, BYOK JWT token) ──────────
 // User provides their own JWT token + device-id from nsfwimg2video.com.
 // Gateway has CORS: * — browser can call directly, but we also support server-side.
@@ -869,7 +1201,7 @@ export async function POST(request: Request) {
   }
 
   // Unrestricted consent gate
-  if ((model.category === "unrestricted-anime" || model.category === "unrestricted-realism" || model.category === "unrestricted-mixed") && body.nsfw !== true) {
+  if ((model.category === "unrestricted-anime" || model.category === "unrestricted-realism" || model.category === "unrestricted-mixed" || model.category === "unrestricted-anime-byok") && body.nsfw !== true) {
     return NextResponse.json({
       error: 'This model is unrestricted. Pass "nsfw": true in the request body to confirm you are 18+ and consent to adult content.',
       model: modelId, category: model.category,
@@ -884,6 +1216,7 @@ export async function POST(request: Request) {
       case "freepikai": return await handleFreepikAI(model, body, request.signal);
       case "freegen": return await handleFreeGen(model, body, request.signal);
       case "aianime": return await handleAIAnime(model, body, request.signal);
+      case "dreemy": return await handleDreemy(model, body, request.signal);
       case "nsfw-gateway": return await handleNsfwGateway(model, body, request.signal);
       default: return NextResponse.json({ error: `Provider ${model.provider} not implemented` }, { status: 400 });
     }
@@ -902,9 +1235,9 @@ export async function GET() {
   return NextResponse.json({
     service: "Image Generation", total_models: models.length,
     endpoint: "POST /api/v1/image/generate",
-    params: ["prompt (required)", "model", "width", "height", "seed", "nologo", "nsfw (true for unrestricted, 18+)"],
-    categories: ["anime", "realism", "mixed", "general", "unrestricted-anime", "unrestricted-realism", "unrestricted-mixed"],
-    providers: "All providers are 100% free, no signup, no API key, instant (no queues). REAL AI generators only.",
+    params: ["prompt (required)", "model", "width", "height", "seed", "nologo", "nsfw (true for unrestricted, 18+)", "dreemy_token (BYOK for dreemy.ai)", "dreemy_model_id (1 or 2)", "dreemy_template_id (default 44)", "byok_token (BYOK for nsfw-gateway)", "byok_device_id"],
+    categories: ["anime", "realism", "mixed", "general", "unrestricted-anime", "unrestricted-realism", "unrestricted-mixed", "unrestricted-anime-byok"],
+    providers: "Most providers are 100% free, no signup, no API key. Dreemy.ai supports BYOK (dreemy_token) or auto guest mint. NSFW Gateway requires BYOK.",
     models,
   });
 }

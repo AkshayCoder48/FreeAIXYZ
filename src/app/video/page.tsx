@@ -49,15 +49,17 @@ const CATEGORY_LABELS: Record<VideoCategory, string> = {
   animation: "Animation",
   anime: "Anime",
   "face-swap": "Face Swap",
+  unrestricted: "Unrestricted",
 };
 
-const CATEGORY_ORDER: VideoCategory[] = ["general", "animation", "anime", "face-swap"];
+const CATEGORY_ORDER: VideoCategory[] = ["general", "animation", "anime", "face-swap", "unrestricted"];
 
 const CATEGORY_COLORS: Record<VideoCategory, string> = {
   general: "text-primary border-primary/30 bg-primary/5",
   animation: "text-sky-500 border-sky-500/30 bg-sky-500/5",
   anime: "text-pink-500 border-pink-500/30 bg-pink-500/5",
   "face-swap": "text-amber-500 border-amber-500/30 bg-amber-500/5",
+  unrestricted: "text-rose-500 border-rose-500/30 bg-rose-500/5",
 };
 
 interface GeneratedVideo {
@@ -82,16 +84,22 @@ export default function VideoStudioPage() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // BYOK state
+  // BYOK state — NSFW Gateway
   const [byokToken, setByokToken] = useState("");
   const [byokDeviceId, setByokDeviceId] = useState("");
   const [showToken, setShowToken] = useState(false);
+
+  // BYOK state — Dreemy
+  const [dreemyToken, setDreemyToken] = useState("");
+  const [showDreemyToken, setShowDreemyToken] = useState(false);
 
   useEffect(() => {
     const savedToken = sessionStorage.getItem("nsgw_token");
     const savedDeviceId = sessionStorage.getItem("nsgw_device_id");
     if (savedToken) setByokToken(savedToken);
     if (savedDeviceId) setByokDeviceId(savedDeviceId);
+    const savedDreemyToken = sessionStorage.getItem("dreemy_token");
+    if (savedDreemyToken) setDreemyToken(savedDreemyToken);
   }, []);
 
   useEffect(() => {
@@ -102,8 +110,13 @@ export default function VideoStudioPage() {
     if (byokDeviceId) sessionStorage.setItem("nsgw_device_id", byokDeviceId);
     else sessionStorage.removeItem("nsgw_device_id");
   }, [byokDeviceId]);
+  useEffect(() => {
+    if (dreemyToken) sessionStorage.setItem("dreemy_token", dreemyToken);
+    else sessionStorage.removeItem("dreemy_token");
+  }, [dreemyToken]);
 
   const hasByokCredentials = byokToken.trim() && byokDeviceId.trim();
+  const hasDreemyCredentials = dreemyToken.trim(); // dreemy_token is optional (auto-mint), but BYOK is supported
 
   const counts = useMemo(() => videoModelCounts(), []);
 
@@ -121,6 +134,9 @@ export default function VideoStudioPage() {
     [selectedModel],
   );
 
+  const isDreemyModel = selectedModelObj?.provider === "dreemy";
+  const hasRequiredCredentials = isDreemyModel || hasByokCredentials;
+
   const onModelChange = useCallback((modelId: string) => {
     setSelectedModel(modelId);
   }, []);
@@ -134,9 +150,16 @@ export default function VideoStudioPage() {
       toast.error("Please select a model");
       return;
     }
-    if (!hasByokCredentials) {
-      toast.error("NSFW Gateway requires your JWT token and Device ID. Enter them below.");
-      return;
+    if (!hasRequiredCredentials) {
+      toast.error(isDreemyModel
+        ? "Dreemy works without a token (auto-guest) but you can provide your own for more credits."
+        : "NSFW Gateway requires your JWT token and Device ID. Enter them below.");
+      // For Dreemy, allow proceeding without token (auto-mint)
+      if (isDreemyModel) {
+        // continue — auto-mint will be used
+      } else {
+        return;
+      }
     }
     if (selectedModelObj.needsImage && !resourceId.trim()) {
       toast.error("This model requires a source image resourceId.");
@@ -151,10 +174,15 @@ export default function VideoStudioPage() {
     const body: Record<string, unknown> = {
       prompt: prompt.trim(),
       model: selectedModel,
-      byok_token: byokToken.trim(),
-      byok_device_id: byokDeviceId.trim(),
       duration,
+      nsfw: true, // consent for unrestricted models
     };
+    if (isDreemyModel) {
+      if (dreemyToken.trim()) body.dreemy_token = dreemyToken.trim();
+    } else {
+      body.byok_token = byokToken.trim();
+      body.byok_device_id = byokDeviceId.trim();
+    }
     if (resourceId.trim()) body.resourceId = resourceId.trim();
 
     const startedAt = Date.now();
@@ -171,7 +199,7 @@ export default function VideoStudioPage() {
       }
       const videoUrl = data.videos?.[0]?.url;
       const coverUrl = data.videos?.[0]?.cover_url;
-      if (!videoUrl || videoUrl.startsWith("nsgw://")) {
+      if (!videoUrl || videoUrl.startsWith("nsgw://") || videoUrl.startsWith("dreemy://")) {
         // Still processing — show polling info
         toast.info(`Video is generating (task: ${data.task_id}). Poll for results.`, { duration: 8000 });
         return;
@@ -196,7 +224,7 @@ export default function VideoStudioPage() {
     } finally {
       setLoading(false);
     }
-  }, [prompt, selectedModel, selectedModelObj, duration, resourceId, byokToken, byokDeviceId, hasByokCredentials]);
+  }, [prompt, selectedModel, selectedModelObj, duration, resourceId, byokToken, byokDeviceId, dreemyToken, hasRequiredCredentials, isDreemyModel]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -229,7 +257,7 @@ export default function VideoStudioPage() {
         <div className="grid lg:grid-cols-[380px_1fr] gap-6">
           {/* Controls */}
           <div className="space-y-5">
-            {/* BYOK Credentials */}
+            {/* BYOK Credentials — NSFW Gateway */}
             <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-5 shadow-clay-card space-y-3 border border-amber-500/20">
               <div className="flex items-center gap-2">
                 <Key className="h-4 w-4 text-amber-500" />
@@ -278,6 +306,53 @@ export default function VideoStudioPage() {
                     <li>Open DevTools Console (F12)</li>
                     <li>Run: <code className="bg-muted px-1 rounded text-[9px]">copy(document.cookie.match(/access_token=([^;]+)/)?.[1])</code></li>
                     <li>Paste the token above. Your Device ID is your username from the JWT.</li>
+                  </ol>
+                </details>
+              </div>
+            </div>
+
+            {/* BYOK Credentials — Dreemy */}
+            <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-5 shadow-clay-card space-y-3 border border-rose-500/20">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-rose-500" />
+                <Label className="text-sm font-bold" style={{ fontFamily: "var(--font-brand), sans-serif" }}>Dreemy.ai — BYOK</Label>
+                {hasDreemyCredentials && (
+                  <Badge variant="outline" className="text-[9px] text-emerald-500 border-emerald-500/30 bg-emerald-500/5 rounded-[16px]">connected</Badge>
+                )}
+                {!hasDreemyCredentials && (
+                  <Badge variant="outline" className="text-[9px] text-sky-500 border-sky-500/30 bg-sky-500/5 rounded-[16px]">auto-mint</Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Optional. If no token is provided, a guest token is auto-minted (0 credits). For more credits, provide your own x-auth-token from dreemy.ai.
+              </p>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">x-auth-token</Label>
+                  <div className="relative">
+                    <Input
+                      type={showDreemyToken ? "text" : "password"}
+                      value={dreemyToken}
+                      onChange={(e) => setDreemyToken(e.target.value)}
+                      placeholder="Paste your dreemy.ai x-auth-token…"
+                      className="h-10 pr-10 rounded-[20px] bg-[#EFEBF5] dark:bg-[#2D2440] shadow-clay-pressed border-0 text-xs font-mono focus:bg-white dark:focus:bg-[#332B45] focus:ring-4 focus:ring-rose-500/20 transition-all duration-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDreemyToken(!showDreemyToken)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showDreemyToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                <details className="text-[10px] text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground transition-colors">How to get your token</summary>
+                  <ol className="mt-1.5 ml-3 list-decimal space-y-0.5 leading-relaxed">
+                    <li>Open <a href="https://www.dreemy.ai" target="_blank" rel="noopener noreferrer" className="text-primary underline">dreemy.ai</a> and sign in</li>
+                    <li>Open DevTools Console (F12)</li>
+                    <li>Run: <code className="bg-muted px-1 rounded text-[9px]">copy(localStorage.getItem("x-auth-token"))</code></li>
+                    <li>Paste the token above.</li>
                   </ol>
                 </details>
               </div>
@@ -391,7 +466,7 @@ export default function VideoStudioPage() {
               ) : (
                 <button
                   onClick={generate}
-                  disabled={!prompt.trim() || !hasByokCredentials || (selectedModelObj?.needsImage && !resourceId.trim())}
+                  disabled={!prompt.trim() || (!isDreemyModel && !hasByokCredentials) || (selectedModelObj?.needsImage && !resourceId.trim())}
                   className="flex-1 h-14 rounded-[20px] bg-gradient-to-br from-amber-400 to-amber-600 text-white font-bold tracking-wide shadow-clay-button hover:-translate-y-1 hover:shadow-clay-button-hover active:scale-[0.92] active:shadow-clay-pressed transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:translate-y-0 disabled:active:scale-100"
                 >
                   <VideoIcon className="h-4 w-4" /> Generate Video

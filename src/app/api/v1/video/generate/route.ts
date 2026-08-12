@@ -1,15 +1,15 @@
 /**
- * Video Generation API — NSFW Gateway BYOK
+ * Video Generation API — Dreemy.ai and NSFW Gateway BYOK
  *
- * Provider: nsfw-gateway (gateway.nsfwimg2video.com)
- * Auth: BYOK — user provides JWT token + device-id
- * CORS: * — browser can call directly, server-side also supported
+ * Providers:
+ *   - dreemy        — Dreemy.ai text-to-video & image-to-video (BYOK or auto guest mint)
+ *   - nsfw-gateway  — NSFW Gateway BYOK (gateway.nsfwimg2video.com)
  *
  * Endpoint: POST /api/v1/video/generate
- * Body: { prompt, model, byok_token, byok_device_id, resourceId?, duration? }
+ * Body: { prompt, model, dreemy_token?, byok_token?, byok_device_id?, resourceId?, duration? }
  *
- * Models: text2video, image2video, anime-girl, fast-face-swap
- * Task pattern: POST create → GET poll → fileInfos with video URL
+ * Models: dreemy-text2video, dreemy-image2video, text2video, image2video, anime-girl, fast-face-swap
+ * Task pattern: POST create → GET poll → result with video URL
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,6 +18,7 @@ import {
   findVideoModel,
   type VideoModel,
 } from "@/lib/providers/video-registry";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,19 +27,358 @@ export const maxDuration = 300;
 interface VideoRequest {
   prompt?: string;
   model?: string;
+  // Dreemy BYOK
+  dreemy_token?: string; // x-auth-token for dreemy.ai (optional — auto-mint if omitted)
+  dreemy_model_id?: number; // Override Dreemy modelId
+  // NSFW Gateway BYOK
   byok_token?: string; // JWT token from nsfwimg2video.com
   byok_device_id?: string; // Device ID from nsfwimg2video.com
   resourceId?: string; // Source image resource ID (for image2video, anime-girl, face-swap)
   duration?: number; // Video duration in seconds (default 5)
   width?: number;
   height?: number;
+  nsfw?: boolean; // Consent flag for unrestricted models
 }
 
-const DEFAULT_MODEL_ID = "nsgw-text2video";
+const DEFAULT_MODEL_ID = "dreemy-text2video";
 const NSFW_GW_BASE = "https://gateway.nsfwimg2video.com/web";
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_MS = 300000; // 5 min max — videos take longer than images
 
+// ─── Dreemy constants ────────────────────────────────────────────────────────
+const DREEMY_BASE = "https://www.dreemy.ai";
+const DREEMY_VIDEO_POLL_INTERVAL_MS = 5000; // Videos take longer
+const DREEMY_VIDEO_POLL_MAX_MS = 300000; // 5 min max
+
+/** Generate a random 32-hex string for x-finger header. */
+function randomFinger(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Mint a Dreemy guest token: createGuest → loginByGuest → idToken. */
+async function mintDreemyGuestToken(signal?: AbortSignal): Promise<{
+  token: string;
+  guestUid: string;
+  finger: string;
+  integral: number;
+}> {
+  const finger = randomFinger();
+  const commonHeaders = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-platform": "web",
+    "x-version": "999.0.0",
+    "x-language": "en",
+    "x-finger": finger,
+  };
+
+  // Step 1: Create guest
+  const createRes = await fetch(`${DREEMY_BASE}/api/auth/createGuest`, {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({}),
+    signal: signal ?? AbortSignal.timeout(15000),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text().catch(() => "");
+    throw new Error(`Dreemy createGuest failed (HTTP ${createRes.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const createData = await createRes.json() as {
+    code?: string;
+    data?: { guestUid?: string; guestKey?: string };
+    msg?: string;
+  };
+
+  if (createData.code !== "200" || !createData.data?.guestUid || !createData.data?.guestKey) {
+    throw new Error(`Dreemy createGuest returned error: ${createData.msg || JSON.stringify(createData).slice(0, 200)}`);
+  }
+
+  const { guestUid, guestKey } = createData.data;
+
+  // Step 2: Login by guest → get idToken
+  const loginRes = await fetch(`${DREEMY_BASE}/api/auth/loginByGuest`, {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({ guestUid, guestKey }),
+    signal: signal ?? AbortSignal.timeout(15000),
+  });
+
+  if (!loginRes.ok) {
+    const errText = await loginRes.text().catch(() => "");
+    throw new Error(`Dreemy loginByGuest failed (HTTP ${loginRes.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const loginData = await loginRes.json() as {
+    code?: string;
+    data?: { idToken?: string };
+    msg?: string;
+  };
+
+  if (loginData.code !== "200" || !loginData.data?.idToken) {
+    throw new Error(`Dreemy loginByGuest returned error: ${loginData.msg || JSON.stringify(loginData).slice(0, 200)}`);
+  }
+
+  // Step 3: Get account integral
+  let integral = 100; // default guest integral
+  try {
+    const accountRes = await fetch(`${DREEMY_BASE}/api/auth/getAccount`, {
+      method: "GET",
+      headers: { ...commonHeaders, "x-auth-token": loginData.data.idToken },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (accountRes.ok) {
+      const accountData = await accountRes.json() as {
+        code?: string;
+        data?: { integral?: number };
+      };
+      if (accountData.data?.integral !== undefined) {
+        integral = accountData.data.integral;
+      }
+    }
+  } catch {}
+
+  return { token: loginData.data.idToken, guestUid, finger, integral };
+}
+
+// ─── Dreemy video handler ───────────────────────────────────────────────────
+async function handleDreemyVideo(model: VideoModel, req: VideoRequest, signal?: AbortSignal) {
+  const prompt = req.prompt || "";
+  const modelId = req.dreemy_model_id ?? 2; // default to Spicy (cheaper)
+
+  // Get auth token: either user-provided (BYOK) or auto-minted guest
+  let authToken: string;
+  let finger: string;
+  let integral: number | undefined;
+  let autoMinted = false;
+
+  if (req.dreemy_token) {
+    authToken = req.dreemy_token;
+    finger = randomFinger();
+  } else {
+    try {
+      const minted = await mintDreemyGuestToken(signal);
+      authToken = minted.token;
+      finger = minted.finger;
+      integral = minted.integral;
+      autoMinted = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return NextResponse.json(
+        {
+          error: `Dreemy auto-mint failed: ${msg}`,
+          hint: "Pass your own dreemy_token in the request body. Get it from dreemy.ai.",
+          docs: "https://www.dreemy.ai",
+        },
+        { status: 401 },
+      );
+    }
+  }
+
+  const dreemyHeaders = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-auth-token": authToken,
+    "x-platform": "web",
+    "x-version": "999.0.0",
+    "x-language": "en",
+    "x-finger": finger,
+  };
+
+  // Build video create body
+  const createBody: Record<string, unknown> = {
+    prompt,
+    resolution: "2K",
+    modelId,
+    number: 1,
+  };
+
+  // For image2video, add the source image
+  if (model.needsImage && req.resourceId) {
+    createBody.imageUrls = [req.resourceId];
+  } else if (model.needsImage && !req.resourceId) {
+    return NextResponse.json(
+      {
+        error: `Model "${model.name}" requires a source image. Pass resourceId in the request body.`,
+        hint: "Upload an image to Dreemy first, then use the returned URL as resourceId.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Step 1: Create video job
+  try {
+    const createRes = await fetch(`${DREEMY_BASE}/api/aiVideo/create/v2`, {
+      method: "POST",
+      headers: dreemyHeaders,
+      body: JSON.stringify(createBody),
+      signal: signal ?? AbortSignal.timeout(30000),
+    });
+
+    if (createRes.status === 401) {
+      return NextResponse.json(
+        { error: "Dreemy: Invalid or expired dreemy_token. Re-login or omit for auto-mint." },
+        { status: 401 },
+      );
+    }
+
+    if (!createRes.ok) {
+      const errText = await createRes.text().catch(() => "");
+      return NextResponse.json(
+        { error: `Dreemy: Video creation failed (HTTP ${createRes.status}): ${errText.slice(0, 300)}` },
+        { status: 502 },
+      );
+    }
+
+    const createData = await createRes.json() as {
+      code?: number;
+      data?: { code?: number; result?: { id?: number; status?: number }; msg?: string };
+      msg?: string;
+    };
+
+    // Check for quota/rate limit errors
+    const innerCode = createData.data?.code;
+    if (innerCode === -1 || innerCode === -5) {
+      const errMsg = createData.data?.msg || createData.msg || "Quota exceeded or rate limited";
+      return NextResponse.json(
+        {
+          error: `Dreemy: ${errMsg}`,
+          hint: autoMinted
+            ? `Guest token has ${integral ?? 100} integral. Use a registered account token (dreemy_token) for more credits.`
+            : "Your dreemy_token may have insufficient credits.",
+          integral,
+          auto_minted: autoMinted,
+        },
+        { status: 429 },
+      );
+    }
+
+    const jobId = createData.data?.result?.id;
+    if (!jobId) {
+      return NextResponse.json(
+        { error: `Dreemy: No job ID in response`, raw: createData },
+        { status: 502 },
+      );
+    }
+
+    // Step 2: Poll until complete (status=2) or timeout
+    const pollStart = Date.now();
+    let lastProgress = 0;
+
+    while (Date.now() - pollStart < DREEMY_VIDEO_POLL_MAX_MS) {
+      if (signal?.aborted) break;
+
+      // Adaptive polling: 5s for first 60s, then 8s
+      const elapsed = Date.now() - pollStart;
+      const pollDelay = elapsed < 60000 ? DREEMY_VIDEO_POLL_INTERVAL_MS : 8000;
+      await new Promise((r) => setTimeout(r, pollDelay));
+
+      try {
+        const pollRes = await fetch(`${DREEMY_BASE}/api/aiVideo/${jobId}`, {
+          method: "GET",
+          headers: dreemyHeaders,
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!pollRes.ok) continue;
+
+        const pollData = await pollRes.json() as {
+          code?: string;
+          data?: {
+            code?: number;
+            result?: {
+              id?: number;
+              status?: number; // 1=pending, 2=success, 3=failed
+              progress?: number;
+              resultVideos?: { url?: string; videoUrl?: string; coverUrl?: string }[];
+            };
+          };
+        };
+
+        const status = pollData.data?.result?.status;
+        lastProgress = pollData.data?.result?.progress ?? lastProgress;
+
+        if (status === 2) {
+          // Success! Extract video URLs
+          const videos = pollData.data?.result?.resultVideos || [];
+          const videoUrls = videos
+            .map((v) => v.url || v.videoUrl)
+            .filter(Boolean) as string[];
+          const coverUrl = videos[0]?.coverUrl;
+
+          if (videoUrls.length > 0) {
+            return NextResponse.json({
+              success: true,
+              videos: videoUrls.map((url) => ({ url, format: "mp4", cover_url: coverUrl })),
+              model: model.id,
+              model_name: model.name,
+              category: model.category,
+              provider: "dreemy",
+              prompt,
+              job_id: jobId,
+              model_id: modelId,
+              duration: req.duration || model.defaultDuration || 5,
+              status: "completed",
+              progress: 100,
+              auto_minted: autoMinted,
+            });
+          }
+
+          // No videos despite status=2
+          return NextResponse.json(
+            { error: "Dreemy: Job completed but no videos returned", raw: pollData },
+            { status: 502 },
+          );
+        }
+
+        if (status === 3) {
+          return NextResponse.json(
+            { error: "Dreemy: Video generation failed (status=3)", job_id: jobId },
+            { status: 502 },
+          );
+        }
+
+        // Still pending (status=1) — continue polling
+        continue;
+      } catch {
+        continue;
+      }
+    }
+
+    // Timeout — return job_id with polling info
+    return NextResponse.json({
+      success: true,
+      videos: [{ url: `dreemy://job/${jobId}`, format: "pending" }],
+      model: model.id,
+      model_name: model.name,
+      category: model.category,
+      provider: "dreemy",
+      prompt,
+      job_id: jobId,
+      model_id: modelId,
+      duration: req.duration || model.defaultDuration || 5,
+      status: "processing",
+      progress: lastProgress,
+      auto_minted: autoMinted,
+      poll: {
+        url: `${DREEMY_BASE}/api/aiVideo/${jobId}`,
+        headers: { "x-auth-token": "<your-token>", "x-finger": finger, "x-platform": "web", "x-version": "999.0.0", "x-language": "en" },
+        interval_ms: DREEMY_VIDEO_POLL_INTERVAL_MS,
+        note: "Video is still generating. Poll the URL with the same auth headers until result.status=2 and resultVideos is populated.",
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json(
+      { error: `Dreemy video generation failed: ${msg}` },
+      { status: 500 },
+    );
+  }
+}
+
+// ─── NSFW Gateway video handler ─────────────────────────────────────────────
 async function handleNsfwGatewayVideo(model: VideoModel, req: VideoRequest, signal?: AbortSignal) {
   const prompt = req.prompt || "";
   const token = req.byok_token;
@@ -251,8 +591,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Unrestricted consent gate for Dreemy models
+  if (model.provider === "dreemy" && model.nsfw && body.nsfw !== true) {
+    return NextResponse.json({
+      error: 'This model is unrestricted. Pass "nsfw": true in the request body to confirm you are 18+ and consent to adult content.',
+      model: modelId, category: model.category,
+    }, { status: 403 });
+  }
+
   try {
     switch (model.provider) {
+      case "dreemy": return await handleDreemyVideo(model, body, request.signal);
       case "nsfw-gateway": return await handleNsfwGatewayVideo(model, body, request.signal);
       default: return NextResponse.json({ error: `Provider ${model.provider} not implemented` }, { status: 400 });
     }
@@ -272,9 +621,12 @@ export async function GET() {
     service: "Video Generation",
     total_models: models.length,
     endpoint: "POST /api/v1/video/generate",
-    params: ["prompt (required)", "model", "byok_token (required)", "byok_device_id (required)", "resourceId (for image-based models)", "duration (seconds, default 5)"],
-    categories: ["general", "animation", "anime", "face-swap"],
-    providers: "NSFW Gateway (gateway.nsfwimg2video.com) — BYOK (bring your own JWT token from nsfwimg2video.com)",
+    params: ["prompt (required)", "model", "dreemy_token (BYOK for dreemy.ai, or omit for auto-mint)", "byok_token (BYOK for nsfw-gateway)", "byok_device_id (required for nsfw-gateway)", "resourceId (for image-based models)", "duration (seconds, default 5)", "nsfw (true for unrestricted, 18+)"],
+    categories: ["general", "animation", "anime", "face-swap", "unrestricted"],
+    providers: {
+      dreemy: "Dreemy.ai — BYOK (dreemy_token) or auto-mint guest token (100 credits). Text2Video + Image2Video.",
+      "nsfw-gateway": "NSFW Gateway (gateway.nsfwimg2video.com) — BYOK (bring your own JWT token from nsfwimg2video.com)",
+    },
     models,
   });
 }
