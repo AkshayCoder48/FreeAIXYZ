@@ -120,7 +120,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
           // Optional: Send Firebase push notification
           if (userFcmToken && process.env.FIREBASE_PROJECT_ID) {
             try {
-              const { default: admin } = await import('firebase-admin') as any
+              // @ts-expect-error firebase-admin is an optional dependency
+              const { default: admin } = await import('firebase-admin')
               if (!admin.apps.length) {
                 admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY!)) })
               }
