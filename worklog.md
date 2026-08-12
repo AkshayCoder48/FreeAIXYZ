@@ -1,35 +1,21 @@
 ---
 Task ID: 1
-Agent: main
-Task: Fix simulated streaming in chat playground - find root cause and implement real streaming
+Agent: Main
+Task: Create comprehensive PROVIDERS_MODELS_STREAMING_TOOLS.md, fix streaming bugs, push to GitHub, deploy to Vercel
 
 Work Log:
-- Examined the entire freeaixyz codebase structure at /home/z/freeaixyz
-- Read all provider implementations: toolbaz, auroraai, surfsense, jollygen, pollinations, opencode, kilocode, llm7, spicywriter, freechat, swarm, freeaixyz, miklium
-- Read the completions route: /src/app/api/v1/chat/completions/route.ts
-- Read the playground component: /src/components/landing/playground.tsx
-- Read the chat page: /src/app/chat/page.tsx
-- Identified 3 root causes of simulated streaming:
-  1. Default model was toolbaz-v4.5-fast which doesn't support upstream SSE streaming
-  2. isRealStreamProvider() incorrectly included miklium (fake) and unlimitedai (dead)
-  3. Non-streaming path used provider.complete() then re-paced with streamText() - fully buffered
-
-Fixes Applied:
-- Copied freeaixyz source code into /home/z/my-project
-- Fixed isRealStreamProvider(): removed miklium (doesn't truly stream) and unlimitedai (no such provider)
-- Changed default model from toolbaz-v4.5-fast to oc-big-pickle (OpenCode.ai - real SSE streaming)
-- Updated frontend defaults in playground.tsx and chat/page.tsx
-- Rewrote non-streaming provider path to use provider.stream() and send each delta immediately instead of buffering full response then re-pacing
-
-Verification:
-- Streaming API test confirmed real token-by-token SSE chunks:
-  - "Hello", "!" as separate data: events (OpenCode provider)
-  - "Hey", " there", "!", " ", "👋" as separate events (Pollinations provider)
-- Keep-alive heartbeats working between tokens
-- Landing page loads correctly (HTTP 200)
-- Chat playground shows correct default model (oc-big-pickle)
+- Cloned repo AkshayCoder48/freeaixyz from GitHub
+- Read all 14 provider files, registry.ts, types.ts, chat completions route, proxy routes, tool-calls.ts, ip-rotation, openai-types.ts, image-registry.ts
+- Read uploaded errors_and_fixes.md with 16 error categories
+- Created PROVIDERS_MODELS_STREAMING_TOOLS.md (1484 lines) documenting all 14 chat providers, all models, streaming code, tool calls, OpenAI tool format, IP rotation (toolbaz excluded)
+- Fixed streaming bug: removed miklium from isRealStreamProvider() list (it doesn't actually stream)
+- Fixed error handling: changed all 3 route handlers to send upstream errors as proper SSE error events instead of embedding as assistant text
+- Pushed changes to GitHub (AkshayCoder48/freeaixyz) - commit 15cc18e
+- Deployed to Vercel production (freeaixyz4all.vercel.app) - build successful
 
 Stage Summary:
-- Root cause: Default model (toolbaz) doesn't support upstream streaming + isRealStreamProvider had wrong entries
-- Fix: Changed default to OpenCode (real SSE streaming) + fixed isRealStreamProvider + improved non-streaming path
-- Real streaming confirmed working via API tests
+- PROVIDERS_MODELS_STREAMING_TOOLS.md created with full documentation
+- Streaming fix: miklium removed from real-stream provider list
+- Error handling fix: errors sent as event: error SSE events, not as assistant text
+- aianime.io API + IP rotation already implemented in codebase
+- Changes pushed to GitHub and deployed to Vercel

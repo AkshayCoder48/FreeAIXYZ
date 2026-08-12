@@ -1,0 +1,709 @@
+     1→/**
+     2→ * Image Generation API — REAL AI generators only, base models only.
+     3→ * No signup, no API key, no queues, instant.
+     4→ *
+     5→ * Providers:
+     6→ *   - pollinations-gen — image.pollinations.ai (5 models, unlimited)
+     7→ *   - freegpt          — FreeGPT.tech image models (4 models)
+     8→ *   - freepikai        — FreepikAI.net 4MP image gen (6 style models, Turnstile-verified)
+     9→ *   - freegen          — FreeGen WebSocket task queue (1 model, 7 aspect ratios)
+    10→ *
+    11→ * Endpoint: POST /api/v1/image/generate
+    12→ * Body: { prompt, model?, width?, height?, seed?, nologo?, nsfw?, size? }
+    13→ */
+    14→
+    15→import { NextRequest, NextResponse } from "next/server";
+    16→import {
+    17→  IMAGE_MODELS,
+    18→  findImageModel,
+    19→  type ImageModel,
+    20→} from "@/lib/providers/image-registry";
+    21→import { getRotatedHeaders } from "@/lib/ip-rotation";
+    22→import crypto from "crypto";
+    23→
+    24→export const runtime = "nodejs";
+    25→export const dynamic = "force-dynamic";
+    26→export const maxDuration = 300;
+    27→
+    28→interface ImageRequest {
+    29→  prompt?: string;
+    30→  model?: string;
+    31→  width?: number;
+    32→  height?: number;
+    33→  seed?: number;
+    34→  nologo?: boolean;
+    35→  enhance?: boolean;
+    36→  nsfw?: boolean;
+    37→  size?: string; // FreeGen aspect ratio: square, widescreen_169, etc.
+    38→  style?: string; // FreepikAI style: Photorealistic, Digital Art, etc.
+    39→  aspect?: string; // FreepikAI aspect: "1:1", "16:9", "9:16", "4:3"
+    40→}
+    41→
+    42→const DEFAULT_MODEL_ID = "poll-flux";
+    43→
+    44→// ─── FreeGen constants ──────────────────────────────────────────────────────
+    45→const FREEGEN_SIGNER_URL = "https://prompt-signer.freegen.app";
+    46→const FREEGEN_GENERATOR_URL = "https://image-generator.freegen.app";
+    47→const FREEGEN_WEBSOCKET_URL = "wss://websocket-bridge.freegen.app/ws";
+    48→
+    49→const FREEGEN_SIZE_MAP: Record<string, string> = {
+    50→  square: "1:1",
+    51→  widescreen_169: "16:9",
+    52→  portrait_45: "4:5",
+    53→  portrait_23: "2:3",
+    54→  story_916: "9:16",
+    55→  landscape_43: "4:3",
+    56→  landscape_32: "3:2",
+    57→};
+    58→
+    59→async function handlePollinations(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
+    60→  const width = req.width || model.width;
+    61→  const height = req.height || model.height;
+    62→  const prompt = req.prompt || "";
+    63→  const params = new URLSearchParams({
+    64→    width: String(width),
+    65→    height: String(height),
+    66→    nologo: req.nologo === false ? "false" : "true",
+    67→  });
+    68→  if (req.seed) params.set("seed", String(req.seed));
+    69→  if (model.upstreamModel) params.set("model", model.upstreamModel);
+    70→  if (req.enhance) params.set("enhance", "true");
+    71→  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${params}`;
+    72→  // Probe the URL to surface real errors
+    73→  const probe = await fetch(imageUrl, { method: "GET", signal });
+    74→  if (!probe.ok) {
+    75→    return NextResponse.json(
+    76→      { error: `Pollinations returned HTTP ${probe.status} for model ${model.upstreamModel}.` },
+    77→      { status: 502 },
+    78→    );
+    79→  }
+    80→  return NextResponse.json({
+    81→    success: true,
+    82→    images: [{ url: imageUrl, format: "jpeg" }],
+    83→    model: model.id,
+    84→    model_name: model.name,
+    85→    category: model.category,
+    86→    provider: "pollinations-gen",
+    87→    prompt: req.prompt,
+    88→    width, height,
+    89→  });
+    90→}
+    91→
+    92→async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: string, signal?: AbortSignal) {
+    93→  const MAX_RETRIES = 2;
+    94→  let lastError: string = "";
+    95→
+    96→  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    97→    if (attempt > 0) {
+    98→      // Exponential backoff: 1s, 2s
+    99→      const delay = attempt * 1000;
+   100→      await new Promise((r) => setTimeout(r, delay));
+   101→    }
+   102→
+   103→    try {
+   104→      const chatRes = await fetch(`${origin}/api/v1/chat/completions`, {
+   105→        method: "POST",
+   106→        headers: { "Content-Type": "application/json" },
+   107→        body: JSON.stringify({
+   108→          model: `fgpt-${model.upstreamModel}`,
+   109→          messages: [{ role: "user", content: req.prompt || "" }],
+   110→          stream: false,
+   111→        }),
+   112→        signal,
+   113→      });
+   114→
+   115→      if (!chatRes.ok) {
+   116→        const errText = await chatRes.text().catch(() => "");
+   117→        lastError = `FreeGPT image generation failed: HTTP ${chatRes.status} — ${errText.slice(0, 200)}`;
+   118→
+   119→        // If we get 403/502/503, retry. For 400/401/429, don't retry (client error).
+   120→        if (chatRes.status === 400 || chatRes.status === 401 || chatRes.status === 429) {
+   121→          break; // Don't retry client errors
+   122→        }
+   123→        continue; // Retry on 403, 502, 503, etc.
+   124→      }
+   125→
+   126→      const chatData = await chatRes.json();
+   127→      const content: string = chatData?.choices?.[0]?.message?.content || "";
+   128→
+   129→      // Look for markdown image link OR raw URL
+   130→      const mdMatch = content.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
+   131→      const urlMatch = content.match(/(https?:\/\/[^\s"'<>)]+\.(?:png|jpg|jpeg|webp))/i);
+   132→      const imageUrl = mdMatch?.[1] || urlMatch?.[1];
+   133→
+   134→      if (!imageUrl) {
+   135→        lastError = `FreeGPT did not return an image URL. Content preview: ${content.slice(0, 200)}`;
+   136→        continue; // Retry — model may not have generated image on first try
+   137→      }
+   138→
+   139→      return NextResponse.json({
+   140→        success: true,
+   141→        images: [{ url: imageUrl, format: "png" }],
+   142→        model: model.id,
+   143→        model_name: model.name,
+   144→        category: model.category,
+   145→        provider: "freegpt",
+   146→        prompt: req.prompt,
+   147→      });
+   148→    } catch (e) {
+   149→      lastError = e instanceof Error ? e.message : "Unknown error during FreeGPT image generation";
+   150→      if (signal?.aborted) break;
+   151→      continue; // Retry on network errors
+   152→    }
+   153→  }
+   154→
+   155→  // FreeGPT failed after retries — fall back to Pollinations Flux
+   156→  try {
+   157→    const fallbackModel = findImageModel("poll-flux");
+   158→    if (fallbackModel) {
+   159→      const fallbackResult = await handlePollinations(fallbackModel, req, signal);
+   160→      // Wrap the fallback response with metadata about the fallback
+   161→      const fallbackData = await (fallbackResult as NextResponse).json();
+   162→      return NextResponse.json({
+   163→        ...fallbackData,
+   164→        fallback: true,
+   165→        fallback_reason: `FreeGPT unavailable (${lastError}). Fell back to Pollinations Flux.`,
+   166→        original_model: model.id,
+   167→        original_provider: "freegpt",
+   168→      });
+   169→    }
+   170→  } catch {
+   171→    // Fallback also failed — return original error
+   172→  }
+   173→
+   174→  return NextResponse.json(
+   175→    { error: `FreeGPT image generation failed after ${MAX_RETRIES + 1} attempts`, detail: lastError },
+   176→    { status: 502 },
+   177→  );
+   178→}
+   179→
+   180→// ─── FreeGen handler (WebSocket task queue) ─────────────────────────────────
+   181→
+   182→function createWebSocketAuth(jobId: string, timestamp: number): string {
+   183→  const message = jobId + timestamp;
+   184→  const hashHex = crypto.createHash("sha256").update(message).digest("hex");
+   185→  const b64 = Buffer.from(hashHex).toString("base64");
+   186→  return b64.substring(0, 20) + ":" + timestamp;
+   187→}
+   188→
+   189→async function waitForImageViaWebSocket(
+   190→  jobId: string,
+   191→  timeoutMs = 35000,
+   192→): Promise<string> {
+   193→  const ws = (await import("ws")).default;
+   194→  return new Promise<string>((resolve, reject) => {
+   195→    const timestamp = Math.floor(Date.now() / 1000);
+   196→    const auth = createWebSocketAuth(jobId, timestamp);
+   197→    const socket = new ws(FREEGEN_WEBSOCKET_URL);
+   198→    const timeout = setTimeout(() => {
+   199→      socket.terminate();
+   200→      reject(new Error("FreeGen: image generation timed out. Please retry."));
+   201→    }, timeoutMs);
+   202→    socket.on("open", () => {
+   203→      socket.send(JSON.stringify({ type: "subscribe", job_id: jobId, auth }));
+   204→    });
+   205→    socket.on("message", (rawData: Buffer) => {
+   206→      try {
+   207→        const msg = JSON.parse(rawData.toString());
+   208→        if (msg.type === "result") {
+   209→          clearTimeout(timeout);
+   210→          socket.close();
+   211→          resolve(msg.image_data);
+   212→        }
+   213→      } catch {}
+   214→    });
+   215→    socket.on("error", (err: Error) => {
+   216→      clearTimeout(timeout);
+   217→      reject(new Error(`FreeGen WebSocket error: ${err.message}`));
+   218→    });
+   219→  });
+   220→}
+   221→
+   222→async function handleFreeGen(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
+   223→  const prompt = req.prompt || "";
+   224→  const size = req.size || "square";
+   225→  const ratio_id = FREEGEN_SIZE_MAP[size] || "1:1";
+   226→
+   227→  // Step 1: Sign prompt
+   228→  const signerRes = await fetch(FREEGEN_SIGNER_URL, {
+   229→    method: "POST",
+   230→    headers: { "Content-Type": "application/json" },
+   231→    body: JSON.stringify({ prompt }),
+   232→    signal,
+   233→  });
+   234→  if (!signerRes.ok) {
+   235→    return NextResponse.json(
+   236→      { error: `FreeGen signer failed with status ${signerRes.status}` },
+   237→      { status: 502 },
+   238→    );
+   239→  }
+   240→  const { ts, sig } = (await signerRes.json()) as { ts: number; sig: string };
+   241→
+   242→  // Step 2: Submit to queue
+   243→  const genRes = await fetch(FREEGEN_GENERATOR_URL, {
+   244→    method: "POST",
+   245→    headers: { "Content-Type": "application/json" },
+   246→    body: JSON.stringify({ prompt, ts, sig, ratio_id }),
+   247→    signal,
+   248→  });
+   249→  if (!genRes.ok) {
+   250→    const errJson = await genRes.json().catch(() => ({}));
+   251→    return NextResponse.json(
+   252→      { error: (errJson as { error?: string }).error || `FreeGen generator failed: ${genRes.status}` },
+   253→      { status: 502 },
+   254→    );
+   255→  }
+   256→  const { job_id } = (await genRes.json()) as { job_id?: string };
+   257→  if (!job_id) {
+   258→    return NextResponse.json({ error: "FreeGen: no job_id returned" }, { status: 502 });
+   259→  }
+   260→
+   261→  // Step 3: Wait for result via WebSocket
+   262→  const imageUrl = await waitForImageViaWebSocket(job_id);
+   263→  return NextResponse.json({
+   264→    success: true,
+   265→    images: [{ url: imageUrl, format: "png" }],
+   266→    model: model.id,
+   267→    model_name: model.name,
+   268→    category: model.category,
+   269→    provider: "freegen",
+   270→    prompt,
+   271→    size,
+   272→    ratio_id,
+   273→    job_id,
+   274→  });
+   275→}
+   276→
+   277→// ─── FreepikAI handler (Turnstile-verified, UUID-per-request) ────────────────
+   278→// FreepikAI uses Cloudflare Turnstile for bot verification.
+   279→// We spawn a headless browser to solve the Turnstile challenge,
+   280→// then POST to /generator with the verified token.
+   281→// Each request uses a fresh UUID session for higher rate limits.
+   282→
+   283→const FREEPIKAI_URL = "https://www.freepikai.net/generator";
+   284→const FREEPIKAI_REFERER = "https://www.freepikai.net/";
+   285→const FREEPIKAI_UA =
+   286→  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+   287→const TURNSTILE_SITEKEY = "0x4AAAAAACJb-k4QlyYt-bQg";
+   288→
+   289→async function handleFreepikAI(
+   290→  model: ImageModel,
+   291→  req: ImageRequest,
+   292→  signal?: AbortSignal,
+   293→) {
+   294→  const prompt = req.prompt || "";
+   295→  const style = model.upstreamModel || req.style || "Photorealistic";
+   296→  const aspect = req.aspect || "1:1";
+   297→  const requestId = crypto.randomUUID();
+   298→
+   299→  try {
+   300→    // Use Playwright to solve Turnstile and get a verified token
+   301→    const { chromium } = await import("playwright");
+   302→    const browser = await chromium.launch({ headless: true });
+   303→    const context = await browser.newContext({
+   304→      userAgent: FREEPIKAI_UA,
+   305→      extraHTTPHeaders: { "X-Request-ID": requestId },
+   306→    });
+   307→    const page = await context.newPage();
+   308→
+   309→    let turnstileToken = "";
+   310→    let apiResult: { status: string; msg: string; pic?: string; downloadUrl?: string } | null = null;
+   311→
+   312→    try {
+   313→      // Navigate to FreepikAI
+   314→      await page.goto(FREEPIKAI_REFERER, { waitUntil: "domcontentloaded", timeout: 30000 });
+   315→
+   316→      // Wait for Turnstile to be available
+   317→      await page.waitForFunction(
+   318→        `typeof turnstile !== 'undefined'`,
+   319→        { timeout: 15000 },
+   320→      );
+   321→
+   322→      // Set the prompt
+   323→      await page.fill("#promptInput", prompt);
+   324→
+   325→      // Select the style chip
+   326→      const styleChip = page.locator(`.style-chip[data-style="${style}"]`);
+   327→      if ((await styleChip.count()) > 0) {
+   328→        await styleChip.click();
+   329→      }
+   330→
+   331→      // Select the aspect ratio
+   332→      const aspectSelect = page.locator("#aspectSelect");
+   333→      if ((await aspectSelect.count()) > 0) {
+   334→        const aspectMap: Record<string, string> = {
+   335→          "1:1": "1:1 Square",
+   336→          "16:9": "16:9 Landscape",
+   337→          "9:16": "9:16 Portrait",
+   338→          "4:3": "4:3 Standard",
+   339→        };
+   340→        await aspectSelect.selectOption({ label: aspectMap[aspect] || "1:1 Square" });
+   341→      }
+   342→
+   343→      // Intercept the API call to capture the response
+   344→      const apiPromise = page.waitForResponse(
+   345→        (resp) => resp.url().includes("/generator") && resp.request().method() === "POST",
+   346→        { timeout: 120000 },
+   347→      );
+   348→
+   349→      // Click generate — this triggers Turnstile then the API call
+   350→      await page.click("#generateBtn");
+   351→
+   352→      // Wait for the API response
+   353→      const apiResponse = await apiPromise;
+   354→      apiResult = await apiResponse.json();
+   355→    } finally {
+   356→      await browser.close();
+   357→    }
+   358→
+   359→    if (apiResult?.status === "success" && apiResult.pic) {
+   360→      return NextResponse.json({
+   361→        success: true,
+   362→        images: [{ url: apiResult.pic, format: "jpg" }],
+   363→        model: model.id,
+   364→        model_name: model.name,
+   365→        category: model.category,
+   366→        provider: "freepikai",
+   367→        prompt,
+   368→        style,
+   369→        aspect,
+   370→        request_id: requestId,
+   371→        download_url: apiResult.downloadUrl || apiResult.pic,
+   372→      });
+   373→    }
+   374→
+   375→    // FreepikAI failed — fall back to Pollinations Flux
+   376→    const fallbackModel = findImageModel("poll-flux");
+   377→    if (fallbackModel) {
+   378→      const fallbackResult = await handlePollinations(fallbackModel, req, signal);
+   379→      const fallbackData = await (fallbackResult as NextResponse).json();
+   380→      return NextResponse.json({
+   381→        ...fallbackData,
+   382→        fallback: true,
+   383→        fallback_reason: `FreepikAI failed (${apiResult?.msg || "unknown"}). Fell back to Pollinations Flux.`,
+   384→        original_model: model.id,
+   385→        original_provider: "freepikai",
+   386→      });
+   387→    }
+   388→
+   389→    return NextResponse.json(
+   390→      { error: `FreepikAI generation failed: ${apiResult?.msg || "unknown error"}` },
+   391→      { status: 502 },
+   392→    );
+   393→  } catch (e) {
+   394→    // Playwright not available or browser failed — fall back gracefully
+   395→    const errMsg = e instanceof Error ? e.message : "Unknown error";
+   396→    const fallbackModel = findImageModel("poll-flux");
+   397→    if (fallbackModel) {
+   398→      const fallbackResult = await handlePollinations(fallbackModel, req, signal);
+   399→      const fallbackData = await (fallbackResult as NextResponse).json();
+   400→      return NextResponse.json({
+   401→        ...fallbackData,
+   402→        fallback: true,
+   403→        fallback_reason: `FreepikAI browser error (${errMsg}). Fell back to Pollinations Flux.`,
+   404→        original_model: model.id,
+   405→        original_provider: "freepikai",
+   406→      });
+   407→    }
+   408→    return NextResponse.json(
+   409→      { error: `FreepikAI generation failed: ${errMsg}` },
+   410→      { status: 502 },
+   411→    );
+   412→  }
+   413→}
+   414→
+   415→// ─── AIAnime handler (api.aianime.io, IP rotation + proxy for Vercel) ──────────
+   416→// IMPORTANT: AIAnime API uses application/x-www-form-urlencoded, NOT JSON.
+   417→// On Vercel, direct calls get blocked (403). We fall back to the
+   418→// aianime-proxy mini-service (port 3031) which runs on a different IP.
+   419→
+   420→const AIANIME_TEXT2IMAGE_URL = "https://api.aianime.io/api/image-generate/text2image";
+   421→const AIANIME_RESULT_ENDPOINTS = [
+   422→  "https://api.aianime.io/api/image-generate/text2image/result",
+   423→  "https://api.aianime.io/api/image-generate/result",
+   424→];
+   425→const AIANIME_PROXY_PORT = 3031;
+   426→const AIANIME_POLL_INTERVAL_MS = 2000;
+   427→const AIANIME_POLL_MAX_ATTEMPTS = 15;
+   428→
+   429→async function handleAIAnime(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
+   430→  const prompt = req.prompt || "";
+   431→  const MAX_RETRIES = 5;
+   432→  let lastError: string = "";
+   433→
+   434→  // Build form-urlencoded body for AIAnime API
+   435→  const formData = new URLSearchParams();
+   436→  formData.set("prompt", prompt);
+   437→  formData.set("model_type", "anime_io");
+   438→  if (req.nsfw) formData.set("negative_prompt", "");
+   439→  if (req.size) formData.set("aspect_ratio", req.size);
+   440→
+   441→  // Strategy 1: Direct call with IP rotation
+   442→  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+   443→    if (attempt > 0) {
+   444→      const delay = 300 + Math.random() * 700;
+   445→      await new Promise((r) => setTimeout(r, delay));
+   446→    }
+   447→
+   448→    const headers = getRotatedHeaders({
+   449→      "Content-Type": "application/x-www-form-urlencoded",
+   450→      Accept: "application/json",
+   451→      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+   452→      Origin: "https://aianime.io",
+   453→      Referer: "https://aianime.io/",
+   454→    });
+   455→
+   456→    try {
+   457→      const res = await fetch(AIANIME_TEXT2IMAGE_URL, {
+   458→        method: "POST",
+   459→        headers,
+   460→        body: formData.toString(),
+   461→        signal: signal ?? AbortSignal.timeout(30000),
+   462→      });
+   463→
+   464→      if (res.status === 429 || res.status === 403) {
+   465→        lastError = `Rate limited/blocked (HTTP ${res.status}, attempt ${attempt + 1}/${MAX_RETRIES})`;
+   466→        continue;
+   467→      }
+   468→
+   469→      if (!res.ok) {
+   470→        lastError = `AIAnime API error (HTTP ${res.status})`;
+   471→        continue;
+   472→      }
+   473→
+   474→      const data = await res.json() as { code?: number; result?: { job_id?: string; free_limit_value?: number; image_url?: string; status?: string }; message?: unknown };
+   475→
+   476→      const jobId = data.result?.job_id;
+   477→
+   478→      // Try to poll for the actual image result
+   479→      let imageUrl: string | undefined;
+   480→      if (jobId) {
+   481→        for (const endpoint of AIANIME_RESULT_ENDPOINTS) {
+   482→          for (let pollAttempt = 0; pollAttempt < AIANIME_POLL_MAX_ATTEMPTS; pollAttempt++) {
+   483→            if (signal?.aborted) break;
+   484→            await new Promise((r) => setTimeout(r, pollAttempt === 0 ? 1000 : AIANIME_POLL_INTERVAL_MS));
+   485→            try {
+   486→              const pollHeaders = getRotatedHeaders({
+   487→                Accept: "application/json",
+   488→                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+   489→                Origin: "https://aianime.io",
+   490→                Referer: "https://aianime.io/",
+   491→              });
+   492→              const pollRes = await fetch(`${endpoint}?job_id=${encodeURIComponent(jobId)}`, {
+   493→                method: "GET",
+   494→                headers: pollHeaders,
+   495→                signal: signal ?? AbortSignal.timeout(10000),
+   496→              });
+   497→              if (!pollRes.ok) continue;
+   498→              const pollData = await pollRes.json() as {
+   499→                code?: number;
+   500→                result?: { image_url?: string; url?: string; status?: string };
+   501→                image_url?: string;
+   502→                status?: string;
+   503→              };
+   504→              const result = pollData.result || {};
+   505→              const foundUrl = result.image_url || result.url || pollData.image_url;
+   506→              if (foundUrl) { imageUrl = foundUrl; break; }
+   507→              const pollStatus = result.status || pollData.status;
+   508→              if (pollStatus === "processing" || pollStatus === "pending" || pollStatus === "queued") continue;
+   509→              if (pollData.code === 200 && Object.keys(result).length > 0) break;
+   510→              if (pollData.code && pollData.code !== 200 && pollData.code !== 102) break;
+   511→            } catch { continue; }
+   512→          }
+   513→          if (imageUrl) break;
+   514→        }
+   515→      }
+   516→
+   517→      if (imageUrl) {
+   518→        return NextResponse.json({
+   519→          success: true,
+   520→          images: [{ url: imageUrl, format: "png" }],
+   521→          model: model.id,
+   522→          model_name: model.name,
+   523→          category: model.category,
+   524→          provider: "aianime",
+   525→          prompt,
+   526→          job_id: jobId,
+   527→          status: "completed",
+   528→        });
+   529→      }
+   530→
+   531→      // No image URL yet — return job_id with polling info
+   532→      return NextResponse.json({
+   533→        success: true,
+   534→        images: [{ url: `aianime://job/${jobId || "unknown"}`, format: "pending" }],
+   535→        model: model.id,
+   536→        model_name: model.name,
+   537→        category: model.category,
+   538→        provider: "aianime",
+   539→        prompt,
+   540→        job_id: jobId,
+   541→        free_limit_value: data.result?.free_limit_value,
+   542→        status: "processing",
+   543→        poll: {
+   544→          url_template: `${AIANIME_RESULT_ENDPOINTS[0]}?job_id={job_id}`,
+   545→          interval_ms: AIANIME_POLL_INTERVAL_MS,
+   546→          max_attempts: AIANIME_POLL_MAX_ATTEMPTS,
+   547→          job_id: jobId,
+   548→          note: "Image is still generating. Poll the result endpoint to get the image URL when status is 'completed'.",
+   549→        },
+   550→        raw: data,
+   551→      });
+   552→    } catch (e) {
+   553→      lastError = e instanceof Error ? e.message : "Network error";
+   554→      if (signal?.aborted) break;
+   555→      continue;
+   556→    }
+   557→  }
+   558→
+   559→  // Strategy 2: Try the aianime-proxy mini-service (for Vercel deployment)
+   560→  try {
+   561→    const proxyUrl = `/api/image-generate/text2image?XTransformPort=${AIANIME_PROXY_PORT}`;
+   562→    const proxyRes = await fetch(proxyUrl, {
+   563→      method: "POST",
+   564→      headers: {
+   565→        "Content-Type": "application/x-www-form-urlencoded",
+   566→        Accept: "application/json",
+   567→      },
+   568→      body: formData.toString(),
+   569→      signal: signal ?? AbortSignal.timeout(30000),
+   570→    });
+   571→
+   572→    if (proxyRes.ok) {
+   573→      const data = await proxyRes.json() as { code?: number; result?: { job_id?: string; free_limit_value?: number; image_url?: string; status?: string }; message?: unknown };
+   574→      if (data.code === 200 && data.result?.job_id) {
+   575→        // If the proxy already resolved the image, return it
+   576→        if (data.result.image_url) {
+   577→          return NextResponse.json({
+   578→            success: true,
+   579→            images: [{ url: data.result.image_url, format: "png" }],
+   580→            model: model.id,
+   581→            model_name: model.name,
+   582→            category: model.category,
+   583→            provider: "aianime",
+   584→            prompt,
+   585→            job_id: data.result.job_id,
+   586→            status: "completed",
+   587→          });
+   588→        }
+   589→        // Otherwise return job_id with polling info
+   590→        return NextResponse.json({
+   591→          success: true,
+   592→          images: [{ url: `aianime://job/${data.result.job_id}`, format: "pending" }],
+   593→          model: model.id,
+   594→          model_name: model.name,
+   595→          category: model.category,
+   596→          provider: "aianime",
+   597→          prompt,
+   598→          job_id: data.result.job_id,
+   599→          free_limit_value: data.result.free_limit_value,
+   600→          status: "processing",
+   601→          poll: {
+   602→            url_template: `${AIANIME_RESULT_ENDPOINTS[0]}?job_id={job_id}`,
+   603→            interval_ms: AIANIME_POLL_INTERVAL_MS,
+   604→            max_attempts: AIANIME_POLL_MAX_ATTEMPTS,
+   605→            job_id: data.result.job_id,
+   606→            note: "Image is still generating. Poll the result endpoint.",
+   607→          },
+   608→          raw: data,
+   609→        });
+   610→      }
+   611→    }
+   612→  } catch {}
+   613→
+   614→  // Strategy 3: Fall back to Pollinations Flux, with direct_call info
+   615→  try {
+   616→    const fallbackModel = findImageModel("poll-flux");
+   617→    if (fallbackModel) {
+   618→      const fallbackResult = await handlePollinations(fallbackModel, req, signal);
+   619→      const fallbackData = await (fallbackResult as NextResponse).json();
+   620→      const aianimeFormData = new URLSearchParams();
+   621→      aianimeFormData.set("prompt", prompt);
+   622→      aianimeFormData.set("model_type", "anime_io");
+   623→      return NextResponse.json({
+   624→        ...fallbackData,
+   625→        fallback: true,
+   626→        fallback_reason: `AIAnime unavailable (${lastError}). Fell back to Pollinations Flux.`,
+   627→        original_model: model.id,
+   628→        original_provider: "aianime",
+   629→        direct_call: {
+   630→          url: AIANIME_TEXT2IMAGE_URL,
+   631→          method: "POST",
+   632→          headers: {
+   633→            "Content-Type": "application/x-www-form-urlencoded",
+   634→            Accept: "application/json",
+   635→          },
+   636→          body: aianimeFormData.toString(),
+   637→          poll: {
+   638→            url_template: `${AIANIME_RESULT_ENDPOINTS[0]}?job_id={job_id}`,
+   639→            interval_ms: AIANIME_POLL_INTERVAL_MS,
+   640→            max_attempts: AIANIME_POLL_MAX_ATTEMPTS,
+   641→          },
+   642→          note: "Server-side call blocked. Call from browser (CORS open). After getting job_id, poll the result endpoint.",
+   643→        },
+   644→      });
+   645→    }
+   646→  } catch {}
+   647→
+   648→  return NextResponse.json(
+   649→    { error: `AIAnime text2image failed after all strategies`, detail: lastError },
+   650→    { status: 502 },
+   651→  );
+   652→}
+   653→
+   654→export async function POST(request: Request) {
+   655→  let body: ImageRequest;
+   656→  try { body = (await request.json()) as ImageRequest; } catch {
+   657→    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+   658→  }
+   659→  if (!body.prompt) return NextResponse.json({ error: "prompt is required" }, { status: 400 });
+   660→
+   661→  const modelId = body.model || DEFAULT_MODEL_ID;
+   662→  const model = findImageModel(modelId);
+   663→  if (!model) {
+   664→    return NextResponse.json(
+   665→      { error: `Unknown image model "${modelId}". Call GET /api/v1/image/generate for the list.` },
+   666→      { status: 400 },
+   667→    );
+   668→  }
+   669→
+   670→  // Unrestricted consent gate
+   671→  if ((model.category === "unrestricted-anime" || model.category === "unrestricted-realism" || model.category === "unrestricted-mixed") && body.nsfw !== true) {
+   672→    return NextResponse.json({
+   673→      error: 'This model is unrestricted. Pass "nsfw": true in the request body to confirm you are 18+ and consent to adult content.',
+   674→      model: modelId, category: model.category,
+   675→    }, { status: 403 });
+   676→  }
+   677→
+   678→  const origin = new URL(request.url).origin;
+   679→  try {
+   680→    switch (model.provider) {
+   681→      case "pollinations-gen": return await handlePollinations(model, body, request.signal);
+   682→      case "freegpt": return await handleFreeGpt(model, body, origin, request.signal);
+   683→      case "freepikai": return await handleFreepikAI(model, body, request.signal);
+   684→      case "freegen": return await handleFreeGen(model, body, request.signal);
+   685→      case "aianime": return await handleAIAnime(model, body, request.signal);
+   686→      default: return NextResponse.json({ error: `Provider ${model.provider} not implemented` }, { status: 400 });
+   687→    }
+   688→  } catch (e) {
+   689→    const message = e instanceof Error ? e.message : "Unknown error";
+   690→    return NextResponse.json({ error: `Image generation failed: ${message}`, model: modelId }, { status: 500 });
+   691→  }
+   692→}
+   693→
+   694→export async function GET() {
+   695→  const models = IMAGE_MODELS.map((m) => ({
+   696→    id: m.id, name: m.name, category: m.category, provider: m.provider, nsfw: m.nsfw,
+   697→    upstream_model: m.upstreamModel, description: m.description,
+   698→    default_width: m.width, default_height: m.height,
+   699→  }));
+   700→  return NextResponse.json({
+   701→    service: "Image Generation", total_models: models.length,
+   702→    endpoint: "POST /api/v1/image/generate",
+   703→    params: ["prompt (required)", "model", "width", "height", "seed", "nologo", "nsfw (true for unrestricted, 18+)"],
+   704→    categories: ["anime", "realism", "mixed", "general", "unrestricted-anime", "unrestricted-realism", "unrestricted-mixed"],
+   705→    providers: "All providers are 100% free, no signup, no API key, instant (no queues). REAL AI generators only.",
+   706→    models,
+   707→  });
+   708→}
+   709→
