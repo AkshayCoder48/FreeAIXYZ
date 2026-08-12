@@ -87,12 +87,12 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
             ? await Sandbox.connect(sandboxId)
             : await Sandbox.create({ apiKey: config.apiKey, template: config.template })
 
-          const execution = await sb.commands.run(command, { timeoutMs: config.timeoutMs })
+          const execution = await (sb as any).commands.run(command, { timeoutMs: config.timeoutMs })
           const result = {
             stdout: execution.stdout,
             stderr: execution.stderr,
             exitCode: execution.exitCode,
-            sandboxId: sb.sandboxId,
+            sandboxId: (sb as any).sandboxId,
           }
 
           // Store result in Supabase for the client to poll
@@ -120,7 +120,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
           // Optional: Send Firebase push notification
           if (userFcmToken && process.env.FIREBASE_PROJECT_ID) {
             try {
-              const { default: admin } = await import('firebase-admin')
+              const { default: admin } = await import('firebase-admin') as any
               if (!admin.apps.length) {
                 admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY!)) })
               }
@@ -136,7 +136,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
             }
           }
 
-          await sb.close()
+          await (sb as any).close()
         } catch (error) {
           console.error('Background E2B execution error:', error)
         }
@@ -156,13 +156,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         ? await Sandbox.connect(sandboxId)
         : await Sandbox.create({ apiKey: config.apiKey, template: config.template })
 
-      const execution = await sb.commands.run(command, { timeoutMs: config.timeoutMs })
+      const execution = await (sb as any).commands.run(command, { timeoutMs: config.timeoutMs })
 
       res.status(200).json({
         stdout: execution.stdout,
         stderr: execution.stderr,
         exitCode: execution.exitCode,
-        sandboxId: sb.sandboxId,
+        sandboxId: (sb as any).sandboxId,
       })
 
       // Don't close the sandbox if the client might reuse it
@@ -191,7 +191,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       const config = getE2BConfig()!
       const { Sandbox } = await import('@e2b/code-interpreter')
 
-      const sb = await Sandbox.connect(sandboxId)
+      const sb = await Sandbox.connect(sandboxId) as any
 
       if (fsAction === 'write') {
         if (!content) {
@@ -227,7 +227,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       const config = getE2BConfig()!
       const { Sandbox } = await import('@e2b/code-interpreter')
 
-      const sb = await Sandbox.create({ apiKey: config.apiKey, template: config.template })
+      const sb = await Sandbox.create({ apiKey: config.apiKey, template: config.template }) as any
       res.status(200).json({ sandboxId: sb.sandboxId })
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create sandbox' })
@@ -244,7 +244,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     }
     try {
       const { Sandbox } = await import('@e2b/code-interpreter')
-      const sb = await Sandbox.connect(sandboxId)
+      const sb = await Sandbox.connect(sandboxId) as any
       await sb.close()
       res.status(200).json({ ok: true })
     } catch (err) {
