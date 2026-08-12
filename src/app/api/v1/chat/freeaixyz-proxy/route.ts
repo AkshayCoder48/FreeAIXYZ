@@ -208,7 +208,16 @@ export async function POST(request: NextRequest) {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
-        await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { content: `\n\n[error: ${msg}]` }, finish_reason: "stop" }] });
+        // Send structured SSE error event
+        const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
+        const isQuota = /quota|rate.?limit|429/i.test(msg);
+        await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({
+          error: {
+            message: msg,
+            type: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
+            code: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
+          },
+        })}\n\n`));
       } finally {
         await writer.write(encoder.encode("data: [DONE]\n\n"));
         try { await writer.close(); } catch {}

@@ -253,7 +253,7 @@ export const MODELS: readonly GatewayModel[] = [
   svc("music-generate", "/api/v1/music/generate", "ACE-Step 1.5 AI music generation — auto-fetches API key, returns base64 audio. POST {prompt, lyrics?, duration?}", "music", 0),
 ];
 
-/** Toolbaz model helper. */
+/** Toolbaz model helper. Note: Toolbaz returns full text at once (no real streaming). */
 function tb(
   id: string,
   upstream: string,
@@ -269,7 +269,7 @@ function tb(
     category,
     contextWindow,
     capabilities: {
-      streaming: true,
+      streaming: false, // Toolbaz returns full text at once — gateway re-paces it
       tools: true,
       systemPrompt: true,
       multiTurn: true,
@@ -650,12 +650,14 @@ export function resolveGatewayModel(
 ): GatewayModel {
   const found = findModel(requested);
   if (found) return found;
+  // Unknown model — pass through to OpenCode (which has the broadest model
+  // support and real streaming) instead of Toolbaz (which doesn't stream).
   const id = requested && requested.trim() ? requested.trim() : DEFAULT_MODEL_ID;
   return {
     id,
-    provider: "toolbaz",
+    provider: "opencode",
     upstream: id,
-    description: "Unknown model (passed through to Toolbaz)",
+    description: "Unknown model (passed through to OpenCode)",
     category: "professional",
     contextWindow: 0,
     capabilities: {

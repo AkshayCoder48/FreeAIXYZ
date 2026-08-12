@@ -317,12 +317,28 @@ function tokenizeForStream(text: string): string[] {
  * token-by-token deltas from an SSE upstream. Providers that just buffer
  * the full response and yield it once (e.g., toolbaz, miklium) must NOT
  * be listed here — they get the simulated re-pacing path instead.
+ *
+ * Providers with real upstream SSE/NDJSON streaming:
+ *   auroraai    — OpenAI-shaped SSE from nsfwlover.com
+ *   surfsense   — Custom SSE (text-delta events) from surfsense.com
+ *   jollygen    — SSE {delta} events from jollygenapi.space
+ *   unlimitedai — NDJSON {type:"delta"} from unlimitedai.chat
+ *   pollinations — OpenAI SSE from text.pollinations.ai
+ *   kilocode    — OpenAI SSE via OpenRouter from api.kilo.ai
+ *   llm7        — OpenAI SSE from api.llm7.io
+ *   spicywriter — Plain-text SSE from spicywriter.com
+ *   freegpt     — OpenAI SSE via WASM-secured proxy (freegpt-proxy route)
+ *   opencode    — OpenAI SSE from opencode.ai (with Pollinations fallback)
+ *   freechat    — OpenAI SSE from llmproxy.org
+ *   swarm       — OpenAI SSE from g4f-dev workers
+ *   freeaixyz   — Custom SSE via curl proxy (freeaixyz-proxy route)
  */
 function isRealStreamProvider(provider: string): boolean {
   return [
     "auroraai",
     "surfsense",
     "jollygen",
+    "unlimitedai",
     "pollinations",
     "kilocode",
     "llm7",
@@ -587,19 +603,16 @@ async function streamCompletion(
           : err instanceof Error
             ? err.message
             : "Unknown upstream error";
-      await send({
-        id,
-        object: "chat.completion.chunk",
-        created,
-        model: model.id,
-        choices: [
-          {
-            index: 0,
-            delta: { content: `\n\n[error: ${message}]` },
-            finish_reason: "stop",
-          },
-        ],
-      });
+      // Send structured SSE error event instead of embedding error in content
+      const isAuth = /\bHTTP (401|403)\b/i.test(message) || /unauthorized|forbidden/i.test(message);
+      const isQuota = /quota|rate.?limit|429/i.test(message);
+      await enqueue(`event: error\ndata: ${JSON.stringify({
+        error: {
+          message,
+          type: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
+          code: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
+        },
+      })}\n\n`);
     } finally {
       clearInterval(heartbeatTimer);
       await enqueue("data: [DONE]\n\n");
