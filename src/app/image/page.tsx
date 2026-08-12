@@ -127,7 +127,6 @@ export default function ImageStudioPage() {
     else sessionStorage.removeItem("nsgw_device_id");
   }, [byokDeviceId]);
 
-  const isByokModel = selectedModelObj?.provider === "nsfw-gateway";
   const hasByokCredentials = byokToken.trim() && byokDeviceId.trim();
 
   const counts = useMemo(() => imageModelCounts(), []);
@@ -155,6 +154,7 @@ export default function ImageStudioPage() {
     () => IMAGE_MODELS.find((m) => m.id === selectedModel),
     [selectedModel],
   );
+  const isByokModel = selectedModelObj?.provider === "nsfw-gateway";
 
   const onModelChange = useCallback((modelId: string) => {
     setSelectedModel(modelId);
