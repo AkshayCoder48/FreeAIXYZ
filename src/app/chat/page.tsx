@@ -15,15 +15,11 @@ import {
   Copy,
   Check,
   Zap,
-  AlertCircle,
   Loader2,
   RotateCcw,
-  Sparkles,
   MessageSquare,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -57,7 +53,6 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  // Streaming is always enabled — no toggle needed
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -115,7 +110,6 @@ export default function ChatPage() {
         );
       }
 
-      // Streaming is always enabled — parse SSE response
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No response body");
       const decoder = new TextDecoder();
@@ -244,60 +238,64 @@ export default function ChatPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-background overflow-hidden">
-      {/* Background blobs */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute h-[60vh] w-[60vh] -top-[10%] -left-[10%] rounded-full bg-[#8B5CF6]/10 blur-3xl animate-clay-float" />
-        <div className="absolute h-[50vh] w-[50vh] -right-[10%] top-[20%] rounded-full bg-[#EC4899]/10 blur-3xl animate-clay-float-delayed animation-delay-2000" />
-        <div className="absolute h-[40vh] w-[40vh] bottom-[5%] left-[30%] rounded-full bg-[#0EA5E9]/10 blur-3xl animate-clay-float-slow animation-delay-4000" />
-      </div>
-
       <Nav />
 
       <main className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6">
+        {/* Divider */}
+        <div className="h-[1px] bg-foreground mt-5" />
+
         {/* Model selector bar */}
-        <div className="flex items-center gap-3 py-5 border-b border-primary/10">
+        <div className="flex items-center gap-3 py-4">
           <div className="flex-1">
             {mounted && <ModelSelect value={model} onChange={setModel} />}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[20px] text-xs font-medium bg-gradient-to-br from-purple-400/15 to-purple-600/10 text-primary shadow-clay-pressed">
+            <div
+              className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-foreground text-foreground text-[11px] uppercase tracking-widest"
+              style={{ fontFamily: "var(--font-code), monospace" }}
+            >
               <Zap className="h-3 w-3" />
               streaming
             </div>
             {modelInfo?.capabilities?.vision && (
-              <Badge variant="secondary" className="text-[10px] gap-1 rounded-[20px]">
-                👁 vision
-              </Badge>
+              <div
+                className="flex items-center gap-1 px-3 py-1.5 border border-foreground text-foreground text-[10px] uppercase tracking-widest"
+                style={{ fontFamily: "var(--font-code), monospace" }}
+              >
+                vision
+              </div>
             )}
             {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-muted-foreground h-8 rounded-[20px] hover:-translate-y-0.5 active:scale-[0.92] active:shadow-clay-pressed transition-all duration-200"
+              <button
                 onClick={clearChat}
+                className="border-2 border-foreground text-foreground text-[11px] uppercase tracking-widest px-3 py-1.5 hover:bg-foreground hover:text-background transition-colors duration-100"
+                style={{ fontFamily: "var(--font-code), monospace" }}
               >
                 Clear
-              </Button>
+              </button>
             )}
           </div>
         </div>
 
+        {/* Divider */}
+        <div className="h-[1px] bg-foreground" />
+
         {/* Messages area */}
-        <div className="flex-1 min-h-0 py-4">
+        <div className="flex-1 min-h-0 py-6">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[50vh] gap-6">
-              <div className="h-16 w-16 rounded-[24px] bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-clay-button animate-clay-breathe">
-                <MessageSquare className="h-8 w-8 text-white" />
+              <div className="h-16 w-16 border-2 border-foreground bg-foreground flex items-center justify-center">
+                <MessageSquare className="h-8 w-8 text-background" />
               </div>
               <h2
-                className="text-2xl sm:text-3xl font-extrabold text-center"
-                style={{ fontFamily: "var(--font-brand), sans-serif" }}
+                className="text-2xl sm:text-3xl font-extrabold text-center text-foreground"
+                style={{ fontFamily: "var(--font-brand), serif" }}
               >
                 AI Inference Playground
               </h2>
               <p
                 className="text-base text-muted-foreground text-center max-w-md leading-relaxed"
-                style={{ fontFamily: "var(--font-body), sans-serif" }}
+                style={{ fontFamily: "var(--font-body), serif" }}
               >
                 Select a model and start chatting. All models are free, no API key required.
               </p>
@@ -309,7 +307,8 @@ export default function ChatPage() {
                       setInput(s);
                       textareaRef.current?.focus();
                     }}
-                    className="text-sm text-muted-foreground hover:text-foreground bg-white/50 dark:bg-[#2D2440]/50 shadow-clay-card hover:-translate-y-1 hover:shadow-clay-card-hover rounded-[20px] px-4 py-2 transition-all duration-200 active:scale-[0.92] active:shadow-clay-pressed"
+                    className="text-sm border border-foreground text-foreground bg-transparent px-4 py-2 hover:bg-foreground hover:text-background transition-colors duration-100"
+                    style={{ fontFamily: "var(--font-body), serif" }}
                   >
                     {s}
                   </button>
@@ -328,19 +327,20 @@ export default function ChatPage() {
                     )}
                   >
                     {m.role === "assistant" && (
-                      <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shrink-0 mt-1 shadow-clay-button">
-                        <Bot className="h-4 w-4 text-white" />
+                      <div className="h-9 w-9 border-2 border-foreground bg-foreground flex items-center justify-center shrink-0 mt-1">
+                        <Bot className="h-4 w-4 text-background" />
                       </div>
                     )}
                     <div
                       className={cn(
-                        "rounded-[24px] px-5 py-3.5 max-w-[85%] text-sm leading-relaxed",
+                        "px-5 py-3.5 max-w-[85%] text-sm leading-relaxed",
                         m.role === "user"
-                          ? "bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clay-button"
+                          ? "bg-foreground text-background"
                           : m.error
-                            ? "bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 shadow-clay-card"
-                            : "bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl shadow-clay-card border border-primary/5"
+                            ? "border-2 border-foreground bg-transparent text-foreground"
+                            : "border border-foreground bg-transparent text-foreground"
                       )}
+                      style={{ fontFamily: "var(--font-body), serif" }}
                     >
                       <div className="whitespace-pre-wrap break-words">
                         {m.content || (
@@ -353,21 +353,22 @@ export default function ChatPage() {
                       {m.error && (
                         <button
                           onClick={retry}
-                          className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors duration-100"
+                          style={{ fontFamily: "var(--font-code), monospace" }}
                         >
                           <RotateCcw className="h-3 w-3" /> Retry
                         </button>
                       )}
                     </div>
                     {m.role === "user" && (
-                      <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shrink-0 mt-1 shadow-clay-button">
-                        <User className="h-4 w-4 text-white" />
+                      <div className="h-9 w-9 border-2 border-foreground bg-foreground flex items-center justify-center shrink-0 mt-1">
+                        <User className="h-4 w-4 text-background" />
                       </div>
                     )}
                     {m.role === "assistant" && m.content && !m.error && (
                       <button
                         onClick={() => copyMessage(m.content, i)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity h-9 w-9 rounded-[20px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-[#2D2440]/50 mt-1 shadow-clay-card"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-100 h-9 w-9 border border-foreground flex items-center justify-center text-muted-foreground hover:bg-foreground hover:text-background mt-1"
                         title="Copy"
                       >
                         {copiedIdx === i ? (
@@ -385,8 +386,11 @@ export default function ChatPage() {
           )}
         </div>
 
+        {/* Divider */}
+        <div className="h-[1px] bg-foreground" />
+
         {/* Composer */}
-        <div className="border-t border-primary/10 pt-4 pb-4">
+        <div className="pt-4 pb-4">
           <div className="flex items-end gap-3">
             <div className="flex-1 relative">
               <Textarea
@@ -395,14 +399,15 @@ export default function ChatPage() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Send a message…"
-                className="min-h-[56px] max-h-[200px] resize-none rounded-[20px] bg-[#EFEBF5] dark:bg-[#2D2440] shadow-clay-pressed px-5 py-4 text-sm border-0 focus:bg-white dark:focus:bg-[#332B45] focus:ring-4 focus:ring-primary/20 transition-all duration-200 placeholder:text-muted-foreground"
+                className="min-h-[56px] max-h-[200px] resize-none rounded-none border-2 border-foreground bg-transparent focus:border-b-4 focus:outline-none px-5 py-4 text-sm placeholder:text-muted-foreground transition-colors duration-100"
+                style={{ fontFamily: "var(--font-body), serif" }}
                 rows={1}
               />
             </div>
             {loading ? (
               <button
                 onClick={cancel}
-                className="h-14 w-14 shrink-0 rounded-[20px] bg-gradient-to-br from-red-400 to-red-600 text-white shadow-clay-button hover:-translate-y-1 hover:shadow-clay-button-hover active:scale-[0.92] active:shadow-clay-pressed transition-all duration-200 flex items-center justify-center"
+                className="h-14 w-14 shrink-0 bg-foreground text-background uppercase tracking-widest text-sm hover:bg-background hover:text-foreground hover:border-2 hover:border-foreground transition-colors duration-100 flex items-center justify-center"
               >
                 <Square className="h-5 w-5" />
               </button>
@@ -410,17 +415,30 @@ export default function ChatPage() {
               <button
                 onClick={send}
                 disabled={!input.trim()}
-                className="h-14 w-14 shrink-0 rounded-[20px] bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clay-button hover:-translate-y-1 hover:shadow-clay-button-hover active:scale-[0.92] active:shadow-clay-pressed transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:hover:translate-y-0 disabled:active:scale-100"
+                className="h-14 w-14 shrink-0 bg-foreground text-background uppercase tracking-widest text-sm hover:bg-background hover:text-foreground hover:border-2 hover:border-foreground transition-colors duration-100 flex items-center justify-center disabled:opacity-50 disabled:hover:bg-foreground disabled:hover:text-background"
               >
                 <Send className="h-5 w-5" />
               </button>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-2 text-center font-medium">
+          <p
+            className="text-[11px] text-muted-foreground mt-2 text-center uppercase tracking-widest"
+            style={{ fontFamily: "var(--font-code), monospace" }}
+          >
             Press Enter to send, Shift+Enter for new line
           </p>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-foreground py-4">
+        <p
+          className="text-[11px] text-muted-foreground text-center uppercase tracking-widest"
+          style={{ fontFamily: "var(--font-code), monospace" }}
+        >
+          Powered by OpenChat
+        </p>
+      </footer>
     </div>
   );
 }

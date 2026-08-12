@@ -4,8 +4,6 @@ import { useState, useSyncExternalStore } from "react";
 import {
   Check,
   Copy,
-  ArrowLeft,
-  Zap,
   Menu,
   X,
   Terminal,
@@ -15,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Nav } from "@/components/nav";
 
 // ─── useOrigin hook (client-only window.location.origin) ────────────────────
 const emptySubscribe = () => () => {};
@@ -66,16 +65,16 @@ function CodeBlock({
   filename?: string;
 }) {
   return (
-    <div className="relative rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/60 bg-muted/40">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
-        <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
-        <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
-        <span className="ml-2 text-[11px] text-muted-foreground font-mono">
+    <div className="relative rounded-none border border-foreground bg-foreground/5 overflow-hidden">
+      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-foreground bg-foreground/10">
+        <span className="h-2.5 w-2.5 rounded-none bg-foreground/25" />
+        <span className="h-2.5 w-2.5 rounded-none bg-foreground/45" />
+        <span className="h-2.5 w-2.5 rounded-none bg-foreground/65" />
+        <span className="ml-2 text-[11px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
           {filename}
         </span>
       </div>
-      <pre className="overflow-x-auto p-4 text-[12.5px] leading-relaxed text-foreground/80 font-mono max-h-[520px] overflow-y-auto">
+      <pre className="overflow-x-auto p-4 text-[12.5px] leading-relaxed text-foreground/80 max-h-[520px] overflow-y-auto" style={{ fontFamily: "var(--font-code), monospace" }}>
         <code>{code}</code>
       </pre>
       <CopyButton text={code} />
@@ -131,9 +130,9 @@ const LANG_FILES: Record<Lang, string> = {
 function CodeTabs({ snippets }: { snippets: Record<Lang, string> }) {
   return (
     <Tabs defaultValue="curl" className="w-full">
-      <TabsList className="bg-muted/50 flex-wrap h-auto">
+      <TabsList className="bg-foreground/5 flex-wrap h-auto rounded-none">
         {LANG_ORDER.map((k) => (
-          <TabsTrigger key={k} value={k} className="text-xs">
+          <TabsTrigger key={k} value={k} className="text-xs rounded-none" style={{ fontFamily: "var(--font-code), monospace" }}>
             {LANG_LABELS[k]}
           </TabsTrigger>
         ))}
@@ -2004,18 +2003,20 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <a
             href={item.id === "reverse-engineering" ? "/reverse-engineering" : `#${item.id}`}
             onClick={onNavigate}
-            className="block px-3 py-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 font-medium"
+            className="block px-3 py-1.5 rounded-none text-muted-foreground hover:text-foreground hover:bg-foreground/5 font-medium transition-colors duration-100"
+            style={{ fontFamily: "var(--font-body), serif" }}
           >
             {item.label}
           </a>
           {item.children && (
-            <div className="ml-3 my-1 border-l border-border/60 pl-3 space-y-0.5">
+            <div className="ml-3 my-1 border-l border-foreground/20 pl-3 space-y-0.5">
               {item.children.map((child) => (
                 <a
                   key={child.id}
                   href={`#${child.id}`}
                   onClick={onNavigate}
-                  className="block px-3 py-1 rounded-md text-muted-foreground/80 hover:text-primary hover:bg-primary/5 text-[13px]"
+                  className="block px-3 py-1 rounded-none text-muted-foreground/80 hover:text-foreground hover:bg-foreground/5 text-[13px] transition-colors duration-100"
+                  style={{ fontFamily: "var(--font-body), serif" }}
                 >
                   {child.label}
                 </a>
@@ -2049,39 +2050,31 @@ export default function DocsPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-background">
-      {/* ambient background */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10"
-        style={{
-          backgroundImage:
-            "radial-gradient(60% 50% at 50% 0%, rgba(44,224,128,0.10), transparent 70%)",
-        }}
-      />
+      <Nav />
 
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Button asChild variant="ghost" size="sm" className="gap-1.5">
-              <Link href="/">
-                <ArrowLeft className="h-4 w-4" /> Back to home
-              </Link>
-            </Button>
-            <div className="h-5 w-px bg-border" />
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-                <Zap className="h-4 w-4 text-primary" />
-              </div>
-              <span className="text-sm font-semibold">API Docs</span>
-            </div>
+      {/* Page title */}
+      <div className="border-b border-foreground/20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8 flex items-center justify-between">
+          <div>
+            <h1
+              className="text-4xl sm:text-5xl tracking-tight text-foreground"
+              style={{ fontFamily: "var(--font-brand), serif" }}
+            >
+              Documentation
+            </h1>
+            <p
+              className="mt-2 text-muted-foreground text-sm"
+              style={{ fontFamily: "var(--font-body), serif" }}
+            >
+              API reference and integration guides
+            </p>
           </div>
           <Button
             variant="ghost"
             size="sm"
             className="lg:hidden"
             onClick={() => setMobileNavOpen((v) => !v)}
-            aria-label="Toggle navigation"
+            aria-label="Toggle table of contents"
           >
             {mobileNavOpen ? (
               <X className="h-4 w-4" />
@@ -2090,13 +2083,13 @@ export default function DocsPage() {
             )}
           </Button>
         </div>
-      </header>
+      </div>
 
       {/* Body: sidebar + content */}
       <div className="mx-auto max-w-7xl w-full px-4 sm:px-6 flex-1 flex">
         {/* Sidebar — desktop (sticky) */}
-        <aside className="hidden lg:block w-64 shrink-0 border-r border-border/60 py-8 pr-6 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto">
-          <p className="px-3 mb-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <aside className="hidden lg:block w-64 shrink-0 border-r border-foreground/20 py-8 pr-6 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto">
+          <p className="px-3 mb-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold" style={{ fontFamily: "var(--font-code), monospace" }}>
             On this page
           </p>
           <Sidebar />
@@ -2104,8 +2097,8 @@ export default function DocsPage() {
 
         {/* Sidebar — mobile (overlay drawer) */}
         {mobileNavOpen && (
-          <div className="lg:hidden fixed inset-0 top-16 z-30 bg-background/95 backdrop-blur p-4 overflow-y-auto">
-            <p className="px-3 mb-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="lg:hidden fixed inset-0 top-16 z-30 bg-background p-4 overflow-y-auto">
+            <p className="px-3 mb-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold" style={{ fontFamily: "var(--font-code), monospace" }}>
               On this page
             </p>
             <Sidebar onNavigate={() => setMobileNavOpen(false)} />
@@ -2119,19 +2112,23 @@ export default function DocsPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <Badge
                 variant="outline"
-                className="border-primary/30 text-primary bg-primary/5"
+                className="border-foreground text-foreground bg-foreground/5 rounded-none"
+                style={{ fontFamily: "var(--font-code), monospace" }}
               >
                 v1
               </Badge>
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+              <h2
+                className="text-3xl sm:text-4xl font-bold tracking-tight"
+                style={{ fontFamily: "var(--font-brand), serif" }}
+              >
                 FreeGPT API Docs
-              </h1>
+              </h2>
             </div>
-            <p className="text-muted-foreground max-w-2xl leading-relaxed">
+            <p className="text-muted-foreground max-w-2xl leading-relaxed" style={{ fontFamily: "var(--font-body), serif" }}>
               A free, OpenAI-compatible gateway with 285+ models across 34
               providers — plus web search and AI music generation. No API key,
               no auth, no rate limits. Point any OpenAI SDK at{" "}
-              <code className="text-primary">{baseUrl}</code> and go.
+              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{baseUrl}</code> and go.
             </p>
 
             <div className="grid sm:grid-cols-2 gap-3 pt-2">
@@ -2143,38 +2140,38 @@ export default function DocsPage() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-xl border border-border bg-card/40 p-4"
+                  className="border border-foreground p-6"
                 >
-                  <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                  <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                     {item.label}
                   </div>
-                  <div className="mt-1 font-mono text-sm text-foreground break-all">
+                  <div className="mt-1 text-sm text-foreground break-all" style={{ fontFamily: "var(--font-code), monospace" }}>
                     {item.value}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h3 className="font-semibold mb-2">Endpoints</h3>
-              <ul className="space-y-1.5 text-sm">
+            <div className="border border-foreground p-6">
+              <h3 className="font-semibold mb-2" style={{ fontFamily: "var(--font-brand), serif" }}>Endpoints</h3>
+              <ul className="space-y-1.5 text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
                 <li>
-                  <code className="text-primary">
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                     POST /api/v1/chat/completions
                   </code>{" "}
                   — OpenAI-compatible chat (streaming + non-streaming + tool
                   calling)
                 </li>
                 <li>
-                  <code className="text-primary">GET /api/v1/models</code> —
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/models</code> —
                   List all 285+ models
                 </li>
                 <li>
-                  <code className="text-primary">POST /api/v1/search</code> —
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
                   DuckDuckGo web search
                 </li>
                 <li>
-                  <code className="text-primary">
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                     POST /api/v1/music/generate
                   </code>{" "}
                   — ACE-Step 1.5 music generation
@@ -2185,8 +2182,8 @@ export default function DocsPage() {
 
           {/* Authentication */}
           <section id="authentication" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">Authentication</h2>
-            <p className="text-muted-foreground max-w-2xl leading-relaxed">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Authentication</h2>
+            <p className="text-muted-foreground max-w-2xl leading-relaxed" style={{ fontFamily: "var(--font-body), serif" }}>
               The gateway is{" "}
               <strong className="text-foreground">
                 wide open by design
@@ -2195,15 +2192,15 @@ export default function DocsPage() {
               token rotation, identity generation, and upstream authentication
               is handled automatically per-request.
             </p>
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
-              <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-              <div className="text-sm">
+            <div className="border border-foreground p-6 flex items-start gap-3">
+              <Check className="h-5 w-5 text-foreground shrink-0 mt-0.5" />
+              <div className="text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
                 <p className="font-medium text-foreground mb-1">
                   No auth headers needed
                 </p>
                 <p className="text-muted-foreground">
                   You can still pass{" "}
-                  <code className="text-primary">
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                     Authorization: Bearer not-needed
                   </code>{" "}
                   if your OpenAI SDK requires one — it will be ignored.
@@ -2225,11 +2222,11 @@ curl ${origin}/api/v1/chat/completions \\
           {/* Chat Completions */}
           <section id="chat-completions" className="scroll-mt-20 space-y-8">
             <div className="space-y-3">
-              <h2 className="text-2xl font-bold tracking-tight">
+              <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Chat Completions
               </h2>
-              <p className="text-muted-foreground max-w-2xl">
-                <code className="text-primary">
+              <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                   POST /api/v1/chat/completions
                 </code>{" "}
                 — fully OpenAI-compatible. Supports streaming,
@@ -2254,12 +2251,12 @@ curl ${origin}/api/v1/chat/completions \\
 
             {/* Basic */}
             <div id="chat-basic" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Basic (non-streaming)
               </h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 Send a request with{" "}
-                <code className="text-primary">stream: false</code> (the
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>stream: false</code> (the
                 default) and get a single JSON response containing the full
                 assistant message.
               </p>
@@ -2268,30 +2265,30 @@ curl ${origin}/api/v1/chat/completions \\
 
             {/* Streaming */}
             <div id="chat-streaming" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">Streaming</h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
-                Set <code className="text-primary">stream: true</code> to
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>Streaming</h3>
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+                Set <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>stream: true</code> to
                 receive Server-Sent Events with token-by-token deltas. Each
                 line is{" "}
-                <code className="text-primary">{"data: <json>"}</code>; the
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{"data: <json>"}</code>; the
                 stream ends with{" "}
-                <code className="text-primary">{"data: [DONE]"}</code>.
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{"data: [DONE]"}</code>.
               </p>
               <CodeTabs snippets={snippets.chatStreaming} />
             </div>
 
             {/* Tools (non-streaming) */}
             <div id="chat-tools" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Tool Calling (non-streaming)
               </h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 Pass an array of{" "}
-                <code className="text-primary">tools</code>. When the model
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>tools</code>. When the model
                 decides to call a function,{" "}
-                <code className="text-primary">finish_reason</code> will be{" "}
-                <code className="text-primary">{"\"tool_calls\""}</code> and{" "}
-                <code className="text-primary">message.tool_calls</code> will
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>finish_reason</code> will be{" "}
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{"\"tool_calls\""}</code> and{" "}
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>message.tool_calls</code> will
                 contain the function name + arguments.
               </p>
               <CodeTabs snippets={snippets.chatTools} />
@@ -2299,18 +2296,18 @@ curl ${origin}/api/v1/chat/completions \\
 
             {/* Tools (streaming) */}
             <div id="chat-tools-streaming" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>
                 Tool Calling (streaming)
               </h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 Same tools API, but with{" "}
-                <code className="text-primary">stream: true</code>. Tool
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>stream: true</code>. Tool
                 calls arrive as deltas — you must accumulate{" "}
-                <code className="text-primary">
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                   tool_calls[i].function.arguments
                 </code>{" "}
                 across chunks by{" "}
-                <code className="text-primary">index</code>.
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>index</code>.
               </p>
               <CodeTabs snippets={snippets.chatToolsStreaming} />
             </div>
@@ -2319,17 +2316,17 @@ curl ${origin}/api/v1/chat/completions \\
           {/* Models */}
           <section id="models" className="scroll-mt-20 space-y-8">
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold tracking-tight">Models</h2>
-              <p className="text-muted-foreground max-w-2xl">
-                <code className="text-primary">GET /api/v1/models</code> —
+              <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Models</h2>
+              <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+                <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/models</code> —
                 returns 285+ models across 34 providers in the OpenAI list
                 format.
               </p>
             </div>
 
             <div id="models-list" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">List all models</h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>List all models</h3>
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 Response format:
               </p>
               <CodeBlock
@@ -2357,9 +2354,9 @@ curl ${origin}/api/v1/chat/completions \\
             </div>
 
             <div id="models-filter" className="scroll-mt-20 space-y-3">
-              <h3 className="text-xl font-semibold">Filter by provider</h3>
-              <p className="text-muted-foreground text-sm max-w-2xl">
-                The <code className="text-primary">owned_by</code> field gives
+              <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>Filter by provider</h3>
+              <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+                The <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>owned_by</code> field gives
                 you the provider. Group models by it to filter, count, or
                 render provider dropdowns.
               </p>
@@ -2369,26 +2366,26 @@ curl ${origin}/api/v1/chat/completions \\
 
           {/* Web Search */}
           <section id="web-search" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">Web Search</h2>
-            <p className="text-muted-foreground max-w-2xl">
-              <code className="text-primary">POST /api/v1/search</code> —
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Web Search</h2>
+            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
               DuckDuckGo-backed web search. Returns titles, URLs, and snippets.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Request body
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "query": "best AI frameworks 2025",
   "num": 8
 }`}</pre>
               </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Response shape
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "query": "best AI frameworks 2025",
   "count": 8,
   "results": [
@@ -2402,22 +2399,22 @@ curl ${origin}/api/v1/chat/completions \\
 
           {/* Music Generation */}
           <section id="music" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
               Music Generation
             </h2>
-            <p className="text-muted-foreground max-w-2xl">
-              <code className="text-primary">
+            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                 POST /api/v1/music/generate
               </code>{" "}
               — generate AI music using ACE-Step 1.5. Returns base64-encoded
               MP3 audio you can save to disk or play directly in the browser.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Request body
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "prompt": "upbeat electronic dance",       // required
   "lyrics": "In the quiet of the night...",  // optional
   "duration": 30,        // seconds, optional
@@ -2427,11 +2424,11 @@ curl ${origin}/api/v1/chat/completions \\
   "language": "en"       // optional
 }`}</pre>
               </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Response shape
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "success": true,
   "audios": [
     {
@@ -2443,7 +2440,7 @@ curl ${origin}/api/v1/chat/completions \\
 }`}</pre>
               </div>
             </div>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
               Each example below shows how to decode the base64 audio and save
               it to an MP3 file — except the JavaScript tab, which plays the
               audio directly in the browser.
@@ -2453,11 +2450,11 @@ curl ${origin}/api/v1/chat/completions \\
 
           {/* Image Generation */}
           <section id="image-generation" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
               Image Generation
             </h2>
-            <p className="text-muted-foreground max-w-2xl">
-              <code className="text-primary">
+            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
+              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                 POST /api/v1/image/generate
               </code>{" "}
               — generate AI images from text prompts.{" "}
@@ -2467,20 +2464,20 @@ curl ${origin}/api/v1/chat/completions \\
               Pollinations gen, and FreeGPT.tech.
             </p>
 
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-primary mb-2">
+            <div className="border border-foreground p-6">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground mb-2" style={{ fontFamily: "var(--font-code), monospace" }}>
                 Providers
               </div>
-              <ul className="text-sm text-muted-foreground space-y-1.5">
+              <ul className="text-sm text-muted-foreground space-y-1.5" style={{ fontFamily: "var(--font-body), serif" }}>
                 <li>
                   <strong className="text-foreground">AI Horde</strong> — 161+
                   community SD/SDXL/Flux models. Free anonymous access (API key{" "}
-                  <code className="text-primary">0000000000</code>). Async
+                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>0000000000</code>). Async
                   submit→poll→fetch flow (30s–3min per image).
                 </li>
                 <li>
                   <strong className="text-foreground">Pollinations gen</strong> —
-                  the new <code className="text-primary">gen.pollinations.ai</code>{" "}
+                  the new <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>gen.pollinations.ai</code>{" "}
                   endpoint. 4 free anon models: flux, kontext, klein,
                   dreamshaper. Synchronous.
                 </li>
@@ -2498,11 +2495,11 @@ curl ${origin}/api/v1/chat/completions \\
             </div>
 
             <div className="grid sm:grid-cols-2 gap-3">
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Request body
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "prompt": "1girl, cute anime girl, blue hair",  // required
   "model": "horde-meinamix",        // default: pollgen-flux
   "width": 512,                     // optional
@@ -2515,11 +2512,11 @@ curl ${origin}/api/v1/chat/completions \\
   "nsfw": false                     // REQUIRED: true for NSFW models (18+)
 }`}</pre>
               </div>
-              <div className="rounded-xl border border-border bg-card/40 p-4">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider">
+              <div className="border border-foreground p-6">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
                   Response shape
                 </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80 font-mono">{`{
+                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
   "success": true,
   "images": [
     { "url": "https://...webp", "format": "webp" }
@@ -2538,31 +2535,31 @@ curl ${origin}/api/v1/chat/completions \\
               </div>
             </div>
 
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-500 mb-1">
+            <div className="border border-foreground p-6">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground mb-1" style={{ fontFamily: "var(--font-code), monospace" }}>
                 NSFW consent
               </div>
-              <p className="text-sm text-muted-foreground">
-                Models in the <code className="text-rose-500">nsfw-anime</code>{" "}
-                and <code className="text-rose-500">nsfw-realism</code>{" "}
-                categories (e.g. <code>horde-urpm</code>,{" "}
-                <code>horde-wai-ani-nsfw-ponyxl</code>) return HTTP 403 unless
-                you explicitly pass <code className="text-rose-500">"nsfw": true</code>{" "}
+              <p className="text-sm text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
+                Models in the <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>nsfw-anime</code>{" "}
+                and <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>nsfw-realism</code>{" "}
+                categories (e.g. <code style={{ fontFamily: "var(--font-code), monospace" }}>horde-urpm</code>,{" "}
+                <code style={{ fontFamily: "var(--font-code), monospace" }}>horde-wai-ani-nsfw-ponyxl</code>) return HTTP 403 unless
+                you explicitly pass <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>"nsfw": true</code>{" "}
                 in the request body. By doing so you confirm you are 18+ and
                 consent to adult content.
               </p>
             </div>
 
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
               Browse all 160+ image models and their categories on the{" "}
-              <a href="/models#image-models" className="text-primary hover:underline">
+              <a href="/models#image-models" className="text-foreground hover:underline transition-colors duration-100">
                 Models page
               </a>
-              . Or call <code className="text-primary">GET /api/v1/image/generate</code>{" "}
+              . Or call <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/image/generate</code>{" "}
               for the full machine-readable list.
             </p>
 
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
               Each example below generates an image and saves it to disk —
               except the JavaScript tab, which displays the image inline in the
               browser.
@@ -2572,10 +2569,10 @@ curl ${origin}/api/v1/chat/completions \\
 
           {/* Code Examples summary */}
           <section id="code-examples" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
               Code Examples (All Languages)
             </h2>
-            <p className="text-muted-foreground max-w-2xl">
+            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
               Every API above is documented in 8 languages: cURL, Python,
               JavaScript (browser/SDK), Node.js (native fetch), PHP, Go, Ruby,
               and a copy-paste HTML widget. Jump back to any section above to
@@ -2586,16 +2583,16 @@ curl ${origin}/api/v1/chat/completions \\
                 <a
                   key={lang}
                   href="#chat-basic"
-                  className="rounded-xl border border-border bg-card/40 hover:border-primary/40 hover:bg-primary/5 p-4 transition-colors"
+                  className="border border-foreground hover:bg-foreground/5 p-6 transition-colors duration-100"
                 >
                   <div className="flex items-center gap-2">
-                    <Terminal className="h-4 w-4 text-primary" />
-                    <span className="font-mono text-xs text-primary">
+                    <Terminal className="h-4 w-4 text-foreground" />
+                    <span className="text-xs text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                       {LANG_FILES[lang]}
                     </span>
                   </div>
-                  <div className="mt-2 font-semibold">{LANG_LABELS[lang]}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
+                  <div className="mt-2 font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>{LANG_LABELS[lang]}</div>
+                  <div className="mt-1 text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
                     Click to view a basic example
                   </div>
                 </a>
@@ -2606,19 +2603,19 @@ curl ${origin}/api/v1/chat/completions \\
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-border/60 py-6 mt-auto">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+      <footer className="border-t border-foreground/20 py-6 mt-auto">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
           <span>
             FreeGPT Gateway — free, OpenAI-compatible, no auth.
           </span>
           <div className="flex items-center gap-3">
-            <Link href="/" className="hover:text-primary">
+            <Link href="/" className="hover:text-foreground transition-colors duration-100">
               Home
             </Link>
-            <Link href="/settings" className="hover:text-primary">
+            <Link href="/settings" className="hover:text-foreground transition-colors duration-100">
               Settings
             </Link>
-            <a href="#overview" className="hover:text-primary">
+            <a href="#overview" className="hover:text-foreground transition-colors duration-100">
               Top
             </a>
           </div>

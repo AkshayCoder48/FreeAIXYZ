@@ -150,9 +150,6 @@ curl ${origin}/api/v1/chat/completions \\
 
     <select class="model-select" id="model">
       <option value="toolbaz-v4.5-fast">Toolbaz v4.5 Fast (default)</option>
-      <option value="nsfw-llama3-8b">NSFW LLaMA-3 8B (uncensored)</option>
-      <option value="nsfw-jollygen">NSFW JollyGen (uncensored roleplay)</option>
-      <option value="nsfw-lustre-reasoning">NSFW Lustre Reasoning (uncensored)</option>
       <option value="gpt-5">GPT-5</option>
       <option value="gpt-4o-latest">GPT-4o</option>
       <option value="claude-sonnet-4">Claude Sonnet 4</option>

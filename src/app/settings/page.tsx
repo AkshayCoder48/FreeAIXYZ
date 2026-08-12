@@ -1,23 +1,17 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Settings as SettingsIcon,
-  Check,
   ExternalLink,
   Server,
   Sun,
   Moon,
   Monitor,
-  Sparkles,
   ShieldCheck,
   Music,
   VideoIcon,
-  Key,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
 import { Nav } from "@/components/nav";
 import { useTheme } from "next-themes";
 
@@ -32,49 +26,53 @@ export default function SettingsPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-background overflow-hidden">
-      {/* Background blobs */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute h-[55vh] w-[55vh] -top-[10%] -left-[10%] rounded-full bg-[#8B5CF6]/10 blur-3xl animate-clay-float" />
-        <div className="absolute h-[45vh] w-[45vh] -right-[10%] bottom-[10%] rounded-full bg-[#EC4899]/10 blur-3xl animate-clay-float-delayed animation-delay-2000" />
-      </div>
-
       <Nav />
 
       <main className="flex-1 mx-auto max-w-4xl w-full px-4 sm:px-6 py-10 space-y-8">
         {/* Appearance */}
-        <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-6 sm:p-8 shadow-clay-card space-y-5 border border-primary/5">
+        <div className="border border-foreground p-6 sm:p-8 space-y-5">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-clay-button">
-              <SettingsIcon className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <SettingsIcon className="h-5 w-5 text-foreground" />
             </div>
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "var(--font-brand), sans-serif" }}
+              style={{ fontFamily: "var(--font-brand), serif" }}
             >
               Appearance
             </h2>
           </div>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Choose how the platform looks and feels.</p>
+            <p
+              className="text-sm text-foreground/50"
+              style={{ fontFamily: "var(--font-body), serif" }}
+            >
+              Choose how the platform looks and feels.
+            </p>
             <div className="grid grid-cols-3 gap-4">
               {[
-                { value: "light", icon: Sun, label: "Light", color: "from-amber-400 to-amber-600" },
-                { value: "dark", icon: Moon, label: "Dark", color: "from-indigo-400 to-indigo-600" },
-                { value: "system", icon: Monitor, label: "System", color: "from-sky-400 to-sky-600" },
+                { value: "light", icon: Sun, label: "Light" },
+                { value: "dark", icon: Moon, label: "Dark" },
+                { value: "system", icon: Monitor, label: "System" },
               ].map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setTheme(opt.value)}
-                  className={`flex flex-col items-center gap-3 rounded-[24px] p-5 transition-all duration-300 ${
+                  className={`flex flex-col items-center gap-3 p-5 transition-colors duration-100 ${
                     theme === opt.value
-                      ? "bg-gradient-to-br from-purple-400/15 to-purple-600/10 text-primary shadow-clay-pressed border border-primary/20"
-                      : "bg-white/40 dark:bg-[#2D2440]/40 text-muted-foreground shadow-clay-card hover:-translate-y-1 hover:shadow-clay-card-hover border border-primary/5"
+                      ? "bg-foreground text-background border-2 border-foreground"
+                      : "bg-background text-foreground border border-foreground hover:bg-foreground/5"
                   }`}
                 >
-                  <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${opt.color} flex items-center justify-center shadow-clay-button`}>
-                    <opt.icon className="h-5 w-5 text-white" />
+                  <div className="h-10 w-10 border border-current flex items-center justify-center">
+                    <opt.icon className="h-5 w-5" />
                   </div>
-                  <span className="text-sm font-bold" style={{ fontFamily: "var(--font-brand), sans-serif" }}>{opt.label}</span>
+                  <span
+                    className="text-sm font-bold"
+                    style={{ fontFamily: "var(--font-brand), serif" }}
+                  >
+                    {opt.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -82,84 +80,113 @@ export default function SettingsPage() {
         </div>
 
         {/* Free models info */}
-        <div className="rounded-[32px] bg-gradient-to-br from-purple-400/10 to-purple-600/5 p-6 sm:p-8 shadow-clay-card space-y-4 border border-primary/10">
+        <div className="border border-foreground p-6 sm:p-8 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-clay-button">
-              <ShieldCheck className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <ShieldCheck className="h-5 w-5 text-foreground" />
             </div>
             <h2
               className="text-xl font-bold"
-              style={{ fontFamily: "var(--font-brand), sans-serif" }}
+              style={{ fontFamily: "var(--font-brand), serif" }}
             >
               All models are free
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p
+            className="text-sm text-foreground/50 leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
             Every model on this platform works without any API key or signup.
             The gateway handles token rotation, identity generation, and API
             key management automatically behind the scenes.
           </p>
           <div className="flex flex-wrap gap-2 pt-1">
-            <Badge variant="outline" className="border-primary/20 text-primary bg-primary/5 rounded-[20px] px-3">
+            <span
+              className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-3 py-1"
+              style={{ fontFamily: "var(--font-code), monospace" }}
+            >
               Web Search: automatic
-            </Badge>
-            <Badge variant="outline" className="border-primary/20 text-primary bg-primary/5 rounded-[20px] px-3">
+            </span>
+            <span
+              className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-3 py-1"
+              style={{ fontFamily: "var(--font-code), monospace" }}
+            >
               Music Gen: automatic
-            </Badge>
-            <Badge variant="outline" className="border-primary/20 text-primary bg-primary/5 rounded-[20px] px-3">
+            </span>
+            <span
+              className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-3 py-1"
+              style={{ fontFamily: "var(--font-code), monospace" }}
+            >
               Free LLMs: no signup
-            </Badge>
+            </span>
           </div>
         </div>
 
         {/* Provider Status Overview */}
-        <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-6 sm:p-8 shadow-clay-card space-y-4 border border-primary/5">
+        <div className="border border-foreground p-6 sm:p-8 space-y-4">
           <h2
             className="text-xl font-bold flex items-center gap-3"
-            style={{ fontFamily: "var(--font-brand), sans-serif" }}
+            style={{ fontFamily: "var(--font-brand), serif" }}
           >
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center shadow-clay-button">
-              <Server className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <Server className="h-5 w-5 text-foreground" />
             </div>
             Provider Status
           </h2>
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="divide-y divide-foreground/10">
             {[
-              { name: "Toolbaz", models: 18, auth: "Token rotation", color: "from-purple-400 to-purple-600" },
-              { name: "FreeGPT.tech", models: 50, auth: "WASM + PoW", color: "from-pink-400 to-pink-600" },
-              { name: "OpenCode.ai", models: 8, auth: "None", color: "from-sky-400 to-sky-600" },
-              { name: "Kilo Code", models: 16, auth: "None", color: "from-emerald-400 to-emerald-600" },
-              { name: "SurfSense", models: 2, auth: "None", color: "from-amber-400 to-amber-600" },
-              { name: "UnlimitedAI", models: 2, auth: "None", color: "from-cyan-400 to-cyan-600" },
-              { name: "LLM7.io", models: 5, auth: "None", color: "from-indigo-400 to-indigo-600" },
-              { name: "AuroraAI", models: 1, auth: "Random x-local-id", color: "from-violet-400 to-violet-600" },
-              { name: "JollyGen", models: 1, auth: "Random guest_hash", color: "from-rose-400 to-rose-600" },
-              { name: "Pollinations", models: 1, auth: "None", color: "from-fuchsia-400 to-fuchsia-600" },
-              { name: "SpicyWriter", models: 2, auth: "Random anon id", color: "from-orange-400 to-orange-600" },
-              { name: "FreeAI4All", models: 8, auth: "Self-healing nonces", color: "from-teal-400 to-teal-600" },
-              { name: "Swarm", models: 7, auth: "None", color: "from-lime-400 to-lime-600" },
-              { name: "FreeChat", models: 1, auth: "None", color: "from-pink-400 to-pink-600" },
-              { name: "Miklium", models: 5, auth: "None", color: "from-sky-400 to-sky-600" },
-              { name: "NSFW Gateway", models: 5, auth: "BYOK (JWT token)", color: "from-amber-400 to-amber-600" },
+              { name: "Toolbaz", models: 18, auth: "Token rotation" },
+              { name: "FreeGPT.tech", models: 50, auth: "WASM + PoW" },
+              { name: "OpenCode.ai", models: 8, auth: "None" },
+              { name: "Kilo Code", models: 16, auth: "None" },
+              { name: "SurfSense", models: 2, auth: "None" },
+              { name: "UnlimitedAI", models: 2, auth: "None" },
+              { name: "LLM7.io", models: 5, auth: "None" },
+              { name: "AuroraAI", models: 1, auth: "Random x-local-id" },
+              { name: "JollyGen", models: 1, auth: "Random guest_hash" },
+              { name: "Pollinations", models: 1, auth: "None" },
+              { name: "SpicyWriter", models: 2, auth: "Random anon id" },
+              { name: "FreeAI4All", models: 8, auth: "Self-healing nonces" },
+              { name: "Swarm", models: 7, auth: "None" },
+              { name: "FreeChat", models: 1, auth: "None" },
+              { name: "Miklium", models: 5, auth: "None" },
             ].map((p) => (
               <div
                 key={p.name}
-                className="flex items-center justify-between rounded-[24px] bg-white/40 dark:bg-[#2D2440]/40 px-4 py-3 shadow-clay-card hover:-translate-y-1 hover:shadow-clay-card-hover transition-all duration-300 border border-primary/5"
+                className="flex items-center justify-between py-3 transition-colors duration-100 hover:bg-foreground/5"
               >
                 <div className="flex items-center gap-3">
-                  <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${p.color} flex items-center justify-center shadow-clay-button shrink-0`}>
-                    <Server className="h-3.5 w-3.5 text-white" />
+                  <div className="h-8 w-8 border border-foreground flex items-center justify-center shrink-0">
+                    <Server className="h-3.5 w-3.5 text-foreground" />
                   </div>
                   <div>
-                    <span className="text-sm font-bold" style={{ fontFamily: "var(--font-brand), sans-serif" }}>{p.name}</span>
-                    <span className="text-[10px] text-muted-foreground block">{p.auth}</span>
+                    <span
+                      className="text-sm font-bold"
+                      style={{ fontFamily: "var(--font-brand), serif" }}
+                    >
+                      {p.name}
+                    </span>
+                    <span
+                      className="text-[10px] text-foreground/50 block"
+                      style={{ fontFamily: "var(--font-code), monospace" }}
+                    >
+                      {p.auth}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{p.models}</span>
-                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 bg-emerald-500/5 text-[9px] rounded-[16px]">
+                  <span
+                    className="text-xs text-foreground/50"
+                    style={{ fontFamily: "var(--font-code), monospace" }}
+                  >
+                    {p.models}
+                  </span>
+                  <span
+                    className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-2 py-0.5"
+                    style={{ fontFamily: "var(--font-code), monospace" }}
+                  >
                     active
-                  </Badge>
+                  </span>
                 </div>
               </div>
             ))}
@@ -167,68 +194,84 @@ export default function SettingsPage() {
         </div>
 
         {/* Music Generation Info */}
-        <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-6 sm:p-8 shadow-clay-card space-y-4 border border-primary/5">
+        <div className="border border-foreground p-6 sm:p-8 space-y-4">
           <h2
             className="text-xl font-bold flex items-center gap-3"
-            style={{ fontFamily: "var(--font-brand), sans-serif" }}
+            style={{ fontFamily: "var(--font-brand), serif" }}
           >
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center shadow-clay-button">
-              <Music className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <Music className="h-5 w-5 text-foreground" />
             </div>
             Music Generation
           </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p
+            className="text-sm text-foreground/50 leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
             AI music generation via ACE-Step 1.5 is available at:
           </p>
-          <code className="block text-sm text-primary bg-primary/5 border border-primary/10 rounded-[20px] px-4 py-3 font-semibold" style={{ fontFamily: "var(--font-code), monospace" }}>
+          <code
+            className="block text-sm text-foreground border border-foreground/20 px-4 py-3 font-semibold"
+            style={{ fontFamily: "var(--font-code), monospace" }}
+          >
             POST /api/v1/music/generate
           </code>
-          <p className="text-xs text-muted-foreground leading-relaxed">
+          <p
+            className="text-xs text-foreground/50 leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
             Params: prompt, lyrics, duration, language, instrumental, bpm, key, seed, sampleMode, batchSize.
             The API key is auto-fetched per request — no user input needed.
           </p>
         </div>
 
         {/* Video Generation Info */}
-        <div className="rounded-[32px] bg-white/60 dark:bg-[#2D2440]/60 backdrop-blur-xl p-6 sm:p-8 shadow-clay-card space-y-4 border border-primary/5">
+        <div className="border border-foreground p-6 sm:p-8 space-y-4">
           <h2
             className="text-xl font-bold flex items-center gap-3"
-            style={{ fontFamily: "var(--font-brand), sans-serif" }}
+            style={{ fontFamily: "var(--font-brand), serif" }}
           >
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-clay-button">
-              <VideoIcon className="h-5 w-5 text-white" />
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <VideoIcon className="h-5 w-5 text-foreground" />
             </div>
-            Video Generation (BYOK)
+            Video Generation
           </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            AI video generation via NSFW Gateway (gateway.nsfwimg2video.com). 4 models: text2video, image2video, anime-girl, fast-face-swap.
+          <p
+            className="text-sm text-foreground/50 leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
+            Video generation is currently unavailable. Previously supported providers have been removed. We&apos;re working on adding new free video generation providers.
           </p>
-          <code className="block text-sm text-primary bg-primary/5 border border-primary/10 rounded-[20px] px-4 py-3 font-semibold" style={{ fontFamily: "var(--font-code), monospace" }}>
+          <code
+            className="block text-sm text-foreground border border-foreground/20 px-4 py-3 font-semibold"
+            style={{ fontFamily: "var(--font-code), monospace" }}
+          >
             POST /api/v1/video/generate
           </code>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Params: prompt, model, byok_token (required), byok_device_id (required), resourceId (for image-based models), duration (seconds).
-            BYOK = Bring Your Own Key — user provides their JWT token from nsfwimg2video.com.
+          <p
+            className="text-xs text-foreground/50 leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
+            This endpoint currently returns 503 (Service Unavailable). Check back later for updates.
           </p>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Key className="h-3.5 w-3.5 text-amber-500" />
-            <span>Get your token from nsfwimg2video.com — DevTools console: <code className="bg-muted px-1 rounded text-[10px]">copy(document.cookie.match(/access_token=([^;]+)/)?.[1])</code></span>
-          </div>
         </div>
 
         <div className="flex justify-center">
           <a
             href="/models"
-            className="inline-flex items-center gap-2 h-12 px-6 rounded-[20px] bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white font-bold tracking-wide shadow-clay-button hover:-translate-y-1 hover:shadow-clay-button-hover active:scale-[0.92] active:shadow-clay-pressed transition-all duration-200"
+            className="inline-flex items-center gap-2 h-12 px-6 bg-foreground text-background uppercase tracking-widest text-sm hover:bg-background hover:text-foreground hover:border-2 hover:border-foreground transition-colors duration-100"
           >
             View all models <ExternalLink className="h-4 w-4" />
           </a>
         </div>
       </main>
 
-      <footer className="mt-auto border-t border-primary/5 bg-white/40 dark:bg-[#1A1625]/40 backdrop-blur-xl">
+      <footer className="mt-auto border-t border-foreground/10">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6">
-          <span className="text-xs text-muted-foreground font-medium">
+          <span
+            className="text-xs text-foreground/50 font-medium"
+            style={{ fontFamily: "var(--font-code), monospace" }}
+          >
             FreeAI4All Gateway · All models free, no key required
           </span>
         </div>

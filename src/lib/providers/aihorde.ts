@@ -5,7 +5,7 @@
  * GPUs running community Stable Diffusion / SDXL / Flux models. Anonymous
  * access is permitted using the magic API key "0000000000" — no signup,
  * no account, no payment. 161+ community models are available across all
- * style families (anime, realism, NSFW anime, NSFW realism, mixed/artistic).
+ * style families (anime, realism, mixed/artistic).
  *
  * Flow (async, submit → poll → fetch):
  *   1. POST https://stablehorde.net/api/v2/generate/async

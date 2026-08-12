@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
-import { Nunito, DM_Sans, JetBrains_Mono } from "next/font/google";
+import { Playfair_Display, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
-const nunito = Nunito({
+const playfair = Playfair_Display({
   variable: "--font-brand",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800", "900"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
-const dmSans = DM_Sans({
+const sourceSerif = Source_Serif_4({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["300", "400", "500", "600", "700"],
+  style: ["normal", "italic"],
 });
 
 const jetbrains = JetBrains_Mono({
@@ -56,7 +58,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${nunito.variable} ${dmSans.variable} ${jetbrains.variable} antialiased bg-background text-foreground`}
+        className={`${playfair.variable} ${sourceSerif.variable} ${jetbrains.variable} antialiased bg-background text-foreground`}
         suppressHydrationWarning
       >
         <ThemeProvider
@@ -71,7 +73,7 @@ export default function RootLayout({
           position="bottom-right"
           toastOptions={{
             classNames: {
-              toast: "border-border bg-popover text-popover-foreground rounded-[20px]",
+              toast: "border-border bg-popover text-popover-foreground rounded-none",
             },
           }}
         />
