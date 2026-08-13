@@ -4,7 +4,7 @@ import { ImageModelsShowcase } from "@/components/landing/image-models-showcase"
 import { MODELS, PROVIDER_INFO, type ProviderId } from "@/lib/providers";
 import { IMAGE_MODELS, imageModelCounts } from "@/lib/providers/image-registry";
 import { Badge } from "@/components/ui/badge";
-import { Server, Cpu, Zap, Terminal, ImageIcon, ExternalLink, Sparkles, Layers, Globe } from "lucide-react";
+import { Server, Cpu, Zap, Terminal, ImageIcon, ExternalLink, Sparkles, Layers, Globe, Wrench, Volume2, Search, Eraser, Maximize, Palette, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
@@ -201,6 +201,76 @@ export default function ModelsPage() {
             </Button>
           </div>
           <ImageModelsShowcase />
+        </div>
+
+        {/* Miscellaneous APIs section */}
+        <div className="mt-16 mb-10" id="misc-apis">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-10 w-10 border border-foreground flex items-center justify-center">
+              <Wrench className="h-5 w-5" />
+            </div>
+            <h2
+              className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground"
+              style={{ fontFamily: "var(--font-brand), serif" }}
+            >
+              Miscellaneous APIs
+            </h2>
+          </div>
+          <p
+            className="text-base text-muted-foreground mb-5 max-w-2xl leading-relaxed"
+            style={{ fontFamily: "var(--font-body), serif" }}
+          >
+            6 utility APIs beyond chat and image generation — all free, no API key.
+          </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+            {[
+              { icon: Volume2, name: "Text-to-Speech", endpoint: "POST /api/v1/tts", desc: "Kokoro TTS — natural human-like speech from text. 5 voices, any language." },
+              { icon: Search, name: "Web Search", endpoint: "POST /api/v1/search", desc: "Miklium AI-powered search with DuckDuckGo and Google fallback." },
+              { icon: Eraser, name: "Remove Background", endpoint: "POST /api/v1/image/mask", desc: "Remove image background instantly. Powered by Casper Tech." },
+              { icon: Maximize, name: "Upscale & Deblur", endpoint: "POST /api/v1/image/mask", desc: "Enlarge, sharpen, and deblur images. 2x-4x upscale." },
+              { icon: Palette, name: "Colorize", endpoint: "POST /api/v1/image/mask", desc: "Add color to black & white photos automatically." },
+              { icon: Wand2, name: "AI Edit & Face Swap", endpoint: "POST /api/v1/image/mask", desc: "Prompt-based image editing and face swapping." },
+            ].map((api) => (
+              <div
+                key={api.name}
+                className="border border-foreground p-6 hover:bg-foreground hover:text-background transition-colors duration-100"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-8 w-8 border border-foreground flex items-center justify-center">
+                    <api.icon className="h-4 w-4" />
+                  </div>
+                  <span
+                    className="text-sm font-bold text-foreground"
+                    style={{ fontFamily: "var(--font-brand), serif" }}
+                  >
+                    {api.name}
+                  </span>
+                </div>
+                <code
+                  className="text-xs text-foreground font-semibold block mb-2"
+                  style={{ fontFamily: "var(--font-code), monospace" }}
+                >
+                  {api.endpoint}
+                </code>
+                <p
+                  className="text-[11px] text-muted-foreground leading-relaxed"
+                  style={{ fontFamily: "var(--font-body), serif" }}
+                >
+                  {api.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+          <Button
+            asChild
+            size="sm"
+            className="gap-1.5 bg-foreground text-background uppercase tracking-widest text-sm hover:bg-background hover:text-foreground hover:border-2 hover:border-foreground transition-colors duration-100"
+            style={{ borderRadius: 0 }}
+          >
+            <Link href="/tools">
+              <Wrench className="h-3.5 w-3.5" /> Try in Tools
+            </Link>
+          </Button>
         </div>
 
         {/* API quickstart */}

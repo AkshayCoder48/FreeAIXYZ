@@ -12,6 +12,7 @@ import {
   BookOpen,
   Settings,
   MessageSquare,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ const NAV_LINKS = [
   { href: "/image", label: "Image Studio", icon: ImageIcon },
   { href: "/video", label: "Video Studio", icon: VideoIcon },
   { href: "/docs", label: "Docs", icon: BookOpen },
+  { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
