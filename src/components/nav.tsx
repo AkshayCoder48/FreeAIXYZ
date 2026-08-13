@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Menu,
+  Sun,
   Cpu,
   ImageIcon,
   VideoIcon,
@@ -22,6 +23,11 @@ import {
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+const emptySubscribe = () => () => {};
+function useMounted() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false);
+}
+
 const NAV_LINKS = [
   { href: "/chat", label: "Playground", icon: MessageSquare },
   { href: "/models", label: "Models", icon: Cpu },
@@ -34,6 +40,7 @@ const NAV_LINKS = [
 export function Nav() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mounted = useMounted();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-foreground bg-background">
@@ -73,44 +80,54 @@ export function Nav() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
-          <ThemeToggle />
+          {mounted ? <ThemeToggle /> : (
+            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Toggle theme">
+              <Sun className="h-4 w-4" />
+            </Button>
+          )}
 
           {/* Mobile hamburger */}
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-10 w-10 md:hidden">
-                <Menu className="h-5 w-5" strokeWidth={1.5} />
-                <span className="sr-only">Menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-72 p-6 bg-background border-l border-foreground">
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <div className="flex flex-col gap-0 mt-4">
-                {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                  const active =
-                    href === "/"
-                      ? pathname === "/"
-                      : pathname.startsWith(href);
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      onClick={() => setMobileOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 text-sm font-medium uppercase tracking-widest border-b border-foreground/10 transition-colors duration-100",
-                        active
-                          ? "bg-foreground text-background"
-                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" strokeWidth={1.5} />
-                      {label}
-                    </Link>
-                  );
-                })}
-              </div>
-            </SheetContent>
-          </Sheet>
+          {mounted ? (
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10 md:hidden">
+                  <Menu className="h-5 w-5" strokeWidth={1.5} />
+                  <span className="sr-only">Menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-72 p-6 bg-background border-l border-foreground">
+                <SheetTitle className="sr-only">Navigation</SheetTitle>
+                <div className="flex flex-col gap-0 mt-4">
+                  {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+                    const active =
+                      href === "/"
+                        ? pathname === "/"
+                        : pathname.startsWith(href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setMobileOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-3 text-sm font-medium uppercase tracking-widest border-b border-foreground/10 transition-colors duration-100",
+                          active
+                            ? "bg-foreground text-background"
+                            : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" strokeWidth={1.5} />
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
+          ) : (
+            <Button variant="ghost" size="icon" className="h-10 w-10 md:hidden" aria-label="Menu">
+              <Menu className="h-5 w-5" strokeWidth={1.5} />
+            </Button>
+          )}
         </div>
       </nav>
     </header>

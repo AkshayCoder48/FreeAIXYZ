@@ -2,7 +2,7 @@
 
 /**
  * Image models showcase — a searchable, filterable grid of all text-to-image
- * models (AI Horde, Pollinations gen, FreeGPT image, nekos.life, purrbot).
+ * models (Pollinations gen, FreeGPT image, Casper Tech).
  *
  * Separate from ModelsShowcase (which shows chat text models) because image
  * models use a different endpoint (/api/v1/image/generate) and have different

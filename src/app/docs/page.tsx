@@ -1561,206 +1561,6 @@ end`,
 </html>`,
 });
 
-const music = (o: string): Record<Lang, string> => ({
-  curl: `# Generate music and save the returned base64 MP3 to disk
-curl ${o}/api/v1/music/generate \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "prompt": "upbeat electronic dance",
-    "lyrics": "In the quiet of the night...",
-    "duration": 30,
-    "instrumental": false,
-    "bpm": 120,
-    "key": "C",
-    "language": "en"
-  }' | \\
-  python3 -c "import json,sys,base64; d=json.load(sys.stdin); open('music.mp3','wb').write(base64.b64decode(d['audios'][0]['audio_base64'])); print('Saved music.mp3')"
-
-# Response shape:
-# {
-#   "success": true,
-#   "audios": [{"audio_base64": "<base64 mp3>", "format": "mp3"}],
-#   "metadata": "<text description from the model>"
-# }`,
-  python: `import requests, base64
-
-res = requests.post("${o}/api/v1/music/generate", json={
-    "prompt": "lo-fi hip hop with piano",
-    "lyrics": "In the quiet of the night...",
-    "duration": 30,
-    "instrumental": False,
-    "bpm": 120,
-    "key": "C",
-    "language": "en",
-})
-data = res.json()
-if data["success"]:
-    audio = base64.b64decode(data["audios"][0]["audio_base64"])
-    with open("song.mp3", "wb") as f:
-        f.write(audio)
-    print("Saved song.mp3")
-    print("Metadata:", data["metadata"])
-else:
-    print("Error:", data.get("error"))`,
-  javascript: `// Browser — play audio directly (no file needed)
-const res = await fetch("${o}/api/v1/music/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    prompt: "upbeat electronic dance",
-    duration: 30,
-  }),
-});
-const data = await res.json();
-if (data.success) {
-  const audio = new Audio("data:audio/mp3;base64," + data.audios[0].audio_base64);
-  audio.play();
-  console.log("Metadata:", data.metadata);
-} else {
-  console.error("Error:", data.error);
-}`,
-  node: `// Node.js — save to file
-import fs from "node:fs/promises";
-
-const res = await fetch("${o}/api/v1/music/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    prompt: "ambient chill",
-    duration: 60,
-    instrumental: true,
-    bpm: 90,
-    key: "Am",
-  }),
-});
-const data = await res.json();
-if (data.success) {
-  await fs.writeFile(
-    "music.mp3",
-    Buffer.from(data.audios[0].audio_base64, "base64"),
-  );
-  console.log("Saved music.mp3");
-  console.log("Metadata:", data.metadata);
-} else {
-  console.error("Error:", data.error);
-}`,
-  php: `<?php
-$ch = curl_init("${o}/api/v1/music/generate");
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-    "prompt" => "jazz piano",
-    "lyrics" => "Moonlight on the river...",
-    "duration" => 30,
-    "bpm" => 110,
-    "key" => "C",
-    "language" => "en",
-]));
-curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$data = json_decode(curl_exec($ch), true);
-if ($data["success"]) {
-    file_put_contents("music.mp3", base64_decode($data["audios"][0]["audio_base64"]));
-    echo "Saved music.mp3\\n";
-    echo "Metadata: " . $data["metadata"] . "\\n";
-}`,
-  go: `package main
-
-import (
-    "bytes"
-    "encoding/base64"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "os"
-)
-
-func main() {
-    body, _ := json.Marshal(map[string]interface{}{
-        "prompt":       "rock guitar",
-        "duration":     30,
-        "instrumental": false,
-        "bpm":          130,
-        "key":          "E",
-    })
-    res, _ := http.Post("${o}/api/v1/music/generate", "application/json", bytes.NewBuffer(body))
-    defer res.Body.Close()
-    var data struct {
-        Success bool \`json:"success"\`
-        Audios  []struct {
-            AudioBase64 string \`json:"audio_base64"\`
-            Format      string \`json:"format"\`
-        } \`json:"audios"\`
-        Metadata string \`json:"metadata"\`
-    }
-    json.NewDecoder(res.Body).Decode(&data)
-    if !data.Success {
-        fmt.Println("Generation failed")
-        return
-    }
-    audio, _ := base64.StdEncoding.DecodeString(data.Audios[0].AudioBase64)
-    os.WriteFile("music.mp3", audio, 0644)
-    fmt.Println("Saved music.mp3")
-    fmt.Println("Metadata:", data.Metadata)
-}`,
-  ruby: `require 'net/http'
-require 'json'
-require 'base64'
-
-uri = URI("${o}/api/v1/music/generate")
-res = Net::HTTP.post(uri, {
-  prompt: "classical violin",
-  lyrics: "Whispers in the wind...",
-  duration: 30,
-  bpm: 80,
-  key: "G",
-  language: "en",
-}.to_json, "Content-Type" => "application/json")
-
-data = JSON.parse(res.body)
-if data["success"]
-  File.write("music.mp3", Base64.decode64(data["audios"][0]["audio_base64"]), mode: "wb")
-  puts "Saved music.mp3"
-  puts "Metadata: #{data['metadata']}"
-end`,
-  html: `<!-- Music generation widget with play button -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>FreeGPT Music</title>
-</head>
-<body>
-  <input id="prompt" value="upbeat electronic dance" style="width:300px" />
-  <button onclick="generate()">Generate</button>
-  <button id="play" disabled onclick="document.getElementById('audio').play()">Play</button>
-  <audio id="audio" controls></audio>
-  <script>
-    async function generate() {
-      const play = document.getElementById('play');
-      const audio = document.getElementById('audio');
-      play.disabled = true;
-      audio.src = "";
-      const res = await fetch("${o}/api/v1/music/generate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          prompt: document.getElementById('prompt').value,
-          duration: 30,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        audio.src = "data:audio/mp3;base64," + data.audios[0].audio_base64;
-        play.disabled = false;
-      } else {
-        alert("Error: " + (data.error || "unknown"));
-      }
-    }
-  </script>
-</body>
-</html>`,
-});
-
 // ─── Image Generation snippets ─────────────────────────────────────────────
 const imageGen = (o: string): Record<Lang, string> => ({
   curl: `# Generate an image and save it to disk
@@ -1983,7 +1783,6 @@ const NAV: NavItem[] = [
     ],
   },
   { id: "web-search", label: "Web Search" },
-  { id: "music", label: "Music Generation" },
   { id: "image-generation", label: "Image Generation" },
   { id: "image-manipulation", label: "Image Manipulation" },
   { id: "code-examples", label: "Code Examples" },
@@ -2037,7 +1836,6 @@ export default function DocsPage() {
     modelsList: modelsList(origin),
     modelsFilter: modelsFilter(origin),
     webSearch: webSearch(origin),
-    music: music(origin),
     imageGen: imageGen(origin),
   };
 
@@ -2121,7 +1919,7 @@ export default function DocsPage() {
             </div>
             <p className="text-muted-foreground max-w-2xl leading-relaxed" style={{ fontFamily: "var(--font-body), serif" }}>
               A free, OpenAI-compatible gateway with 285+ models across 34
-              providers — plus web search and AI music generation. No API key,
+              providers — plus web search. No API key,
               no auth, no rate limits. Point any OpenAI SDK at{" "}
               <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{baseUrl}</code> and go.
             </p>
@@ -2164,12 +1962,6 @@ export default function DocsPage() {
                 <li>
                   <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
                   Miklium AI-powered web search
-                </li>
-                <li>
-                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                    POST /api/v1/music/generate
-                  </code>{" "}
-                  — ACE-Step 1.5 music generation
                 </li>
               </ul>
             </div>
@@ -2390,57 +2182,6 @@ curl ${origin}/api/v1/chat/completions \\
               </div>
             </div>
             <CodeTabs snippets={snippets.webSearch} />
-          </section>
-
-          {/* Music Generation */}
-          <section id="music" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
-              Music Generation
-            </h2>
-            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
-              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                POST /api/v1/music/generate
-              </code>{" "}
-              — generate AI music using ACE-Step 1.5. Returns base64-encoded
-              MP3 audio you can save to disk or play directly in the browser.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Request body
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "prompt": "upbeat electronic dance",       // required
-  "lyrics": "In the quiet of the night...",  // optional
-  "duration": 30,        // seconds, optional
-  "instrumental": false, // optional
-  "bpm": 120,            // optional
-  "key": "C",            // optional
-  "language": "en"       // optional
-}`}</pre>
-              </div>
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Response shape
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "success": true,
-  "audios": [
-    {
-      "audio_base64": "<base64 mp3>",
-      "format": "mp3"
-    }
-  ],
-  "metadata": "<text description>"
-}`}</pre>
-              </div>
-            </div>
-            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
-              Each example below shows how to decode the base64 audio and save
-              it to an MP3 file — except the JavaScript tab, which plays the
-              audio directly in the browser.
-            </p>
-            <CodeTabs snippets={snippets.music} />
           </section>
 
           {/* Image Generation */}
