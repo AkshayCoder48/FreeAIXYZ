@@ -1,10 +1,11 @@
 /**
  * FreeGPT.tech provider — WASM-secured OpenAI-compatible gateway.
  *
- * Host: https://standalone.freegpt.win:3001  (backup host, no Cloudflare)
+ * Host: https://freegpt.tech (Cloudflare-protected, proper headers required)
  *
  * Each request goes through a proof-of-work challenge handshake:
- *   1. Generate a fresh UUID (per-request identity).
+ *   1. Generate a fresh UUID (per-request identity, custom format like
+ *      R526072895DLHQJQ38S9SCHY8 — NOT UUID v4).
  *   2. GET /api/challenge with the uuid → server returns a challenge +
  *      difficulty level.
  *   3. Run the WASM signer (src/lib/freegpt-signer.cjs, loaded from
@@ -16,6 +17,14 @@
  *   5. Parse the OpenAI-format response — streaming (SSE) or non-streaming
  *      (JSON).
  *
+ * Required headers beyond the secure payload:
+ *   - uuid:       Custom format ID (e.g., R526072895DLHQJQ38S9SCHY8)
+ *   - userid:    Short alphanumeric user ID (e.g., 7HEnCbQpBgjpWf9RtceDB)
+ *   - x-session-id: UUID v4 session identifier
+ *   - x-finger:  Browser fingerprint hash
+ *   - summarize: "false"
+ *   - model:     The model name being requested
+ *
  * The WASM signer is a Node-only CommonJS module (uses jsdom for browser
  * API mocking for canvas fingerprinting), loaded lazily on first request
  * via require(). It runs only on the server — the chat route already
@@ -24,7 +33,7 @@
  * Challenges are single-use and valid for ~5 minutes, so we mint a new
  * one for every request — never reused.
  *
- * Rate limit: 8 requests/minute per client IP (best-effort, in-memory).
+ * Rate limit: 30 requests/minute per client IP (best-effort, in-memory).
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
@@ -33,13 +42,12 @@ import type { Provider, ProviderCompletionRequest } from "./types";
 // bundled for Edge runtime without breaking. The actual calls only happen
 // in the Node.js proxy route.
 
-const BASE_URL = "https://standalone.freegpt.win:3001";
+const BASE_URL = "https://freegpt.tech";
 const CHALLENGE_PATH = "/api/challenge";
-const FALLBACK_URL = "https://standalone.freegpt.win:3001";
 const COMPLETIONS_PATH = "/api/openai/oneapi/v1/chat/completions";
 
 /** Maximum requests per minute per client IP. */
-const RATE_LIMIT_PER_MIN = 8;
+const RATE_LIMIT_PER_MIN = 30;
 
 // ─── WASM signer lazy loader ──────────────────────────────────────────────
 type SignerModule = {
@@ -128,10 +136,32 @@ function rateLimitCheck(ip: string): boolean {
 
 /** Random hex nonce, 32 chars (16 bytes). */
 function makeNonce(): string {
-  // Use Web Crypto API (available in both Edge and Node.js)
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Generate a FreeGPT-style UUID — uppercase alphanumeric, ~24 chars.
+ * Format like: R526072895DLHQJQ38S9SCHY8
+ * This is the format FreeGPT expects, NOT standard UUID v4.
+ */
+function makeFreeGptUuid(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join("");
+}
+
+/**
+ * Generate a short userid — alphanumeric, ~20 chars.
+ * Format like: 7HEnCbQpBgjpWf9RtceDB
+ */
+function makeUserId(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join("");
 }
 
 /** Best-effort client IP extraction from request headers. */
@@ -161,6 +191,8 @@ async function fetchChallenge(uuid: string): Promise<{
       Accept: "application/json",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      Referer: "https://freegpt.tech/",
+      "Accept-Language": "en-US,en;q=0.9",
     },
   });
   if (!res.ok) {
@@ -335,13 +367,15 @@ export const freeGptProvider: Provider = {
   async complete(req) {
     // Rate limit
     if (!rateLimitCheck(extractClientIp(req))) {
-      throw new Error("FreeGPT rate limit exceeded (8 req/min). Try again shortly.");
+      throw new Error("FreeGPT rate limit exceeded (30 req/min). Try again shortly.");
     }
 
     const signer = await ensureSignerLoaded();
 
-    // 1. Fresh UUID per request
-    const uuid = crypto.randomUUID();
+    // 1. Fresh UUID per request (FreeGPT custom format, NOT UUID v4)
+    const uuid = makeFreeGptUuid();
+    const userid = makeUserId();
+    const sessionId = crypto.randomUUID();
 
     // 2. Fetch challenge
     const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
@@ -360,7 +394,8 @@ export const freeGptProvider: Provider = {
     );
 
     // 4. Build headers — secure payload fields + explicit uuid/challenge +
-    //    empty cf-turnstile-token (server allows empty for non-CF host).
+    //    empty cf-turnstile-token (server allows empty for non-CF host) +
+    //    FreeGPT-specific headers (userid, x-finger, x-session-id, summarize, model).
     const secureHeaders = securePayloadToHeaders(payload);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -368,6 +403,11 @@ export const freeGptProvider: Provider = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
       uuid: uuid,
+      userid: userid,
+      "x-session-id": sessionId,
+      "x-finger": secureHeaders["x-secure-fingerprint"] || "",
+      model: req.model.upstream,
+      summarize: "false",
       "x-secure-challenge": challenge,
       "x-secure-challenge-id": challengeId,
       "x-secure-challenge-expires-at": String(expiresAt),
@@ -389,10 +429,11 @@ export const freeGptProvider: Provider = {
         content: m.content,
       })),
       stream: false,
-      temperature: 0.5,
+      temperature: 1,
       presence_penalty: 0,
       frequency_penalty: 0,
       top_p: 1,
+      max_completion_tokens: 16000,
     };
 
     // Pass through tools if provided (FreeGPT supports native tool calling)
@@ -451,13 +492,15 @@ export const freeGptProvider: Provider = {
   async *stream(req) {
     // Rate limit
     if (!rateLimitCheck(extractClientIp(req))) {
-      throw new Error("FreeGPT rate limit exceeded (8 req/min). Try again shortly.");
+      throw new Error("FreeGPT rate limit exceeded (30 req/min). Try again shortly.");
     }
 
     const signer = await ensureSignerLoaded();
 
-    // 1. Fresh UUID per request
-    const uuid = crypto.randomUUID();
+    // 1. Fresh UUID per request (FreeGPT custom format, NOT UUID v4)
+    const uuid = makeFreeGptUuid();
+    const userid = makeUserId();
+    const sessionId = crypto.randomUUID();
 
     // 2. Fetch challenge
     const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
@@ -483,6 +526,11 @@ export const freeGptProvider: Provider = {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
       uuid: uuid,
+      userid: userid,
+      "x-session-id": sessionId,
+      "x-finger": secureHeaders["x-secure-fingerprint"] || "",
+      model: req.model.upstream,
+      summarize: "false",
       "x-secure-challenge": challenge,
       "x-secure-challenge-id": challengeId,
       "x-secure-challenge-expires-at": String(expiresAt),
@@ -504,10 +552,11 @@ export const freeGptProvider: Provider = {
         content: m.content,
       })),
       stream: true,
-      temperature: 0.5,
+      temperature: 1,
       presence_penalty: 0,
       frequency_penalty: 0,
       top_p: 1,
+      max_completion_tokens: 16000,
     };
 
     // Pass through tools if provided (FreeGPT supports native tool calling)

@@ -105,7 +105,7 @@ export default function SettingsPage() {
               className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-3 py-1"
               style={{ fontFamily: "var(--font-code), monospace" }}
             >
-              Web Search: automatic
+              Web Search: Miklium (default)
             </span>
             <span
               className="border border-foreground/30 text-foreground/70 text-[9px] uppercase tracking-widest px-3 py-1"

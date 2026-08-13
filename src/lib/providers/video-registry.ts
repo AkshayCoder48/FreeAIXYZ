@@ -3,7 +3,6 @@
  *
  * Previously supported:
  *   - dreemy        — Dreemy.ai (removed: guests have 0 credits, BYOK-only)
- *   - nsfw-gateway  — NSFW Gateway (removed: BYOK-only, unreliable)
  *
  * Video generation may be re-added with a free provider in the future.
  */
@@ -14,8 +13,7 @@ export type VideoCategory =
   | "general"
   | "animation"
   | "anime"
-  | "face-swap"
-  | "unrestricted";
+  | "face-swap";
 
 export interface VideoModel {
   id: string;
@@ -25,7 +23,6 @@ export interface VideoModel {
   upstreamModel: string;
   needsImage: boolean;
   defaultDuration: number;
-  nsfw: boolean;
   description: string;
 }
 
@@ -39,7 +36,7 @@ export function findVideoModel(id: string): VideoModel | undefined {
 /** Count by category. */
 export function videoModelCounts(): Record<VideoCategory, number> {
   const counts: Record<VideoCategory, number> = {
-    general: 0, animation: 0, anime: 0, "face-swap": 0, unrestricted: 0,
+    general: 0, animation: 0, anime: 0, "face-swap": 0,
   };
   for (const m of VIDEO_MODELS) counts[m.category]++;
   return counts;

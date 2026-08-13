@@ -8,7 +8,7 @@
  *   - casper-tech      — Casper Technology via apis.xcasper.space (2 models, GET API)
  *
  * Endpoint: POST /api/v1/image/generate
- * Body: { prompt, model?, width?, height?, seed?, nologo?, nsfw? }
+ * Body: { prompt, model?, width?, height?, seed?, nologo?, enhance? }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -31,7 +31,6 @@ interface ImageRequest {
   seed?: number;
   nologo?: boolean;
   enhance?: boolean;
-  nsfw?: boolean;
 }
 
 const DEFAULT_MODEL_ID = "poll-flux";
@@ -281,14 +280,14 @@ export async function POST(request: Request) {
 
 export async function GET() {
   const models = IMAGE_MODELS.map((m) => ({
-    id: m.id, name: m.name, category: m.category, provider: m.provider, nsfw: m.nsfw,
+    id: m.id, name: m.name, category: m.category, provider: m.provider,
     upstream_model: m.upstreamModel, description: m.description,
     default_width: m.width, default_height: m.height,
   }));
   return NextResponse.json({
     service: "Image Generation", total_models: models.length,
     endpoint: "POST /api/v1/image/generate",
-    params: ["prompt (required)", "model", "width", "height", "seed", "nologo", "nsfw"],
+    params: ["prompt (required)", "model", "width", "height", "seed", "nologo", "enhance"],
     categories: ["anime", "realism", "mixed", "general"],
     providers: "All providers are 100% free, no signup, no API key.",
     models,

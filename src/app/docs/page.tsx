@@ -1432,7 +1432,7 @@ puts by_provider["toolbaz"].map { |m| m["id"] }`,
 });
 
 const webSearch = (o: string): Record<Lang, string> => ({
-  curl: `# Web search via DuckDuckGo
+  curl: `# Web search via Miklium (AI-powered, default)
 curl ${o}/api/v1/search \\
   -H "Content-Type: application/json" \\
   -d '{"query": "best AI frameworks 2025", "num": 8}'
@@ -1767,48 +1767,41 @@ const imageGen = (o: string): Record<Lang, string> => ({
 curl ${o}/api/v1/image/generate \\
   -H "Content-Type: application/json" \\
   -d '{
-    "prompt": "1girl, cute anime girl, blue hair, masterpiece",
-    "model": "horde-meinamix",
-    "width": 512,
-    "height": 768,
-    "nsfw": false
-  }' | python3 -c "import json,sys,urllib.request; d=json.load(sys.stdin); urllib.request.urlretrieve(d['images'][0]['url'], 'image.webp'); print('Saved image.webp')"
+    "prompt": "A beautiful sunset over mountains, cinematic lighting",
+    "model": "poll-flux",
+    "width": 1024,
+    "height": 1024
+  }' | python3 -c "import json,sys,urllib.request; d=json.load(sys.stdin); urllib.request.urlretrieve(d['images'][0]['url'], 'image.jpeg'); print('Saved image.jpeg')"
 
-# List all 160+ image models:
+# List all image models:
 curl ${o}/api/v1/image/generate
 
 # Response shape:
 # {
 #   "success": true,
-#   "images": [{"url": "https://...webp", "format": "webp"}],
-#   "model": "horde-meinamix",
-#   "model_name": "MeinaMix",
-#   "category": "anime",
-#   "provider": "aihorde",
+#   "images": [{"url": "https://...jpeg", "format": "jpeg"}],
+#   "model": "poll-flux",
+#   "model_name": "Flux (Pollinations)",
+#   "category": "mixed",
+#   "provider": "pollinations-gen",
 #   "prompt": "...",
-#   "width": 512, "height": 768
-# }
-
-# NSFW models (18+) require explicit consent:
-curl ${o}/api/v1/image/generate \\
-  -H "Content-Type: application/json" \\
-  -d '{"prompt":"...","model":"horde-urpm","nsfw":true}'`,
+#   "width": 1024, "height": 1024
+# }`,
   python: `import requests, shutil
 
 res = requests.post("${o}/api/v1/image/generate", json={
-    "prompt": "1girl, cute anime girl, blue hair, masterpiece",
-    "model": "horde-meinamix",   # anime. Also: horde-juggernaut-xl (realism), horde-flux-1-schnell-fp8 (mixed)
-    "width": 512,
-    "height": 768,
-    "nsfw": False,
+    "prompt": "A beautiful sunset over mountains, cinematic lighting",
+    "model": "poll-flux",   # mixed. Also: freegpt-gpt-image-2 (general), freegpt-nano-banana-2 (realism)
+    "width": 1024,
+    "height": 1024,
 }, timeout=300)
 data = res.json()
 if data.get("success"):
     img_url = data["images"][0]["url"]
     with requests.get(img_url, stream=True) as r:
-        with open("image.webp", "wb") as f:
+        with open("image.jpeg", "wb") as f:
             shutil.copyfileobj(r.raw, f)
-    print("Saved image.webp — model:", data["model_name"], "category:", data["category"])
+    print("Saved image.jpeg — model:", data["model_name"], "category:", data["category"])
 else:
     print("Error:", data.get("error"))`,
   javascript: `// Browser — show the generated image inline
@@ -1817,8 +1810,8 @@ const res = await fetch("${o}/api/v1/image/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "photorealistic portrait, golden hour, 8k",
-    model: "horde-juggernaut-xl",   // realism
-    width: 768, height: 768,
+    model: "freegpt-nano-banana-2",   // realism
+    width: 1024, height: 1024,
   }),
 });
 const data = await res.json();
@@ -1841,23 +1834,23 @@ const res = await fetch("${o}/api/v1/image/generate", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     prompt: "cyberpunk city at night, neon, cinematic",
-    model: "horde-flux-1-schnell-fp8",   // mixed
+    model: "casper-flux",   // mixed
     width: 1024, height: 1024,
   }),
 });
 const data = await res.json();
 if (data.success) {
   const imgRes = await fetch(data.images[0].url);
-  await pipeline(Readable.fromWeb(imgRes.body), fs.createWriteStream("image.webp"));
-  console.log("Saved image.webp");
+  await pipeline(Readable.fromWeb(imgRes.body), fs.createWriteStream("image.jpeg"));
+  console.log("Saved image.jpeg");
 } else {
   console.error("Error:", data.error);
 }`,
   php: `<?php
 $body = json_encode([
-  "prompt" => "1girl, cute anime girl, blue hair",
-  "model" => "horde-meinamix",
-  "width" => 512, "height" => 768,
+  "prompt" => "A beautiful sunset over mountains",
+  "model" => "poll-flux",
+  "width" => 1024, "height" => 1024,
 ]);
 $ch = curl_init("${o}/api/v1/image/generate");
 curl_setopt($ch, CURLOPT_POST, true);
@@ -1869,8 +1862,8 @@ $res = curl_exec($ch); curl_close($ch);
 $data = json_decode($res, true);
 if ($data["success"] ?? false) {
   $img = file_get_contents($data["images"][0]["url"]);
-  file_put_contents("image.webp", $img);
-  echo "Saved image.webp\\n";
+  file_put_contents("image.jpeg", $img);
+  echo "Saved image.jpeg\\n";
 } else {
   echo "Error: " . ($data["error"] ?? "unknown") . "\\n";
 }`,
@@ -1881,8 +1874,8 @@ import (
 func main() {
   body, _ := json.Marshal(map[string]any{
     "prompt": "photorealistic mountain landscape",
-    "model": "horde-juggernaut-xl",
-    "width": 768, "height": 768,
+    "model": "freegpt-flux-2-flex",
+    "width": 1024, "height": 1024,
   })
   res, _ := http.Post("${o}/api/v1/image/generate", "application/json", bytes.NewBuffer(body))
   var data struct {
@@ -1893,9 +1886,9 @@ func main() {
   json.NewDecoder(res.Body).Decode(&data)
   if data.Success {
     imgRes, _ := http.Get(data.Images[0].Url)
-    f, _ := os.Create("image.webp")
+    f, _ := os.Create("image.jpeg")
     io.Copy(f, imgRes.Body); f.Close()
-    fmt.Println("Saved image.webp")
+    fmt.Println("Saved image.jpeg")
   } else {
     fmt.Println("Error:", data.Error)
   }
@@ -1906,17 +1899,17 @@ require 'open-uri'
 
 uri = URI("${o}/api/v1/image/generate")
 res = Net::HTTP.post(uri, {
-  prompt: "1girl, anime, blue hair, masterpiece",
-  model: "horde-meinamix",
-  width: 512, height: 768,
+  prompt: "A beautiful sunset over mountains",
+  model: "poll-flux",
+  width: 1024, height: 1024,
 }.to_json, "Content-Type" => "application/json")
 
 data = JSON.parse(res.body)
 if data["success"]
   URI.open(data["images"][0]["url"]) do |img|
-    File.write("image.webp", img.read, mode: "wb")
+    File.write("image.jpeg", img.read, mode: "wb")
   end
-  puts "Saved image.webp — #{data['model_name']}"
+  puts "Saved image.jpeg — #{data['model_name']}"
 else
   puts "Error: #{data['error']}"
 end`,
@@ -1925,19 +1918,20 @@ end`,
 <html lang="en">
 <head><meta charset="UTF-8"><title>FreeAIXYZ Image Gen</title></head>
 <body>
-  <input id="prompt" value="1girl, cute anime girl, blue hair" style="width:320px" />
+  <input id="prompt" value="A beautiful sunset over mountains" style="width:320px" />
   <select id="model">
-    <option value="horde-meinamix">Anime — MeinaMix</option>
-    <option value="horde-juggernaut-xl">Realism — Juggernaut XL</option>
-    <option value="horde-flux-1-schnell-fp8">Mixed — Flux Schnell</option>
-    <option value="pollgen-flux">Pollinations — Flux</option>
+    <option value="poll-flux">Pollinations — Flux</option>
     <option value="freegpt-gpt-image-2">FreeGPT — GPT-Image 2</option>
+    <option value="freegpt-nano-banana-2">FreeGPT — Nano Banana 2</option>
+    <option value="freegpt-flux-2-flex">FreeGPT — Flux 2 Flex</option>
+    <option value="freegpt-gemini-flash-image">FreeGPT — Gemini Flash Image</option>
+    <option value="casper-flux">Casper Tech — Flux</option>
   </select>
   <button onclick="gen()">Generate</button>
   <div id="out"></div>
   <script>
     async function gen() {
-      document.getElementById('out').innerHTML = 'Generating… (AI Horde can take 30s–3min)';
+      document.getElementById('out').innerHTML = 'Generating…';
       const res = await fetch("${o}/api/v1/image/generate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -2169,7 +2163,7 @@ export default function DocsPage() {
                 </li>
                 <li>
                   <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
-                  DuckDuckGo web search
+                  Miklium AI-powered web search
                 </li>
                 <li>
                   <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
@@ -2370,7 +2364,7 @@ curl ${origin}/api/v1/chat/completions \\
             <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Web Search</h2>
             <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
               <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
-              DuckDuckGo-backed web search. Returns titles, URLs, and snippets.
+              Miklium AI-powered web search (default). Also supports DuckDuckGo and Google. Returns titles, URLs, and snippets.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="border border-foreground p-6">
@@ -2459,7 +2453,7 @@ curl ${origin}/api/v1/chat/completions \\
                 POST /api/v1/image/generate
               </code>{" "}
               — generate AI images from text prompts.{" "}
-              <strong className="text-foreground">7 models</strong> across 4
+              <strong className="text-foreground">6 models</strong> across 4
               style families: anime, realism, mixed/artistic, and general. Powered by
               Pollinations, FreeGPT.tech, and Casper Technology — all free, no API key.
             </p>
@@ -2522,23 +2516,8 @@ curl ${origin}/api/v1/chat/completions \\
               </div>
             </div>
 
-            <div className="border border-foreground p-6">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground mb-1" style={{ fontFamily: "var(--font-code), monospace" }}>
-                NSFW consent
-              </div>
-              <p className="text-sm text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                Models in the <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>nsfw-anime</code>{" "}
-                and <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>nsfw-realism</code>{" "}
-                categories (e.g. <code style={{ fontFamily: "var(--font-code), monospace" }}>horde-urpm</code>,{" "}
-                <code style={{ fontFamily: "var(--font-code), monospace" }}>horde-wai-ani-nsfw-ponyxl</code>) return HTTP 403 unless
-                you explicitly pass <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>"nsfw": true</code>{" "}
-                in the request body. By doing so you confirm you are 18+ and
-                consent to adult content.
-              </p>
-            </div>
-
             <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
-              Browse all 7 image models and their categories on the{" "}
+              Browse all 6 image models and their categories on the{" "}
               <a href="/models#image-models" className="text-foreground hover:underline transition-colors duration-100">
                 Models page
               </a>
@@ -2602,10 +2581,10 @@ curl ${origin}/api/v1/chat/completions \\
                   POST /api/v1/image/analyze
                 </code>
                 <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  Image processing: colorize, remove background, upscale, or deblur.
+                  Image processing actions: removebg, enlarger, unblur, unwatermark, colorize.
                 </p>
                 <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  params: url, action
+                  body: &#123;action, url, ...&#125;
                 </div>
               </div>
               <div className="border border-foreground p-5 space-y-2">

@@ -167,14 +167,7 @@ export function ImageModelsShowcase({ allowNsfw = false }: { allowNsfw?: boolean
                   </div>
                   <h3 className="font-semibold text-sm truncate">{m.name}</h3>
                 </div>
-                {m.nsfw && (
-                  <Badge
-                    variant="outline"
-                    className="shrink-0 text-[9px] border-rose-500/40 text-rose-500 bg-rose-500/5"
-                  >
-                    Mature
-                  </Badge>
-                )}
+
               </div>
 
               <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 min-h-[28px]">

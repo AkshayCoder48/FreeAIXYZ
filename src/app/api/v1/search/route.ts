@@ -1,10 +1,10 @@
 /**
  * Web Search API — returns search results from multiple providers.
  *
- * Providers: DuckDuckGo HTML, Google fallback, Miklium AI search.
+ * Providers: Miklium AI search (default), DuckDuckGo HTML fallback, Google fallback.
  *
  * Endpoint: POST /api/v1/search
- * Body: { query: string, num?: number, engine?: "duckduckgo"|"google"|"miklium" }
+ * Body: { query: string, num?: number, engine?: "miklium"|"duckduckgo"|"google" }
  * Response: { results: [{ title, url, snippet }], query, count, engine }
  *
  * GET /api/v1/search?q=...&num=...&engine=... also works.
@@ -135,30 +135,29 @@ async function googleSearch(query: string, num: number): Promise<SearchResult[]>
 
 /** Unified search — tries engines in order, falls back on failure. */
 async function search(query: string, num: number = 8, engine?: string): Promise<{ results: SearchResult[]; engine: string }> {
-  // Miklium AI search (synthesized answers)
-  if (engine === "miklium") {
+  // Miklium AI search (default — AI-powered, best quality)
+  if (!engine || engine === "miklium") {
     const results = await mikliumSearch(query);
     if (results.length > 0) return { results, engine: "miklium" };
     // Fall through to DDG
   }
 
-  // DuckDuckGo (default, most reliable)
-  if (!engine || engine === "duckduckgo") {
+  // DuckDuckGo fallback
+  if (engine === "duckduckgo") {
     const results = await duckduckgoSearch(query, num);
     if (results.length > 0) return { results, engine: "duckduckgo" };
-    // Fall through to Google
   }
 
   // Google fallback
-  if (!engine || engine === "google") {
+  if (engine === "google") {
     const results = await googleSearch(query, num);
     if (results.length > 0) return { results, engine: "google" };
   }
 
-  // Last resort: try Miklium if not tried yet
-  if (engine !== "miklium") {
-    const results = await mikliumSearch(query);
-    if (results.length > 0) return { results, engine: "miklium" };
+  // Last resort: try DDG if not tried yet
+  if (engine !== "duckduckgo") {
+    const results = await duckduckgoSearch(query, num);
+    if (results.length > 0) return { results, engine: "duckduckgo" };
   }
 
   return { results: [], engine: "none" };
@@ -199,7 +198,7 @@ export async function GET(request: Request) {
   if (!query) {
     return NextResponse.json({
       service: "Web Search API",
-      engines: ["duckduckgo", "google", "miklium"],
+      engines: ["miklium", "duckduckgo", "google"],
       usage: "POST /api/v1/search with { query: string, num?: number, engine?: string }",
       example: "GET /api/v1/search?q=latest+news&num=8&engine=miklium",
     });

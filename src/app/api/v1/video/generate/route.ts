@@ -1,7 +1,7 @@
 /**
  * Video Generation API — Disabled
  *
- * All video generation providers (Dreemy.ai, NSFW Gateway) have been removed.
+ * All video generation providers have been removed.
  * This endpoint returns a 503 error for POST requests and a disabled status for GET.
  */
 
@@ -14,7 +14,7 @@ export async function POST() {
   return NextResponse.json(
     {
       error: "No video generation providers available. Video generation has been disabled.",
-      hint: "Video generation providers (Dreemy.ai, NSFW Gateway) have been removed. Check back later for new providers.",
+      hint: "Video generation providers have been removed. Check back later for new providers.",
     },
     { status: 503 },
   );
@@ -25,6 +25,6 @@ export async function GET() {
     service: "Video Generation",
     total_models: 0,
     status: "disabled",
-    message: "Video generation is currently unavailable. Previously supported providers (Dreemy.ai, NSFW Gateway) have been removed.",
+    message: "Video generation is currently unavailable. Previously supported providers have been removed.",
   });
 }

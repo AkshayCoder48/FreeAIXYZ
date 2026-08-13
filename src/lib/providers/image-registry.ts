@@ -46,27 +46,26 @@ export interface ImageModel {
   negativePrompt?: string;
   steps?: number;
   cfgScale?: number;
-  nsfw: boolean;
   description: string;
 }
 
 // ─── Pollinations base model (1 real AI generation model) ──────────────────
 const POLL_MODELS: ImageModel[] = [
-  { id: "poll-flux", name: "Flux (Pollinations)", provider: "pollinations-gen", category: "mixed", upstreamModel: "flux", width: 1024, height: 1024, nsfw: false, description: "Black Forest Labs Flux — versatile, high-quality, photorealistic and artistic" },
+  { id: "poll-flux", name: "Flux (Pollinations)", provider: "pollinations-gen", category: "mixed", upstreamModel: "flux", width: 1024, height: 1024, description: "Black Forest Labs Flux — versatile, high-quality, photorealistic and artistic" },
 ];
 
 // ─── FreeGPT image models (4 real AI generators, WASM-secured, no key) ──────
 const FREEGPT_MODELS: ImageModel[] = [
-  { id: "freegpt-gpt-image-2", name: "GPT-Image 2 (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gpt-image-2", width: 1024, height: 1024, nsfw: false, description: "OpenAI GPT-Image 2 via FreeGPT.tech — high-quality generation" },
-  { id: "freegpt-nano-banana-2", name: "Nano Banana 2 (FreeGPT)", provider: "freegpt", category: "realism", upstreamModel: "nano-banana-2", width: 1024, height: 1024, nsfw: false, description: "Google Gemini Nano Banana 2 via FreeGPT.tech — photorealistic" },
-  { id: "freegpt-flux-2-flex", name: "Flux 2 Flex (FreeGPT)", provider: "freegpt", category: "realism", upstreamModel: "flux-2-flex", width: 1024, height: 1024, nsfw: false, description: "Black Forest Labs Flux 2 Flex via FreeGPT.tech — photorealistic" },
-  { id: "freegpt-gemini-flash-image", name: "Gemini Flash Image (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gemini-3.1-flash-image", width: 1024, height: 1024, nsfw: false, description: "Google Gemini 3.1 Flash Image via FreeGPT.tech — fast, high-quality" },
+  { id: "freegpt-gpt-image-2", name: "GPT-Image 2 (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gpt-image-2", width: 1024, height: 1024, description: "OpenAI GPT-Image 2 via FreeGPT.tech — high-quality generation" },
+  { id: "freegpt-nano-banana-2", name: "Nano Banana 2 (FreeGPT)", provider: "freegpt", category: "realism", upstreamModel: "nano-banana-2", width: 1024, height: 1024, description: "Google Gemini Nano Banana 2 via FreeGPT.tech — photorealistic" },
+  { id: "freegpt-flux-2-flex", name: "Flux 2 Flex (FreeGPT)", provider: "freegpt", category: "realism", upstreamModel: "flux-2-flex", width: 1024, height: 1024, description: "Black Forest Labs Flux 2 Flex via FreeGPT.tech — photorealistic" },
+  { id: "freegpt-gemini-flash-image", name: "Gemini Flash Image (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gemini-3.1-flash-image", width: 1024, height: 1024, description: "Google Gemini 3.1 Flash Image via FreeGPT.tech — fast, high-quality" },
 ];
 
 // ─── Casper Tech image models (1 AI generator, free, no key) ──────────────
 // Casper Tech API uses GET requests with query parameters on apis.xcasper.space
 const CASPER_MODELS: ImageModel[] = [
-  { id: "casper-flux", name: "Flux (Casper Tech)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-image", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux image generation — free, no API key, via apis.xcasper.space" },
+  { id: "casper-flux", name: "Flux (Casper Tech)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-image", width: 1024, height: 1024, description: "Casper Tech Flux image generation — free, no API key, via apis.xcasper.space" },
 ];
 
 export const IMAGE_MODELS: readonly ImageModel[] = [
