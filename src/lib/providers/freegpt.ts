@@ -46,6 +46,9 @@ const BASE_URL = "https://freegpt.tech";
 const CHALLENGE_PATH = "/api/challenge";
 const COMPLETIONS_PATH = "/api/openai/oneapi/v1/chat/completions";
 
+/** Fallback host (direct, no Cloudflare) — may also be blocked. */
+const FALLBACK_BASE_URL = "https://standalone.freegpt.win:3001";
+
 /** Maximum requests per minute per client IP. */
 const RATE_LIMIT_PER_MIN = 30;
 
@@ -175,6 +178,7 @@ function extractClientIp(req: ProviderCompletionRequest): string {
 /**
  * Fetch a fresh challenge for the given uuid. Returns the challenge string
  * and difficulty level. The challenge is single-use and valid ~5 minutes.
+ * Tries the primary host (freegpt.tech) first, then fallback host.
  */
 async function fetchChallenge(uuid: string): Promise<{
   challenge: string;
@@ -182,50 +186,61 @@ async function fetchChallenge(uuid: string): Promise<{
   challengeId: string;
   expiresAt: number;
   version: string;
+  baseUrl: string;
 }> {
-  const res = await fetch(`${BASE_URL}${CHALLENGE_PATH}`, {
-    method: "GET",
-    headers: {
-      uuid: uuid,
-      "x-origin": "https://freegpt.tech",
-      Accept: "application/json",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      Referer: "https://freegpt.tech/",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    if (res.status === 403) {
-      throw new Error(
-        "FreeGPT challenge endpoint is currently blocked (HTTP 403). Try a different model or retry later.",
-      );
+  const challengeHeaders = {
+    uuid: uuid,
+    "x-origin": "https://freegpt.tech",
+    Accept: "application/json",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    Referer: "https://freegpt.tech/",
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+
+  // Try both hosts — primary (Cloudflare) then fallback (direct)
+  const hosts = [BASE_URL, FALLBACK_BASE_URL];
+  let lastError = "";
+
+  for (const host of hosts) {
+    try {
+      const res = await fetch(`${host}${CHALLENGE_PATH}`, {
+        method: "GET",
+        headers: challengeHeaders,
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        lastError = `HTTP ${res.status} from ${host}`;
+        continue; // Try next host
+      }
+      const json = (await res.json()) as Record<string, unknown>;
+      const challenge =
+        (json.challenge as string) ??
+        (json.token as string) ??
+        (json.challenge_token as string) ??
+        "";
+      const difficulty =
+        (json.difficulty as number) ??
+        (json.level as number) ??
+        2;
+      const challengeId = (json.challengeId as string) ?? "";
+      const expiresAt = (json.expiresAt as number) ?? 0;
+      const version = (json.version as string) ?? "1.0";
+      if (!challenge || !challengeId) {
+        lastError = `Unexpected challenge response from ${host}`;
+        continue;
+      }
+      return { challenge, difficulty, challengeId, expiresAt, version, baseUrl: host };
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "Unknown error";
+      continue;
     }
-    throw new Error(
-      `FreeGPT challenge returned HTTP ${res.status}: ${txt.slice(0, 200)}`,
-    );
   }
-  const json = (await res.json()) as Record<string, unknown>;
-  // Be defensive — the API may use any of several field names.
-  const challenge =
-    (json.challenge as string) ??
-    (json.token as string) ??
-    (json.challenge_token as string) ??
-    "";
-  const difficulty =
-    (json.difficulty as number) ??
-    (json.level as number) ??
-    2;
-  const challengeId = (json.challengeId as string) ?? "";
-  const expiresAt = (json.expiresAt as number) ?? 0;
-  const version = (json.version as string) ?? "1.0";
-  if (!challenge || !challengeId) {
-    throw new Error(
-      `FreeGPT challenge response unexpected: ${JSON.stringify(json).slice(0, 300)}`,
-    );
-  }
-  return { challenge, difficulty, challengeId, expiresAt, version };
+
+  throw new Error(
+    `FreeGPT challenge failed on all hosts (${lastError}). The API may be temporarily blocked from this server. Try a different provider or retry later.`,
+  );
 }
 
 /**
@@ -377,8 +392,8 @@ export const freeGptProvider: Provider = {
     const userid = makeUserId();
     const sessionId = crypto.randomUUID();
 
-    // 2. Fetch challenge
-    const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
+    // 2. Fetch challenge (tries both hosts, returns working baseUrl)
+    const { challenge, difficulty, challengeId, expiresAt, version, baseUrl } = await fetchChallenge(uuid);
 
     // 3. Generate secure payload via WASM signer
     const timestamp = Date.now().toString();
@@ -421,7 +436,7 @@ export const freeGptProvider: Provider = {
       ...secureHeaders,
     };
 
-    // 5. POST completion (non-streaming)
+    // 5. POST completion (non-streaming) — use the baseUrl from challenge
     const body: Record<string, unknown> = {
       model: req.model.upstream,
       messages: req.messages.map((m) => ({
@@ -442,7 +457,7 @@ export const freeGptProvider: Provider = {
       body.tool_choice = req.toolChoice || "auto";
     }
 
-    const res = await fetch(`${BASE_URL}${COMPLETIONS_PATH}`, {
+    const res = await fetch(`${baseUrl}${COMPLETIONS_PATH}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -502,8 +517,8 @@ export const freeGptProvider: Provider = {
     const userid = makeUserId();
     const sessionId = crypto.randomUUID();
 
-    // 2. Fetch challenge
-    const { challenge, difficulty, challengeId, expiresAt, version } = await fetchChallenge(uuid);
+    // 2. Fetch challenge (tries both hosts, returns working baseUrl)
+    const { challenge, difficulty, challengeId, expiresAt, version, baseUrl } = await fetchChallenge(uuid);
 
     // 3. Generate secure payload via WASM signer
     const timestamp = Date.now().toString();
@@ -565,7 +580,7 @@ export const freeGptProvider: Provider = {
       body.tool_choice = req.toolChoice || "auto";
     }
 
-    const res = await fetch(`${BASE_URL}${COMPLETIONS_PATH}`, {
+    const res = await fetch(`${baseUrl}${COMPLETIONS_PATH}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
