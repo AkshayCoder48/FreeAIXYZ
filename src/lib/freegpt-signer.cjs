@@ -32,12 +32,21 @@ function createCanvasMock() {
   };
 }
 
-// Document mock
+// Document mock — includes querySelector/querySelectorAll to avoid breaking
+// Next.js SSR which checks for these methods on global.document.
 const documentMock = {
   createElement: function(tag) {
     if (tag === 'canvas') return createCanvasMock();
     return { style: {}, setAttribute: function() {}, appendChild: function() {} };
   },
+  querySelector: function() { return null; },
+  querySelectorAll: function() { return []; },
+  getElementById: function() { return null; },
+  getElementsByClassName: function() { return []; },
+  getElementsByTagName: function() { return []; },
+  body: null,
+  head: null,
+  documentElement: null,
 };
 
 // Window mock
@@ -77,9 +86,20 @@ const windowMock = {
   },
 };
 
-// Set globals if not already set
-if (typeof global.window === 'undefined') global.window = windowMock;
-if (typeof global.document === 'undefined') global.document = documentMock;
+// Set globals only when needed (not at module load time)
+// to avoid polluting Next.js's SSR environment.
+
+/** Temporarily install browser globals for WASM execution. */
+function installGlobals() {
+  if (typeof global.window === 'undefined') global.window = windowMock;
+  if (typeof global.document === 'undefined') global.document = documentMock;
+}
+
+/** Remove browser globals after WASM execution. */
+function removeGlobals() {
+  if (global.window === windowMock) delete global.window;
+  if (global.document === documentMock) delete global.document;
+}
 
 // --- WASM helper functions ---
 
@@ -120,6 +140,9 @@ function takeFromExternrefTable0(idx) {
 
 async function initWasm(wasmPath) {
   if (wasmInitialized) return;
+
+  // Temporarily install globals for WASM init
+  installGlobals();
 
   // Resolve path relative to project root
   let resolvedPath = wasmPath;
@@ -257,6 +280,9 @@ async function initWasm(wasmPath) {
   }
 
   wasmInitialized = true;
+
+  // Remove globals after WASM init
+  removeGlobals();
 }
 
 // --- Public API ---
@@ -264,23 +290,31 @@ async function initWasm(wasmPath) {
 function generateSecurePayload(uuid, timestamp, nonce, challenge, clientIp, difficulty) {
   if (!wasmInitialized) throw new Error('WASM not initialized. Call initWasm() first.');
 
-  const ptr0 = passStringToWasm0(uuid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-  const len0 = WASM_VECTOR_LEN;
-  const ptr1 = passStringToWasm0(timestamp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-  const len1 = WASM_VECTOR_LEN;
-  const ptr2 = passStringToWasm0(nonce, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-  const len2 = WASM_VECTOR_LEN;
-  const ptr3 = passStringToWasm0(challenge, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-  const len3 = WASM_VECTOR_LEN;
-  const ptr4 = passStringToWasm0(clientIp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-  const len4 = WASM_VECTOR_LEN;
+  // Temporarily set globals for WASM execution (it accesses window/document)
+  installGlobals();
 
-  const ret = wasm.generate_secure_payload(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, difficulty);
+  try {
+    const ptr0 = passStringToWasm0(uuid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(timestamp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(nonce, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ptr3 = passStringToWasm0(challenge, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ptr4 = passStringToWasm0(clientIp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len4 = WASM_VECTOR_LEN;
 
-  if (ret[2]) {
-    throw takeFromExternrefTable0(ret[1]);
+    const ret = wasm.generate_secure_payload(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, difficulty);
+
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  } finally {
+    // Remove globals after WASM execution
+    removeGlobals();
   }
-  return takeFromExternrefTable0(ret[0]);
 }
 
 module.exports = { initWasm, generateSecurePayload };
