@@ -2479,8 +2479,8 @@ curl ${origin}/api/v1/chat/completions \\
                   via the WASM-secured chat endpoint.
                 </li>
                 <li>
-                  <strong className="text-foreground">Casper Tech</strong> — 2 AI image models
-                  (Flux, Flux Turbo) via apis.xcasper.space.
+                  <strong className="text-foreground">Casper Tech</strong> — 1 AI image model
+                  (Flux) via apis.xcasper.space.
                   Free, no API key. Also provides removebg, upscale, deblur, colorize, and
                   image manipulation APIs.
                 </li>

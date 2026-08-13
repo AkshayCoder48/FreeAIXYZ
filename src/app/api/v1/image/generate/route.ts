@@ -163,14 +163,12 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
   const height = req.height || model.height;
 
   // Casper Tech uses GET with query parameters on apis.xcasper.space
-  // Both models use the pollinations-image endpoint with different model params:
-  //   casper-flux:  GET /api/ai/pollinations-image?prompt=X&model=flux&width=W&height=H
-  //   casper-turbo: GET /api/ai/pollinations-image?prompt=X&model=turbo&width=W&height=H
+  // Uses the pollinations-image endpoint with flux model:
+  //   GET /api/ai/pollinations-image?prompt=X&model=flux&width=W&height=H
   const endpoint = `${CASPER_BASE_URL}/api/ai/pollinations-image`;
-  const upstreamModelParam = model.upstreamModel === "pollinations-turbo" ? "turbo" : "flux";
 
   const params = new URLSearchParams({ prompt });
-  params.set("model", upstreamModelParam);
+  params.set("model", "flux");
   params.set("width", String(width));
   params.set("height", String(height));
 

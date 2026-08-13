@@ -8,9 +8,9 @@
  * Providers:
  *   - pollinations-gen — image.pollinations.ai (1 model, unlimited)
  *   - freegpt          — FreeGPT.tech image models (4 real AI models)
- *   - casper-tech      — Casper Technology via apis.xcasper.space (2 models)
+ *   - casper-tech      — Casper Technology via apis.xcasper.space (1 model)
  *
- * Total: 7 base models.
+ * Total: 6 base models.
  *
  * Casper Tech also provides image manipulation endpoints (not generation models):
  *   - GET /api/ai/removebg?url=       — Remove background
@@ -63,11 +63,10 @@ const FREEGPT_MODELS: ImageModel[] = [
   { id: "freegpt-gemini-flash-image", name: "Gemini Flash Image (FreeGPT)", provider: "freegpt", category: "general", upstreamModel: "gemini-3.1-flash-image", width: 1024, height: 1024, nsfw: false, description: "Google Gemini 3.1 Flash Image via FreeGPT.tech — fast, high-quality" },
 ];
 
-// ─── Casper Tech image models (2 AI generators, free, no key) ──────────────
+// ─── Casper Tech image models (1 AI generator, free, no key) ──────────────
 // Casper Tech API uses GET requests with query parameters on apis.xcasper.space
 const CASPER_MODELS: ImageModel[] = [
   { id: "casper-flux", name: "Flux (Casper Tech)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-image", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux image generation — free, no API key, via apis.xcasper.space" },
-  { id: "casper-turbo", name: "Flux Turbo (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-turbo", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux Turbo — fast image generation via apis.xcasper.space" },
 ];
 
 export const IMAGE_MODELS: readonly ImageModel[] = [
@@ -107,6 +106,6 @@ export const IMAGE_PROVIDER_INFO: Record<
   },
   "casper-tech": {
     name: "Casper Tech",
-    description: "2 AI image models (Flux, Flux Turbo) via apis.xcasper.space. Free, no API key. Also provides removebg, upscale, deblur, colorize APIs.",
+    description: "1 AI image model (Flux) via apis.xcasper.space. Free, no API key. Also provides removebg, upscale, deblur, colorize APIs.",
   },
 };
