@@ -98,8 +98,12 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
       if (!chatRes.ok) {
         const errText = await chatRes.text().catch(() => "");
         lastError = `FreeGPT image generation failed: HTTP ${chatRes.status} — ${errText.slice(0, 200)}`;
-        // Don't retry client errors (400/401/429)
-        if (chatRes.status === 400 || chatRes.status === 401 || chatRes.status === 429) {
+        // Don't retry client errors (400/401/403/429) — 403 means FreeGPT is blocked
+        if (chatRes.status === 400 || chatRes.status === 401 || chatRes.status === 403 || chatRes.status === 429) {
+          // Surface a clearer message for 403
+          if (chatRes.status === 403) {
+            lastError = "FreeGPT is currently blocked (HTTP 403 Forbidden). This is a server-side restriction. Try again later or use a different provider (Pollinations or Casper Tech).";
+          }
           break;
         }
         continue;
@@ -108,13 +112,23 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
       const chatData = await chatRes.json();
       const content: string = chatData?.choices?.[0]?.message?.content || "";
 
-      // Look for markdown image link OR raw URL
+      // Try multiple patterns to extract an image URL from the response:
+      // 1. Markdown image link: ![alt](url)
+      // 2. URL with image extension: .png/.jpg/.jpeg/.webp/.gif
+      // 3. Pollinations image URL (no extension)
+      // 4. Any URL on common image CDNs
+      // 5. Base64 data URI
       const mdMatch = content.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
-      const urlMatch = content.match(/(https?:\/\/[^\s"'<>)]+\.(?:png|jpg|jpeg|webp))/i);
-      const imageUrl = mdMatch?.[1] || urlMatch?.[1];
+      const extMatch = content.match(/(https?:\/\/[^\s"'<>)]+\.(?:png|jpg|jpeg|webp|gif))/i);
+      const pollMatch = content.match(/(https?:\/\/image\.pollinations\.ai\/[^\s"'<>)]+)/i);
+      const cdnMatch = content.match(/(https?:\/\/[^\s"'<>)]+(?:imgur|unsplash|picsum|cdn|static|media|upload)\/[^\s"'<>)]+)/i);
+      const b64Match = content.match(/(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)/i);
+      // Generic URL fallback — any URL that looks like it could be an image
+      const genericUrlMatch = content.match(/(https?:\/\/[^\s"'<>)]+)/i);
+      const imageUrl = mdMatch?.[1] || extMatch?.[1] || pollMatch?.[1] || cdnMatch?.[1] || b64Match?.[1] || genericUrlMatch?.[1];
 
       if (!imageUrl) {
-        lastError = `FreeGPT did not return an image URL. Content preview: ${content.slice(0, 200)}`;
+        lastError = `FreeGPT did not return an image URL. Content preview: ${content.slice(0, 300)}`;
         continue;
       }
 
@@ -136,7 +150,7 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
 
   // Return the real error — no silent fallback to Pollinations
   return NextResponse.json(
-    { error: `FreeGPT image generation failed after ${MAX_RETRIES + 1} attempts`, detail: lastError },
+    { error: `FreeGPT image generation failed after ${MAX_RETRIES + 1} attempts`, detail: lastError, suggestion: "Try using Pollinations (poll-flux) or Casper Tech (casper-flux) models instead." },
     { status: 502 },
   );
 }
@@ -149,24 +163,31 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
   const height = req.height || model.height;
 
   // Casper Tech uses GET with query parameters on apis.xcasper.space
-  // pollinations-image: GET /api/ai/pollinations-image?prompt=X&model=flux&width=W&height=H
-  // magicstudio:       GET /api/ai/magicstudio?prompt=X
-  const endpoint = model.upstreamModel === "magicstudio"
-    ? `${CASPER_BASE_URL}/api/ai/magicstudio`
-    : `${CASPER_BASE_URL}/api/ai/pollinations-image`;
+  // Both models use the pollinations-image endpoint with different model params:
+  //   casper-flux:  GET /api/ai/pollinations-image?prompt=X&model=flux&width=W&height=H
+  //   casper-turbo: GET /api/ai/pollinations-image?prompt=X&model=turbo&width=W&height=H
+  const endpoint = `${CASPER_BASE_URL}/api/ai/pollinations-image`;
+  const upstreamModelParam = model.upstreamModel === "pollinations-turbo" ? "turbo" : "flux";
 
   const params = new URLSearchParams({ prompt });
-  if (model.upstreamModel === "pollinations-image") {
-    params.set("model", "flux");
-    params.set("width", String(width));
-    params.set("height", String(height));
+  params.set("model", upstreamModelParam);
+  params.set("width", String(width));
+  params.set("height", String(height));
+
+  // Casper Tech can be slow — add an explicit 60s timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60_000);
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
   try {
     const res = await fetch(`${endpoint}?${params}`, {
       method: "GET",
-      signal,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -187,6 +208,13 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
       (Array.isArray(data?.output) ? data.output[0] : null);
 
     if (!imageUrl) {
+      // If the API returned success:false, surface the error
+      if (data?.success === false) {
+        return NextResponse.json(
+          { error: `Casper Tech generation failed: ${data?.error || "Unknown error"}`, detail: data?.details || "" },
+          { status: 502 },
+        );
+      }
       return NextResponse.json(
         { error: "Casper Tech did not return a valid image URL", raw_response: JSON.stringify(data).slice(0, 500) },
         { status: 502 },
@@ -206,6 +234,13 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
       seed: data?.seed,
     });
   } catch (e) {
+    clearTimeout(timeoutId);
+    if (controller.signal.aborted && !signal?.aborted) {
+      return NextResponse.json(
+        { error: "Casper Tech image generation timed out after 60 seconds. Try a smaller image size or use Pollinations (poll-flux) instead." },
+        { status: 504 },
+      );
+    }
     const message = e instanceof Error ? e.message : "Unknown error during Casper Tech image generation";
     return NextResponse.json(
       { error: `Casper Tech image generation failed: ${message}` },

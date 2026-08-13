@@ -2480,9 +2480,9 @@ curl ${origin}/api/v1/chat/completions \\
                 </li>
                 <li>
                   <strong className="text-foreground">Casper Tech</strong> — 2 AI image models
-                  (DeepAI Text2Img, Magic Studio) via ai-image-gen.xcasper.space.
-                  Free, no API key. Also provides mask edit, variation, and
-                  image-to-prompt APIs.
+                  (Flux, Flux Turbo) via apis.xcasper.space.
+                  Free, no API key. Also provides removebg, upscale, deblur, colorize, and
+                  image manipulation APIs.
                 </li>
               </ul>
             </div>

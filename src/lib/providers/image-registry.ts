@@ -67,7 +67,7 @@ const FREEGPT_MODELS: ImageModel[] = [
 // Casper Tech API uses GET requests with query parameters on apis.xcasper.space
 const CASPER_MODELS: ImageModel[] = [
   { id: "casper-flux", name: "Flux (Casper Tech)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-image", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux image generation — free, no API key, via apis.xcasper.space" },
-  { id: "casper-magic", name: "Magic Studio (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "magicstudio", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Magic Studio — high-quality creative image generation" },
+  { id: "casper-turbo", name: "Flux Turbo (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-turbo", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux Turbo — fast image generation via apis.xcasper.space" },
 ];
 
 export const IMAGE_MODELS: readonly ImageModel[] = [
@@ -107,6 +107,6 @@ export const IMAGE_PROVIDER_INFO: Record<
   },
   "casper-tech": {
     name: "Casper Tech",
-    description: "2 AI image models (Flux, Magic Studio) via apis.xcasper.space. Free, no API key. Also provides removebg, upscale, deblur, colorize APIs.",
+    description: "2 AI image models (Flux, Flux Turbo) via apis.xcasper.space. Free, no API key. Also provides removebg, upscale, deblur, colorize APIs.",
   },
 };

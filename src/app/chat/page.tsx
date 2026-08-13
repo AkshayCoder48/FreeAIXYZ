@@ -98,6 +98,7 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       let buffer = "";
       let fullText = "";
+      let isNextDataError = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -111,20 +112,40 @@ export default function ChatPage() {
 
           // Handle SSE error events (event: error)
           if (trimmed.startsWith("event: error")) {
-            // Next line should be data: with error JSON
+            // Mark the next data: line as an error event
+            isNextDataError = true;
             continue;
           }
 
           if (!trimmed.startsWith("data:")) continue;
           const data = trimmed.slice(5).trim();
           if (!data || data === "[DONE]") continue;
+
+          // Process error events from SSE
+          if (isNextDataError) {
+            isNextDataError = false;
+            try {
+              const errJson = JSON.parse(data);
+              const errMsg = errJson?.error?.message || errJson?.error?.code || "Upstream error";
+              const err = new Error(errMsg);
+              err.name = "UpstreamError";
+              throw err;
+            } catch (e) {
+              if (e instanceof Error && e.name === "UpstreamError") throw e;
+              // If error data isn't valid JSON, skip it
+            }
+            continue;
+          }
           try {
             const json = JSON.parse(data);
 
-            // Handle error in data
+            // Handle error in data — throw with a marker so the catch
+            // can distinguish API errors from JSON parse failures.
             if (json?.error) {
               const errMsg = json.error.message || json.error.code || "Upstream error";
-              throw new Error(errMsg);
+              const err = new Error(errMsg);
+              err.name = "UpstreamError";
+              throw err;
             }
 
             const delta = json?.choices?.[0]?.delta?.content;
@@ -140,8 +161,10 @@ export default function ChatPage() {
               });
             }
           } catch (parseErr) {
-            // Re-throw error events
-            if (parseErr instanceof Error && parseErr.message !== "JSON") {
+            // Only re-throw explicit upstream API errors.
+            // JSON parse failures (malformed SSE lines) are silently
+            // skipped — they're just noise, not real errors.
+            if (parseErr instanceof Error && parseErr.name === "UpstreamError") {
               throw parseErr;
             }
           }
