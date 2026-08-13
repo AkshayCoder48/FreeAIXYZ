@@ -8,14 +8,18 @@
  * Providers:
  *   - pollinations-gen — image.pollinations.ai (1 model, unlimited)
  *   - freegpt          — FreeGPT.tech image models (4 real AI models)
- *   - casper-tech      — Casper Technology via ai-image-gen.xcasper.space (2 models)
+ *   - casper-tech      — Casper Technology via apis.xcasper.space (2 models)
  *
  * Total: 7 base models.
  *
  * Casper Tech also provides image manipulation endpoints (not generation models):
- *   - POST /v1/image/mask/generate      — Image + mask edit
- *   - POST /v1/image/variation/generate — Image variation
- *   - POST /v1/image/analyze/generate   — Image-to-prompt analysis
+ *   - GET /api/ai/removebg?url=       — Remove background
+ *   - GET /api/ai/enlarger?url=       — Upscale images
+ *   - GET /api/ai/unblur?url=&scale=  — Deblur/upscale
+ *   - GET /api/ai/unwatermark?url=    — Remove watermarks
+ *   - GET /api/ai/colorize?url=       — Colorize B&W images
+ *   - GET /api/ai/nanobanana2?url=&prompt= — AI edit with prompt
+ *   - GET /api/ai/faceswap?source=&target= — Face swap
  * These are exposed as separate API routes, not as generation models.
  */
 
@@ -60,9 +64,10 @@ const FREEGPT_MODELS: ImageModel[] = [
 ];
 
 // ─── Casper Tech image models (2 AI generators, free, no key) ──────────────
+// Casper Tech API uses GET requests with query parameters on apis.xcasper.space
 const CASPER_MODELS: ImageModel[] = [
-  { id: "casper-deepai", name: "DeepAI Text2Img (Casper)", provider: "casper-tech", category: "general", upstreamModel: "deepai", width: 1024, height: 1024, nsfw: false, description: "DeepAI engine via Casper Tech — fast text-to-image generation, no API key required" },
-  { id: "casper-magic", name: "Magic Studio (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "bing", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Magic Studio — high-quality creative image generation via Bing engine" },
+  { id: "casper-flux", name: "Flux (Casper Tech)", provider: "casper-tech", category: "mixed", upstreamModel: "pollinations-image", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Flux image generation — free, no API key, via apis.xcasper.space" },
+  { id: "casper-magic", name: "Magic Studio (Casper)", provider: "casper-tech", category: "mixed", upstreamModel: "magicstudio", width: 1024, height: 1024, nsfw: false, description: "Casper Tech Magic Studio — high-quality creative image generation" },
 ];
 
 export const IMAGE_MODELS: readonly ImageModel[] = [
@@ -86,7 +91,7 @@ export function imageModelCounts(): Record<ImageCategory, number> {
 }
 
 /** Casper Tech base URL for image generation and manipulation APIs. */
-export const CASPER_BASE_URL = "https://ai-image-gen.xcasper.space";
+export const CASPER_BASE_URL = "https://apis.xcasper.space";
 
 export const IMAGE_PROVIDER_INFO: Record<
   ImageProviderId,
@@ -102,6 +107,6 @@ export const IMAGE_PROVIDER_INFO: Record<
   },
   "casper-tech": {
     name: "Casper Tech",
-    description: "2 AI image models (DeepAI Text2Img, Magic Studio) via ai-image-gen.xcasper.space. Free, no API key. Also provides mask edit, variation, and image-to-prompt APIs.",
+    description: "2 AI image models (Flux, Magic Studio) via apis.xcasper.space. Free, no API key. Also provides removebg, upscale, deblur, colorize APIs.",
   },
 };

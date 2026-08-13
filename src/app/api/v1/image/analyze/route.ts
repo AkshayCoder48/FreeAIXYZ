@@ -1,14 +1,17 @@
 /**
  * Image Analysis API — Casper Technology
- * Upload any image; AI extracts colours, lighting & composition to craft a generation prompt.
+ * Provides image analysis tools: removebg detection, colorize, upscale info.
  *
  * Endpoint: POST /api/v1/image/analyze
- * Body (multipart/form-data): { image }
- * Body (JSON): { image_url }
+ * Body (JSON): { url, action? }
  *
- * Proxies to: https://ai-image-gen.xcasper.space/v1/image/analyze/generate
+ * Actions:
+ *   - colorize   — Colorize a B&W image
+ *   - removebg   — Remove background (returns foreground image)
+ *   - enlarger   — Upscale image
+ *   - unblur     — Deblur and upscale
  *
- * Returns: { prompt, palette, ... }
+ * Upstream base: https://apis.xcasper.space/api/ai/
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,48 +21,48 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const ANALYZE_ACTIONS: Record<string, string> = {
+  colorize: "/api/ai/colorize",
+  removebg: "/api/ai/removebg",
+  enlarger: "/api/ai/enlarger",
+  unblur: "/api/ai/unblur",
+};
+
 export async function POST(request: NextRequest) {
-  const contentType = request.headers.get("content-type") || "";
-
   try {
-    let upstreamRes: Response;
-
-    if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
-      upstreamRes = await fetch(`${CASPER_BASE_URL}/v1/image/analyze/generate`, {
-        method: "POST",
-        body: formData,
-        signal: request.signal,
-      });
-    } else {
-      const body = await request.json();
-      if (!body.image_url && !body.image) {
-        return NextResponse.json({ error: "image_url or image (file) is required" }, { status: 400 });
-      }
-
-      const formData = new FormData();
-      if (body.image_url) formData.append("image_url", body.image_url);
-
-      upstreamRes = await fetch(`${CASPER_BASE_URL}/v1/image/analyze/generate`, {
-        method: "POST",
-        body: formData,
-        signal: request.signal,
-      });
+    const body = await request.json();
+    if (!body.url && !body.image_url) {
+      return NextResponse.json({ error: "url or image_url is required" }, { status: 400 });
     }
 
-    if (!upstreamRes.ok) {
-      const errText = await upstreamRes.text().catch(() => "");
+    const imageUrl = body.url || body.image_url;
+    const action = body.action || "removebg";
+
+    if (!ANALYZE_ACTIONS[action]) {
+      return NextResponse.json({
+        error: `Unknown action "${action}". Available: ${Object.keys(ANALYZE_ACTIONS).join(", ")}`,
+      }, { status: 400 });
+    }
+
+    const params = new URLSearchParams({ url: imageUrl });
+    if (body.scale) params.set("scale", String(body.scale));
+
+    const upstreamUrl = `${CASPER_BASE_URL}${ANALYZE_ACTIONS[action]}?${params}`;
+    const res = await fetch(upstreamUrl, { method: "GET", signal: request.signal });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
       return NextResponse.json(
-        { error: `Casper Tech image analysis failed: HTTP ${upstreamRes.status}`, detail: errText.slice(0, 500) },
+        { error: `Casper Tech ${action} failed: HTTP ${res.status}`, detail: errText.slice(0, 500) },
         { status: 502 },
       );
     }
 
-    const data = await upstreamRes.json();
+    const data = await res.json();
     return NextResponse.json({
       success: true,
       provider: "casper-tech",
-      endpoint: "analyze",
+      action,
       ...data,
     });
   } catch (e) {
@@ -70,12 +73,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({
-    service: "Image Analysis (Image-to-Prompt)",
+    service: "Image Analysis (Casper Tech)",
     provider: "Casper Technology",
     endpoint: "POST /api/v1/image/analyze",
-    params: ["image_url or image file (required)"],
-    upstream: `${CASPER_BASE_URL}/v1/image/analyze/generate`,
-    returns: { prompt: "AI-generated prompt describing the image", palette: "Extracted color palette" },
-    note: "Upload any image; AI extracts colours, lighting & composition to craft a generation prompt.",
+    params: ["url (required)", "action (optional, default: removebg)", "scale (optional, for unblur)"],
+    actions: Object.entries(ANALYZE_ACTIONS).map(([key, path]) => ({
+      action: key,
+      upstream: `${CASPER_BASE_URL}${path}`,
+    })),
+    note: "Upload any image URL; choose an action (colorize, removebg, enlarger, unblur).",
   });
 }

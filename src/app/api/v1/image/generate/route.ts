@@ -5,7 +5,7 @@
  * Providers:
  *   - pollinations-gen — image.pollinations.ai (1 model, unlimited)
  *   - freegpt          — FreeGPT.tech image models (4 models)
- *   - casper-tech      — Casper Technology via ai-image-gen.xcasper.space (2 models)
+ *   - casper-tech      — Casper Technology via apis.xcasper.space (2 models, GET API)
  *
  * Endpoint: POST /api/v1/image/generate
  * Body: { prompt, model?, width?, height?, seed?, nologo?, nsfw? }
@@ -71,7 +71,7 @@ async function handlePollinations(model: ImageModel, req: ImageRequest, signal?:
   });
 }
 
-// ─── FreeGPT handler ─────────────────────────────────────────────────────────
+// ─── FreeGPT handler (NO fallback — surface real errors) ────────────────────
 
 async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: string, signal?: AbortSignal) {
   const MAX_RETRIES = 2;
@@ -98,6 +98,7 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
       if (!chatRes.ok) {
         const errText = await chatRes.text().catch(() => "");
         lastError = `FreeGPT image generation failed: HTTP ${chatRes.status} — ${errText.slice(0, 200)}`;
+        // Don't retry client errors (400/401/429)
         if (chatRes.status === 400 || chatRes.status === 401 || chatRes.status === 429) {
           break;
         }
@@ -107,6 +108,7 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
       const chatData = await chatRes.json();
       const content: string = chatData?.choices?.[0]?.message?.content || "";
 
+      // Look for markdown image link OR raw URL
       const mdMatch = content.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
       const urlMatch = content.match(/(https?:\/\/[^\s"'<>)]+\.(?:png|jpg|jpeg|webp))/i);
       const imageUrl = mdMatch?.[1] || urlMatch?.[1];
@@ -132,72 +134,42 @@ async function handleFreeGpt(model: ImageModel, req: ImageRequest, origin: strin
     }
   }
 
-  // FreeGPT failed after retries — fall back to Pollinations Flux
-  try {
-    const fallbackModel = findImageModel("poll-flux");
-    if (fallbackModel) {
-      const fallbackResult = await handlePollinations(fallbackModel, req, signal);
-      const fallbackData = await (fallbackResult as NextResponse).json();
-      return NextResponse.json({
-        ...fallbackData,
-        fallback: true,
-        fallback_reason: `FreeGPT unavailable (${lastError}). Fell back to Pollinations Flux.`,
-        original_model: model.id,
-        original_provider: "freegpt",
-      });
-    }
-  } catch {
-    // Fallback also failed
-  }
-
+  // Return the real error — no silent fallback to Pollinations
   return NextResponse.json(
     { error: `FreeGPT image generation failed after ${MAX_RETRIES + 1} attempts`, detail: lastError },
     { status: 502 },
   );
 }
 
-// ─── Casper Tech handler ─────────────────────────────────────────────────────
+// ─── Casper Tech handler (GET API with query params) ────────────────────────
 
 async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: AbortSignal) {
   const prompt = req.prompt || "";
   const width = req.width || model.width;
   const height = req.height || model.height;
 
-  // Choose upstream endpoint based on model
-  const endpoint = model.upstreamModel === "bing"
-    ? `${CASPER_BASE_URL}/v1/image/bing/generate`
-    : `${CASPER_BASE_URL}/v1/image/prompt/generate`;
+  // Casper Tech uses GET with query parameters on apis.xcasper.space
+  // pollinations-image: GET /api/ai/pollinations-image?prompt=X&model=flux&width=W&height=H
+  // magicstudio:       GET /api/ai/magicstudio?prompt=X
+  const endpoint = model.upstreamModel === "magicstudio"
+    ? `${CASPER_BASE_URL}/api/ai/magicstudio`
+    : `${CASPER_BASE_URL}/api/ai/pollinations-image`;
 
-  // Casper Tech endpoints accept multipart/form-data
-  const formData = new FormData();
-  formData.append("prompt", prompt);
-  formData.append("width", String(width));
-  formData.append("height", String(height));
+  const params = new URLSearchParams({ prompt });
+  if (model.upstreamModel === "pollinations-image") {
+    params.set("model", "flux");
+    params.set("width", String(width));
+    params.set("height", String(height));
+  }
 
   try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      body: formData,
+    const res = await fetch(`${endpoint}?${params}`, {
+      method: "GET",
       signal,
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      // Fall back to Pollinations on server errors
-      if (res.status >= 500) {
-        const fallbackModel = findImageModel("poll-flux");
-        if (fallbackModel) {
-          const fallbackResult = await handlePollinations(fallbackModel, req, signal);
-          const fallbackData = await (fallbackResult as NextResponse).json();
-          return NextResponse.json({
-            ...fallbackData,
-            fallback: true,
-            fallback_reason: `Casper Tech returned HTTP ${res.status}. Fell back to Pollinations Flux.`,
-            original_model: model.id,
-            original_provider: "casper-tech",
-          });
-        }
-      }
       return NextResponse.json(
         { error: `Casper Tech returned HTTP ${res.status}: ${errText.slice(0, 300)}` },
         { status: 502 },
@@ -206,8 +178,7 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
 
     const data = await res.json();
 
-    // Casper Tech may return image URL in various shapes
-    // Try: data.image_url, data.url, data.images[0].url, data.output
+    // Casper Tech returns: { success, image_url, model, seed, width, height, ... }
     const imageUrl =
       data?.image_url ||
       data?.url ||
@@ -216,32 +187,6 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
       (Array.isArray(data?.output) ? data.output[0] : null);
 
     if (!imageUrl) {
-      // If no image URL found, check if data itself is a URL
-      if (typeof data === "string" && data.startsWith("http")) {
-        return NextResponse.json({
-          success: true,
-          images: [{ url: data, format: "png" }],
-          model: model.id,
-          model_name: model.name,
-          category: model.category,
-          provider: "casper-tech",
-          prompt: req.prompt,
-          width, height,
-        });
-      }
-      // Fall back to Pollinations
-      const fallbackModel = findImageModel("poll-flux");
-      if (fallbackModel) {
-        const fallbackResult = await handlePollinations(fallbackModel, req, signal);
-        const fallbackData = await (fallbackResult as NextResponse).json();
-        return NextResponse.json({
-          ...fallbackData,
-          fallback: true,
-          fallback_reason: `Casper Tech did not return an image URL. Fell back to Pollinations Flux.`,
-          original_model: model.id,
-          original_provider: "casper-tech",
-        });
-      }
       return NextResponse.json(
         { error: "Casper Tech did not return a valid image URL", raw_response: JSON.stringify(data).slice(0, 500) },
         { status: 502 },
@@ -256,27 +201,12 @@ async function handleCasperTech(model: ImageModel, req: ImageRequest, signal?: A
       category: model.category,
       provider: "casper-tech",
       prompt: req.prompt,
-      width, height,
+      width: data?.width ?? width,
+      height: data?.height ?? height,
+      seed: data?.seed,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error during Casper Tech image generation";
-    // Fall back to Pollinations on network errors
-    try {
-      const fallbackModel = findImageModel("poll-flux");
-      if (fallbackModel) {
-        const fallbackResult = await handlePollinations(fallbackModel, req, signal);
-        const fallbackData = await (fallbackResult as NextResponse).json();
-        return NextResponse.json({
-          ...fallbackData,
-          fallback: true,
-          fallback_reason: `Casper Tech network error (${message}). Fell back to Pollinations Flux.`,
-          original_model: model.id,
-          original_provider: "casper-tech",
-        });
-      }
-    } catch {
-      // Fallback also failed
-    }
     return NextResponse.json(
       { error: `Casper Tech image generation failed: ${message}` },
       { status: 502 },

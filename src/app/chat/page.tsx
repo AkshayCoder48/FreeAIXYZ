@@ -69,23 +69,6 @@ export default function ChatPage() {
         content: m.content,
       }));
 
-      const tools = [
-        {
-          type: "function" as const,
-          function: {
-            name: "web_search",
-            description: "Search the web for information",
-            parameters: {
-              type: "object",
-              properties: {
-                query: { type: "string", description: "Search query" },
-              },
-              required: ["query"],
-            },
-          },
-        },
-      ];
-
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -95,7 +78,7 @@ export default function ChatPage() {
           "Cache-Control": "no-cache",
         },
         signal: controller.signal,
-        body: JSON.stringify({ model, messages: apiMessages, stream: true, tools }),
+        body: JSON.stringify({ model, messages: apiMessages, stream: true }),
       });
 
       if (!res.ok) {
@@ -124,11 +107,26 @@ export default function ChatPage() {
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Handle SSE error events (event: error)
+          if (trimmed.startsWith("event: error")) {
+            // Next line should be data: with error JSON
+            continue;
+          }
+
           if (!trimmed.startsWith("data:")) continue;
           const data = trimmed.slice(5).trim();
           if (!data || data === "[DONE]") continue;
           try {
             const json = JSON.parse(data);
+
+            // Handle error in data
+            if (json?.error) {
+              const errMsg = json.error.message || json.error.code || "Upstream error";
+              throw new Error(errMsg);
+            }
+
             const delta = json?.choices?.[0]?.delta?.content;
             if (typeof delta === "string" && delta) {
               fullText += delta;
@@ -141,7 +139,12 @@ export default function ChatPage() {
                 return next;
               });
             }
-          } catch {}
+          } catch (parseErr) {
+            // Re-throw error events
+            if (parseErr instanceof Error && parseErr.message !== "JSON") {
+              throw parseErr;
+            }
+          }
         }
       }
       return fullText;

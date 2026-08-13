@@ -2561,23 +2561,23 @@ curl ${origin}/api/v1/chat/completions \\
             </h2>
             <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
               Free image manipulation APIs powered by{" "}
-              <a href="https://ai-image-gen.xcasper.space" target="_blank" rel="noopener noreferrer" className="text-foreground hover:underline">Casper Technology</a>.{" "}
-              No API key required.
+              <a href="https://apis.xcasper.space" target="_blank" rel="noopener noreferrer" className="text-foreground hover:underline">Casper Technology</a>.{" "}
+              No API key required. All endpoints use GET with query parameters.
             </p>
 
-            <div className="grid sm:grid-cols-3 gap-3">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="border border-foreground p-5 space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Mask Edit
+                  Manipulate
                 </div>
                 <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                   POST /api/v1/image/mask
                 </code>
                 <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  Edit specific regions of an image using a text prompt and mask overlay.
+                  Multi-action: removebg, upscale, deblur, colorize, watermark removal, face swap, AI edit.
                 </p>
                 <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  params: image, mask, prompt
+                  body: &#123;action, url, ...&#125;
                 </div>
               </div>
               <div className="border border-foreground p-5 space-y-2">
@@ -2588,24 +2588,38 @@ curl ${origin}/api/v1/chat/completions \\
                   POST /api/v1/image/variation
                 </code>
                 <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  Generate creative variations from a reference image with optional prompt guidance.
+                  AI-driven image variation/editing using NanoBanana v2.
                 </p>
                 <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  params: image, prompt?
+                  params: url, prompt?
                 </div>
               </div>
               <div className="border border-foreground p-5 space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Image-to-Prompt
+                  Analyze
                 </div>
                 <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
                   POST /api/v1/image/analyze
                 </code>
                 <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  AI extracts colours, lighting &amp; composition to craft a generation prompt and palette.
+                  Image processing: colorize, remove background, upscale, or deblur.
                 </p>
                 <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  params: image → returns &#123;prompt, palette&#125;
+                  params: url, action
+                </div>
+              </div>
+              <div className="border border-foreground p-5 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  Upstream
+                </div>
+                <code className="block text-[11px] text-foreground/70 break-all" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  apis.xcasper.space/api/ai/
+                </code>
+                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
+                  8+ free image tools via Casper Technology API platform.
+                </p>
+                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
+                  GET requests, no API key
                 </div>
               </div>
             </div>

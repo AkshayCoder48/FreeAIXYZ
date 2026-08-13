@@ -45,15 +45,26 @@ async function* parseSSE(response: Response): AsyncGenerator<string> {
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith("event: error")) continue; // skip SSE error event markers
       if (!trimmed.startsWith("data:")) continue;
       const data = trimmed.slice(5).trim();
       if (data === "[DONE]") return;
       try {
         const json = JSON.parse(data);
+
+        // Handle error in data
+        if (json?.error) {
+          throw new Error(json.error.message || json.error.code || "Upstream error");
+        }
+
         const delta = json.choices?.[0]?.delta?.content;
         if (delta) yield delta;
-      } catch {
-        // ignore keep-alive / partial frames
+      } catch (parseErr) {
+        // Re-throw error events
+        if (parseErr instanceof Error && parseErr.message !== "JSON") {
+          throw parseErr;
+        }
       }
     }
   }

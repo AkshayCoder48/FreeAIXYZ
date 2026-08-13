@@ -1,12 +1,11 @@
 /**
  * Image Variation API — Casper Technology
- * Generate creative variations from a reference image.
+ * Uses the nanobanana2 endpoint for AI-driven image variation/editing.
  *
  * Endpoint: POST /api/v1/image/variation
- * Body (multipart/form-data): { image, prompt? }
- * Body (JSON): { image_url, prompt? }
+ * Body (JSON): { url, prompt? }
  *
- * Proxies to: https://ai-image-gen.xcasper.space/v1/image/variation/generate
+ * Upstream: GET https://apis.xcasper.space/api/ai/nanobanana2?url=...&prompt=...
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,48 +16,32 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  const contentType = request.headers.get("content-type") || "";
-
   try {
-    let upstreamRes: Response;
-
-    if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
-      upstreamRes = await fetch(`${CASPER_BASE_URL}/v1/image/variation/generate`, {
-        method: "POST",
-        body: formData,
-        signal: request.signal,
-      });
-    } else {
-      const body = await request.json();
-      if (!body.image_url && !body.image) {
-        return NextResponse.json({ error: "image_url or image (file) is required" }, { status: 400 });
-      }
-
-      const formData = new FormData();
-      if (body.prompt) formData.append("prompt", body.prompt);
-      if (body.image_url) formData.append("image_url", body.image_url);
-
-      upstreamRes = await fetch(`${CASPER_BASE_URL}/v1/image/variation/generate`, {
-        method: "POST",
-        body: formData,
-        signal: request.signal,
-      });
+    const body = await request.json();
+    if (!body.url && !body.image_url) {
+      return NextResponse.json({ error: "url or image_url is required" }, { status: 400 });
     }
 
-    if (!upstreamRes.ok) {
-      const errText = await upstreamRes.text().catch(() => "");
+    const imageUrl = body.url || body.image_url;
+    const params = new URLSearchParams({ url: imageUrl });
+    if (body.prompt) params.set("prompt", body.prompt);
+
+    const upstreamUrl = `${CASPER_BASE_URL}/api/ai/nanobanana2?${params}`;
+    const res = await fetch(upstreamUrl, { method: "GET", signal: request.signal });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
       return NextResponse.json(
-        { error: `Casper Tech variation failed: HTTP ${upstreamRes.status}`, detail: errText.slice(0, 500) },
+        { error: `Casper Tech variation failed: HTTP ${res.status}`, detail: errText.slice(0, 500) },
         { status: 502 },
       );
     }
 
-    const data = await upstreamRes.json();
+    const data = await res.json();
     return NextResponse.json({
       success: true,
       provider: "casper-tech",
-      endpoint: "variation",
+      action: "variation",
       ...data,
     });
   } catch (e) {
@@ -72,8 +55,8 @@ export async function GET() {
     service: "Image Variation",
     provider: "Casper Technology",
     endpoint: "POST /api/v1/image/variation",
-    params: ["image_url or image file (required)", "prompt (optional)"],
-    upstream: `${CASPER_BASE_URL}/v1/image/variation/generate`,
-    note: "Generates creative variations from a reference image.",
+    params: ["url (required)", "prompt (optional)"],
+    upstream: `${CASPER_BASE_URL}/api/ai/nanobanana2`,
+    note: "Generates creative variations from a reference image using AI editing.",
   });
 }
