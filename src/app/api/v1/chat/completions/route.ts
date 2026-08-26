@@ -638,7 +638,7 @@ async function handleCanonicalRequest(
       }),
     );
     try {
-      const { response, timings } = streamChat(chatReq, adapter, fallbacks);
+      const { response, timings } = await streamChat(chatReq, adapter, fallbacks);
       metricsService.recordStreamTimings(timings);
       return response;
     } catch (err) {
@@ -1246,6 +1246,82 @@ async function legacyStreamCompletion(
   const requestId = generateRequestId();
   const requestStart = Date.now();
 
+  // ─── PRE-FLIGHT (R-2 TRUE FIX) ─────────────────────────────────────────
+  // Probe the upstream by awaiting the FIRST chunk (or first throw) BEFORE
+  // opening the 200 OK SSE stream. Pre-first-token errors now return a real
+  // HTTP error Response (404/502/429/401/…) with a JSON body — NOT a 200 OK
+  // SSE stream with an in-band `event: error` frame that the client can't
+  // classify (producing the dreaded `Status: N/A` rendering). Mid-stream
+  // errors (after at least one chunk is forwarded) keep the existing
+  // `event: error` + terminal-chunk behavior.
+  let gen: AsyncGenerator<string, void, unknown>;
+  try {
+    gen = provider.stream({
+      model,
+      messages,
+      signal,
+      tools: tools as ProviderTool[] | undefined,
+      toolChoice,
+      ...sampling,
+    });
+  } catch (err) {
+    const ge = wrapUnknown(err, model.provider, model.id);
+    providerHealthService.recordProviderFailure(model.provider, err);
+    providerHealthService.recordModelFailure(canonicalOrLegacyId(model), err);
+    metricsService.recordRequest({
+      requestId,
+      providerId: model.provider,
+      modelId: model.id,
+      status: ge.status,
+      type: "stream_error",
+      message: ge.message,
+      streamRequested: true,
+      durationMs: Date.now() - requestStart,
+    });
+    return gatewayErrorResponse(ge);
+  }
+
+  let firstDelta = "";
+  try {
+    const first = await gen.next();
+    if (first.done) {
+      // Generator returned without yielding anything → empty upstream.
+      const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
+      providerHealthService.recordProviderFailure(model.provider, emptyErr);
+      providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
+      metricsService.recordRequest({
+        requestId,
+        providerId: model.provider,
+        modelId: model.id,
+        status: 502,
+        type: "stream_error",
+        message: "empty_upstream_response",
+        streamRequested: true,
+        durationMs: Date.now() - requestStart,
+      });
+      try { await gen.return(undefined); } catch { /* best-effort */ }
+      return gatewayErrorResponse(emptyErr);
+    }
+    firstDelta = first.value ?? "";
+  } catch (err) {
+    const ge = wrapUnknown(err, model.provider, model.id);
+    providerHealthService.recordProviderFailure(model.provider, err);
+    providerHealthService.recordModelFailure(canonicalOrLegacyId(model), err);
+    metricsService.recordRequest({
+      requestId,
+      providerId: model.provider,
+      modelId: model.id,
+      status: ge.status,
+      type: "stream_error",
+      message: ge.message,
+      streamRequested: true,
+      durationMs: Date.now() - requestStart,
+    });
+    try { await gen.return(undefined); } catch { /* best-effort */ }
+    return gatewayErrorResponse(ge);
+  }
+
+  // ─── PRE-FLIGHT SUCCEEDED → open 200 OK SSE stream ──────────────────────
   // TransformStream gives us backpressure + flushes chunks individually
   // (PRD §11, §12). No setInterval heartbeat — it can buffer.
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -1269,6 +1345,18 @@ async function legacyStreamCompletion(
     }
   };
 
+  // Helper to emit a mid-stream error (event:error + terminal chunk). Used
+  // when the upstream throws AFTER at least one content chunk has been
+  // forwarded (the pre-flight only catches pre-first-token throws).
+  const sendStreamError = async (err: GatewayError): Promise<void> => {
+    try {
+      await enqueue(sseErrorEvent(err));
+      await enqueue(sseTerminalErrorChunk(err, id, created, model.id));
+    } catch {
+      // best-effort
+    }
+  };
+
   // Don't await — start writing in the background so the Response can be
   // returned immediately with the readable stream.
   (async () => {
@@ -1287,15 +1375,10 @@ async function legacyStreamCompletion(
 
       if (useTools) {
         // ---- Tool path: buffer full output, parse envelope, emit. ----
-        let fullText = "";
-        for await (const delta of provider.stream({
-          model,
-          messages,
-          signal,
-          tools: tools as ProviderTool[] | undefined,
-          toolChoice,
-          ...sampling,
-        })) {
+        // firstDelta is already in hand from the pre-flight; accumulate the
+        // rest from the (already-opened) generator.
+        let fullText = firstDelta;
+        for await (const delta of gen) {
           if (signal.aborted) break;
           if (delta) fullText += delta;
         }
@@ -1343,7 +1426,30 @@ async function legacyStreamCompletion(
         } else {
           // No tool calls — emit ONE content chunk with the full text + stop.
           // (PRD §137 — never fake-stream non-streaming provider output.)
-          const content = parsed.text || fullText || "(empty response)";
+          const content = (parsed.text || fullText || "").trim();
+          if (!content) {
+            // R-5: empty upstream reply → mid-stream error event + terminal
+            // chunk (the stream is already open over 200 OK, so we can't
+            // promote this to a real HTTP status — but clients parsing SSE
+            // will see the structured error and the top-level http_status
+            // field on the SSE error frame).
+            hadError = true;
+            const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
+            await sendStreamError(emptyErr);
+            providerHealthService.recordProviderFailure(model.provider, emptyErr);
+            providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
+            metricsService.recordRequest({
+              requestId,
+              providerId: model.provider,
+              modelId: model.id,
+              status: 502,
+              type: "stream_error",
+              message: "empty_upstream_response",
+              streamRequested: true,
+              durationMs: Date.now() - requestStart,
+            });
+            return;
+          }
           await send({
             id,
             object: "chat.completion.chunk",
@@ -1369,16 +1475,27 @@ async function legacyStreamCompletion(
         // ---- Normal streaming path ----
         const realStream = isRealStreamProvider(model.provider);
         if (realStream) {
-          // Forward each upstream delta immediately (PRD §137).
+          // Forward each upstream delta immediately (PRD §137). The first
+          // delta is already in hand from the pre-flight — emit it now, then
+          // continue pulling from the (already-opened) generator.
           let hasContent = false;
-          for await (const delta of provider.stream({
-            model,
-            messages,
-            signal,
-            tools: tools as ProviderTool[] | undefined,
-            toolChoice,
-            ...sampling,
-          })) {
+          if (firstDelta) {
+            hasContent = true;
+            await send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model: model.id,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: firstDelta },
+                  finish_reason: null,
+                },
+              ],
+            });
+          }
+          for await (const delta of gen) {
             if (signal.aborted) break;
             if (delta) {
               hasContent = true;
@@ -1397,20 +1514,19 @@ async function legacyStreamCompletion(
               });
             }
           }
+          if (signal.aborted) {
+            await writer.close();
+            return;
+          }
           if (!hasContent) {
             // R-5: refuse to pass on a silent empty stream. Emit the SSE
             // error event + terminal chunk with finish_reason:"error" +
             // [DONE] so a `Status: N/A` client can detect the failure.
             const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
-            try {
-              await enqueue(sseErrorEvent(emptyErr));
-              await enqueue(sseTerminalErrorChunk(emptyErr, id, created, model.id));
-            } catch {
-              // best-effort
-            }
+            hadError = true;
+            await sendStreamError(emptyErr);
             providerHealthService.recordProviderFailure(model.provider, emptyErr);
             providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
-            hadError = true;
             metricsService.recordRequest({
               requestId,
               providerId: model.provider,
@@ -1431,17 +1547,12 @@ async function legacyStreamCompletion(
             choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
           });
         } else {
-          // Non-streaming provider: collect full text from provider.stream(),
-          // emit ONE content chunk + stop (PRD §137 — honest, not fake).
-          let fullText = "";
-          for await (const delta of provider.stream({
-            model,
-            messages,
-            signal,
-            tools: tools as ProviderTool[] | undefined,
-            toolChoice,
-            ...sampling,
-          })) {
+          // Non-streaming provider: collect full text from the (already-
+          // opened) generator — firstDelta is the first chunk, accumulate
+          // the rest, then emit ONE content chunk + stop (PRD §137 — honest,
+          // not fake).
+          let fullText = firstDelta;
+          for await (const delta of gen) {
             if (signal.aborted) break;
             if (delta) fullText += delta;
           }
@@ -1454,15 +1565,10 @@ async function legacyStreamCompletion(
             // response. Emit the error event + terminal chunk so streaming
             // clients can detect the failure (no more `content:""` + stop).
             const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
-            try {
-              await enqueue(sseErrorEvent(emptyErr));
-              await enqueue(sseTerminalErrorChunk(emptyErr, id, created, model.id));
-            } catch {
-              // best-effort
-            }
+            hadError = true;
+            await sendStreamError(emptyErr);
             providerHealthService.recordProviderFailure(model.provider, emptyErr);
             providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
-            hadError = true;
             metricsService.recordRequest({
               requestId,
               providerId: model.provider,
@@ -1475,19 +1581,25 @@ async function legacyStreamCompletion(
             });
             return;
           }
-          await send({
-            id,
-            object: "chat.completion.chunk",
-            created,
-            model: model.id,
-            choices: [
-              {
-                index: 0,
-                delta: { content: fullText },
-                finish_reason: null,
-              },
-            ],
-          });
+          // Honest non-fake-stream: split into word-ish tokens so the UI can
+          // render incrementally even though the upstream yielded the whole
+          // text in one delta.
+          const tokens = fullText.match(/(\s+|\S+)/g) ?? [fullText];
+          for (const token of tokens) {
+            await send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model: model.id,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: token },
+                  finish_reason: null,
+                },
+              ],
+            });
+          }
           await send({
             id,
             object: "chat.completion.chunk",
@@ -1508,15 +1620,12 @@ async function legacyStreamCompletion(
         return;
       }
       const ge = wrapUnknown(err, model.provider, model.id);
-      try {
-        // R-2: emit event:error + terminal chunk with finish_reason:"error"
-        // before [DONE] (emitted in finally) so `Status: N/A` streaming
-        // clients can unambiguously detect the failure.
-        await enqueue(sseErrorEvent(ge));
-        await enqueue(sseTerminalErrorChunk(ge, id, created, model.id));
-      } catch {
-        // best-effort
-      }
+      // R-2 mid-stream: emit event:error + terminal chunk with
+      // finish_reason:"error" before [DONE] (emitted in finally) so clients
+      // parsing SSE can unambiguously detect the failure. The top-level
+      // `http_status` field on the SSE error frame carries the real HTTP
+      // status that would have been returned had this been non-streaming.
+      await sendStreamError(ge);
       providerHealthService.recordProviderFailure(model.provider, err);
       providerHealthService.recordModelFailure(
         canonicalOrLegacyId(model),
@@ -1537,10 +1646,12 @@ async function legacyStreamCompletion(
       // are released — even when the catch block already emitted a
       // terminal chunk (sseTerminalErrorChunk includes its own [DONE]
       // for safety; this one is best-effort in case the chunk failed).
-      try {
-        await enqueue("data: [DONE]\n\n");
-      } catch {
-        // best-effort
+      if (!hadError) {
+        try {
+          await enqueue("data: [DONE]\n\n");
+        } catch {
+          // best-effort
+        }
       }
       try {
         await writer.close();

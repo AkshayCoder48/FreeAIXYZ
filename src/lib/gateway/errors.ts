@@ -439,9 +439,28 @@ export function errorResponse(err: GatewayError): Response {
   });
 }
 
-/** Build an SSE error event string for an in-stream failure (PRD §61, R-2). */
+/**
+ * Build an SSE error event string for an in-stream failure (PRD §61, R-2).
+ *
+ * R-2 hardening: in addition to the structured `error` object, the payload
+ * surfaces a top-level `http_status` field so simple clients that only read
+ * the SSE `data:` JSON (and don't recurse into `error.status`) can still
+ * discover the real HTTP status that would have been returned had the request
+ * been non-streaming. This is belt-and-suspenders — the canonical fix is that
+ * pre-first-token errors never open a 200 OK stream in the first place (see
+ * streaming-proxy.ts `streamChat` pre-flight), but mid-stream errors still
+ * arrive over a 200 OK stream and need every available surface for the client
+ * to recover the real status.
+ */
 export function sseErrorEvent(err: GatewayError): string {
-  return `event: error\ndata: ${JSON.stringify({ error: err.toJSON() })}\n\n`;
+  const body = err.toJSON();
+  return `event: error\ndata: ${JSON.stringify({
+    error: body,
+    // Top-level mirror of the HTTP status that would have been sent for a
+    // non-streaming version of this request. Read this when you only want
+    // the status code without parsing the nested `error` object.
+    http_status: body.status,
+  })}\n\n`;
 }
 
 /**

@@ -281,14 +281,60 @@ export async function POST(request: NextRequest) {
   }
 
   if (wantsStream) {
+    // ─── PRE-FLIGHT (R-2 TRUE FIX) ─────────────────────────────────────
+    // Probe the upstream by awaiting the FIRST chunk (or first throw)
+    // BEFORE opening the 200 OK SSE stream. Pre-first-token errors now
+    // return a real HTTP error Response (404/502/429/401/…) with a JSON
+    // body — NOT a 200 OK SSE stream with an in-band `event: error` frame
+    // that the client can't classify (producing `Status: N/A`). Mid-stream
+    // errors keep the existing `event: error` + terminal-chunk behavior.
+    const preflight = streamFromUpstream(modelUpstream, messages);
+    let firstDelta = "";
+    try {
+      const first = await preflight.next();
+      if (first.done) {
+        // Generator returned without yielding anything → empty upstream.
+        try { await preflight.return(undefined); } catch { /* best-effort */ }
+        return gatewayErrorResponse(
+          emptyUpstreamResponseError("freeaixyz", modelId),
+        );
+      }
+      firstDelta = first.value ?? "";
+    } catch (err) {
+      try { await preflight.return(undefined); } catch { /* best-effort */ }
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
+      const isQuota = /quota|rate.?limit|429/i.test(msg);
+      const ge = new GatewayError({
+        type: isAuth ? "AUTHENTICATION_REQUIRED" : isQuota ? "RATE_LIMITED" : "UPSTREAM_5XX",
+        status: isAuth ? 401 : isQuota ? 429 : 502,
+        code: isAuth ? "authentication_required" : isQuota ? "rate_limited" : "upstream_error",
+        message: isAuth
+          ? "Provider requires authentication (HTTP 401)."
+          : isQuota
+            ? "Upstream rate limit exceeded. Retry after 60s."
+            : "Upstream provider failed to generate a response.",
+        upstreamDetail: msg,
+        provider: "freeaixyz",
+        model: modelId,
+        requiresAuth: isAuth,
+        retryAfter: isQuota ? 60 : undefined,
+      });
+      return gatewayErrorResponse(ge);
+    }
+
+    // ─── PRE-FLIGHT SUCCEEDED → open 200 OK SSE stream ──────────────────
     const encoder = new TextEncoder();
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const writer = writable.getWriter();
     const id = generateCompletionId();
     const created = Math.floor(Date.now() / 1000);
     const send = (obj: unknown) => writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-    // R-2: helper that emits an SSE error event + terminal chunk with
-    // finish_reason:"error" + [DONE] before closing the writer.
+    // R-2 mid-stream: helper that emits an SSE error event + terminal chunk
+    // with finish_reason:"error" + [DONE] before closing the writer. Used
+    // only when the upstream throws AFTER at least one content chunk has
+    // been forwarded (pre-first-token throws were caught by the pre-flight
+    // above and converted to a real HTTP error Response).
     const sendStreamError = (err: GatewayError) => {
       try {
         writer.write(encoder.encode(sseErrorEvent(err)));
@@ -304,8 +350,10 @@ export async function POST(request: NextRequest) {
         await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
 
         if (useTools) {
-          let fullText = "";
-          for await (const delta of streamFromUpstream(modelUpstream, messages)) { if (delta) fullText += delta; }
+          // firstDelta is already in hand from the pre-flight; accumulate
+          // the rest from the (already-opened) generator.
+          let fullText = firstDelta;
+          for await (const delta of preflight) { if (delta) fullText += delta; }
           const parsed = parseToolCalls(fullText, generateToolCallId);
           if (parsed.toolCalls.length > 0) {
             for (let i = 0; i < parsed.toolCalls.length; i++) {
@@ -315,8 +363,9 @@ export async function POST(request: NextRequest) {
             await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
           } else {
             // R-5: empty content (no tool calls extracted + no full text)
-            // surfaces as 502 empty_upstream_response, never a silent
-            // `content:""` + stop.
+            // surfaces as a mid-stream event:error + terminal chunk (the
+            // stream is already open over 200 OK, so we can't promote it
+            // to a real HTTP status — the pre-flight already succeeded).
             const content = (parsed.text || fullText).trim();
             if (!content) {
               hadError = true;
@@ -328,13 +377,23 @@ export async function POST(request: NextRequest) {
             await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
           }
         } else {
+          // Forward each upstream delta immediately. firstDelta is already
+          // in hand from the pre-flight — emit it now, then continue pulling
+          // from the (already-opened) generator.
           let hasContent = false;
-          for await (const delta of streamFromUpstream(modelUpstream, messages)) {
-            if (delta) { hasContent = true; await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] }); }
+          if (firstDelta) {
+            hasContent = true;
+            await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: firstDelta }, finish_reason: null }] });
+          }
+          for await (const delta of preflight) {
+            if (delta) {
+              hasContent = true;
+              await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] });
+            }
           }
           // R-5: refuse to silently pass on an empty stream. Emit the
-          // error event + terminal chunk so `Status: N/A` clients can
-          // detect the failure (BUG-3 — silent empty successes).
+          // error event + terminal chunk so SSE clients can detect the
+          // failure (BUG-3 — silent empty successes).
           if (!hasContent) {
             hadError = true;
             sendStreamError(emptyUpstreamResponseError("freeaixyz", modelId));
@@ -345,8 +404,10 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         hadError = true;
         const msg = err instanceof Error ? err.message : "Unknown error";
-        // R-2 + R-7 + R-10: classify + sanitize the upstream error, then
-        // emit it as an SSE error event + terminal chunk.
+        // R-2 mid-stream + R-7 + R-10: classify + sanitize the upstream
+        // error, then emit it as an SSE error event + terminal chunk. The
+        // top-level `http_status` field on the SSE error frame carries the
+        // real HTTP status that would have been returned for non-streaming.
         const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
         const isQuota = /quota|rate.?limit|429/i.test(msg);
         const ge = new GatewayError({

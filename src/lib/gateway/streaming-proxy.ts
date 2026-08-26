@@ -21,9 +21,9 @@
 
 import {
   emptyUpstreamResponseError,
+  errorResponse,
   generateRequestId,
   GatewayError,
-  isFailoverCandidate,
   sseErrorEvent,
   sseTerminalErrorChunk,
 } from "@/lib/gateway/errors";
@@ -67,19 +67,25 @@ class StreamingProxyService {
    * Stream chat completion → Response. Forwards every upstream delta
    * immediately as an OpenAI-shaped SSE chunk (PRD §137).
    *
-   * Audit D1: when the primary adapter fails BEFORE any content is
-   * forwarded, each fallback is tried in order. The X-Failover header
-   * is NOT set on the streaming response (the Response is constructed
-   * before the first upstream chunk is pulled, so the header can't be
-   * known at construction time) — instead, a `: ` comment line is
-   * enqueued at the start of the stream when failover occurs so SSE
-   * clients can still observe it.
+   * R-2 (TRUE FIX — pre-flight): before opening a 200 OK SSE stream, we
+   * await the upstream's first chunk (or first throw). If the upstream
+   * fails BEFORE yielding any content, we return a real HTTP error
+   * Response (404/502/429/401/…) with a JSON body — we do NOT open a
+   * 200 OK stream and then deliver the error as an in-band `event: error`
+   * frame (which clients can't classify because the HTTP status is 200,
+   * producing the dreaded `Status: N/A` rendering). Mid-stream errors
+   * (after at least one content chunk has been forwarded) keep the
+   * existing `event: error` + terminal-chunk behavior.
+   *
+   * Audit D1: failover candidates are tried in order during the pre-flight.
+   * The X-Failover marker is emitted as an SSE comment line at the start
+   * of the stream when failover occurs.
    */
-  streamChat(
+  async streamChat(
     req: ChatRequest,
     adapter: ProviderAdapter,
     fallbacks: FailoverCandidate[] = [],
-  ): { response: Response; timings: StreamTimings } {
+  ): Promise<{ response: Response; timings: StreamTimings }> {
     const requestId = generateRequestId();
     const now = Date.now();
     const created = Math.floor(now / 1000);
@@ -97,13 +103,116 @@ class StreamingProxyService {
     this.debugTimings.set(requestId, timings);
     this.schedulePrune();
 
+    const candidates: FailoverCandidate[] = [{ req, adapter }, ...fallbacks];
+
+    // ─── PRE-FLIGHT: try each candidate until one yields a first chunk ───
+    // R-2: pre-first-token errors get a real HTTP status, NOT a 200 OK
+    // SSE stream with an in-band event:error frame.
+    let firstDelta: string | null = null;
+    let successGen: AsyncGenerator<string, void, unknown> | null = null;
+    let successCandidate: FailoverCandidate | null = null;
+    let preflightErr: GatewayError | null = null;
+    let failoverOccurred = false;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      const isPrimary = i === 0;
+      timings.upstreamRequestStart = timings.upstreamRequestStart ?? Date.now();
+      let gen: AsyncGenerator<string, void, unknown>;
+      try {
+        gen = candidate.adapter.stream(candidate.req);
+      } catch (err) {
+        preflightErr = this.wrapUnknownStreamErr(
+          err,
+          candidate,
+          timings.requestId,
+        );
+        failoverOccurred = !isPrimary || failoverOccurred;
+        continue;
+      }
+      try {
+        const first = await gen.next();
+        if (first.done) {
+          // Generator returned without yielding anything → empty upstream.
+          preflightErr = emptyUpstreamResponseError(
+            candidate.adapter.id,
+            candidate.req.modelId,
+          );
+          try { await gen.return(undefined); } catch { /* ignore */ }
+          failoverOccurred = !isPrimary || failoverOccurred;
+          continue;
+        }
+        // Pre-flight succeeded — this candidate is the winner.
+        firstDelta = first.value;
+        successGen = gen;
+        successCandidate = candidate;
+        timings.upstreamFirstChunk = Date.now();
+        if (!isPrimary) failoverOccurred = true;
+        break;
+      } catch (err) {
+        // Pre-first-token throw → try next candidate (audit D1 failover).
+        preflightErr = this.wrapUnknownStreamErr(
+          err,
+          candidate,
+          timings.requestId,
+        );
+        try { await gen.return(undefined); } catch { /* ignore */ }
+        failoverOccurred = !isPrimary || failoverOccurred;
+        continue;
+      }
+    }
+
+    // ─── PRE-FLIGHT FAILED → return real HTTP error Response (R-2) ───
+    if (successGen === null || successCandidate === null || firstDelta === null) {
+      const err =
+        preflightErr ??
+        new GatewayError({
+          type: "UPSTREAM_5XX",
+          status: 502,
+          code: "upstream_error",
+          message: "Upstream provider failed to generate a response.",
+          provider: adapter.id,
+          model: req.modelId,
+          requestId: timings.requestId,
+        });
+      timings.error = err.message;
+      timings.totalDurationMs = Date.now() - timings.requestStart;
+      providerHealthService.recordProviderFailure(
+        successCandidate?.adapter.id ?? adapter.id,
+        err,
+      );
+      providerHealthService.recordModelFailure(
+        successCandidate?.req.modelId ?? req.modelId,
+        err,
+      );
+      metricsService.recordRequest({
+        requestId: timings.requestId,
+        providerId: successCandidate?.adapter.id ?? adapter.id,
+        modelId: successCandidate?.req.modelId ?? req.modelId,
+        status: err.status,
+        type: "stream_error",
+        message: err.message,
+        streamRequested: true,
+        durationMs: timings.totalDurationMs,
+      });
+      metricsService.recordStreamTimings(timings);
+      return { response: errorResponse(err), timings };
+    }
+
+    // ─── PRE-FLIGHT SUCCEEDED → open 200 OK SSE stream ───
+    const finalCandidate = successCandidate;
+    const gen = successGen;
+    const bufferedFirstDelta = firstDelta;
+    const emitFailoverMarker = failoverOccurred;
+
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        this.runStream(
+        this.runStreamAfterPreflight(
           controller,
-          req,
-          adapter,
-          fallbacks,
+          finalCandidate,
+          gen,
+          bufferedFirstDelta,
+          emitFailoverMarker,
           timings,
           sseId,
           created,
@@ -113,23 +222,20 @@ class StreamingProxyService {
             controller,
             err,
             timings,
-            adapter.id,
-            req.modelId,
+            finalCandidate.adapter.id,
+            finalCandidate.req.modelId,
             encoder,
             sseId,
             created,
           );
-          try {
-            controller.close();
-          } catch {
-            // already closed
-          }
+          try { controller.close(); } catch { /* already closed */ }
         });
       },
       cancel: () => {
         // Client disconnected — surface as aborted (PRD §59, §212).
         timings.error = "client-aborted";
         timings.clientLatencyMs = Date.now() - timings.requestStart;
+        try { gen.return(undefined); } catch { /* best-effort */ }
       },
     });
 
@@ -142,193 +248,211 @@ class StreamingProxyService {
     };
   }
 
-  /** Main streaming loop — never re-paces, never buffers (PRD §137, R-2, R-5). */
-  private async runStream(
+  /**
+   * Consume the (already pre-flighted) generator + forward every delta to the
+   * client. The first chunk is already in hand from the pre-flight; we emit it
+   * immediately, then pull the rest of the stream. Mid-stream errors keep the
+   * `event: error` + terminal-chunk behavior (R-2 mid-stream case).
+   */
+  private async runStreamAfterPreflight(
     controller: ReadableStreamDefaultController<Uint8Array>,
-    req: ChatRequest,
-    adapter: ProviderAdapter,
-    fallbacks: FailoverCandidate[],
+    candidate: FailoverCandidate,
+    gen: AsyncGenerator<string, void, unknown>,
+    firstDelta: string,
+    emitFailoverMarker: boolean,
     timings: StreamTimings,
     sseId: string,
     created: number,
     encoder: TextEncoder,
   ): Promise<void> {
-    // Build the list of candidates: primary first, then fallbacks.
-    const candidates: FailoverCandidate[] = [
-      { req, adapter },
-      ...fallbacks,
-    ];
-    let lastErr: unknown = null;
-    let lastCandidate: FailoverCandidate | null = null;
-    let lastFirstEnqueued = false;
-
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      const isPrimary = i === 0;
-      timings.upstreamRequestStart = Date.now();
-      // Once we successfully fall over to a candidate, expose the
-      // switch via an SSE comment line (audit D1 observability).
-      if (!isPrimary) {
-        try {
-          controller.enqueue(
-            encoder.encode(
-              `: X-Failover ${req.modelId}→${candidate.req.modelId}\n\n`,
-            ),
-          );
-        } catch {
-          // best-effort
-        }
-      }
-      lastCandidate = candidate;
-      const gen = candidate.adapter.stream(candidate.req);
-      let firstEnqueued = false;
-      let anyContent = false;
+    // Audit D1: emit the failover marker as an SSE comment if we ended up
+    // using a non-primary candidate so observability is preserved.
+    if (emitFailoverMarker) {
       try {
-        while (true) {
-          if (candidate.req.signal?.aborted) {
-            this.sendAborted(controller, timings, encoder);
-            return;
-          }
-          const next = await gen.next();
-          if (next.done) break;
-          const delta = next.value;
-          if (!delta) continue;
-          if (timings.upstreamFirstChunk === undefined) {
-            timings.upstreamFirstChunk = Date.now();
-          }
-          timings.chunkCount += 1;
-          timings.bytes += byteLength(delta);
-          anyContent = true;
-          this.enqueueChunk(controller, encoder, sseId, created, candidate.req.modelId, delta);
-          if (!firstEnqueued) {
-            timings.proxyFirstForward = Date.now();
-            timings.ttfbMs =
-              timings.proxyFirstForward - timings.requestStart;
-            timings.ttftMs = timings.ttfbMs;
-            firstEnqueued = true;
-          }
-          if (candidate.req.signal?.aborted) {
-            this.sendAborted(controller, timings, encoder);
-            return;
-          }
-        }
-        // R-5: if the upstream yielded ZERO content chunks, treat it as an
-        // empty_upstream_response — never emit a silent 200 + stop.
-        if (!anyContent) {
-          const emptyErr = emptyUpstreamResponseError(
-            candidate.adapter.id,
-            candidate.req.modelId,
-          );
-          this.handleStreamError(
-            controller,
-            emptyErr,
-            timings,
-            candidate.adapter.id,
-            candidate.req.modelId,
-            encoder,
-            sseId,
-            created,
-          );
-          timings.totalDurationMs = Date.now() - timings.requestStart;
-          metricsService.recordStreamTimings(timings);
-          return;
-        }
-        // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
-        this.enqueueFinal(controller, encoder, sseId, created, candidate.req, timings.bytes);
-        providerHealthService.recordProviderSuccess(candidate.adapter.id);
-        providerHealthService.recordModelSuccess(candidate.req.modelId);
-        metricsService.recordRequest({
-          requestId: timings.requestId,
-          providerId: candidate.adapter.id,
-          modelId: candidate.req.modelId,
-          status: 200,
-          type: "stream",
-          message: "ok",
-          streamRequested: true,
-          ttftMs: timings.ttftMs,
-          durationMs: Date.now() - timings.requestStart,
-        });
-        return;
-      } catch (err) {
-        // Generator cleanup — ignore secondary errors.
-        try {
-          await gen.return(undefined);
-        } catch {
-          // ignore
-        }
-        lastErr = err;
-        lastFirstEnqueued = firstEnqueued;
-        // Audit D1: only failover if NO content has been forwarded yet.
-        // Once the client has received a content chunk, switching adapters
-        // would corrupt the stream (mixed provider outputs).
-        if (firstEnqueued) {
-          // Mid-stream failure — surface as an SSE error event + terminal
-          // chunk with finish_reason:"error" + [DONE] (R-2).
-          this.handleStreamError(
-            controller,
-            err,
-            timings,
-            candidate.adapter.id,
-            candidate.req.modelId,
-            encoder,
-            sseId,
-            created,
-          );
-          timings.totalDurationMs = Date.now() - timings.requestStart;
-          metricsService.recordStreamTimings(timings);
-          return;
-        }
-        // Audit D1: only failover for retryable error types (5xx, rate-limit,
-        // provider-unavailable). Client errors (4xx) wouldn't be solved by
-        // switching providers — they'd just fail the same way.
-        const ge = err instanceof GatewayError ? err : new GatewayError({
-          type: "STREAM_ERROR",
-          message: err instanceof Error ? err.message : String(err),
-          status: 502,
-          provider: candidate.adapter.id,
-          model: candidate.req.modelId,
-          requestId: timings.requestId,
-        });
-        if (!isFailoverCandidate(ge) || i === candidates.length - 1) {
-          // No failover possible — surface the error. Pre-first-chunk failures
-          // use handleStreamError which emits the terminal chunk (R-2) — this
-          // means a client that opened the 200 stream still gets the error
-          // frame + terminal chunk + [DONE].
-          this.handleStreamError(
-            controller,
-            err,
-            timings,
-            candidate.adapter.id,
-            candidate.req.modelId,
-            encoder,
-            sseId,
-            created,
-          );
-          timings.totalDurationMs = Date.now() - timings.requestStart;
-          metricsService.recordStreamTimings(timings);
-          return;
-        }
-        // Try the next fallback candidate.
-        continue;
-      }
+        controller.enqueue(
+          encoder.encode(
+            `: X-Failover used ${candidate.req.modelId} (primary failed pre-flight)\n\n`,
+          ),
+        );
+      } catch { /* best-effort */ }
     }
 
-    // All candidates exhausted — emit the last error.
-    if (lastErr && lastCandidate) {
+    let firstEnqueued = false;
+    let anyContent = false;
+
+    // Emit the buffered first chunk immediately (no buffering beyond the
+    // single pre-flight chunk — the price of returning a real HTTP status
+    // for pre-first-token errors).
+    if (firstDelta) {
+      timings.chunkCount += 1;
+      timings.bytes += byteLength(firstDelta);
+      anyContent = true;
+      this.enqueueChunk(
+        controller,
+        encoder,
+        sseId,
+        created,
+        candidate.req.modelId,
+        firstDelta,
+      );
+      timings.proxyFirstForward = Date.now();
+      timings.ttfbMs = timings.proxyFirstForward - timings.requestStart;
+      timings.ttftMs = timings.ttfbMs;
+      firstEnqueued = true;
+    }
+
+    try {
+      while (true) {
+        if (candidate.req.signal?.aborted) {
+          this.sendAborted(controller, timings, encoder);
+          return;
+        }
+        const next = await gen.next();
+        if (next.done) break;
+        const delta = next.value;
+        if (!delta) continue;
+        if (timings.upstreamFirstChunk === undefined) {
+          timings.upstreamFirstChunk = Date.now();
+        }
+        timings.chunkCount += 1;
+        timings.bytes += byteLength(delta);
+        anyContent = true;
+        this.enqueueChunk(
+          controller,
+          encoder,
+          sseId,
+          created,
+          candidate.req.modelId,
+          delta,
+        );
+        if (!firstEnqueued) {
+          timings.proxyFirstForward = Date.now();
+          timings.ttfbMs = timings.proxyFirstForward - timings.requestStart;
+          timings.ttftMs = timings.ttfbMs;
+          firstEnqueued = true;
+        }
+        if (candidate.req.signal?.aborted) {
+          this.sendAborted(controller, timings, encoder);
+          return;
+        }
+      }
+      // R-5: refuse to pass on a fully-empty stream. (Can happen if the
+      // pre-flight chunk was the empty string and nothing else came.)
+      if (!anyContent) {
+        const emptyErr = emptyUpstreamResponseError(
+          candidate.adapter.id,
+          candidate.req.modelId,
+        );
+        this.handleStreamError(
+          controller,
+          emptyErr,
+          timings,
+          candidate.adapter.id,
+          candidate.req.modelId,
+          encoder,
+          sseId,
+          created,
+        );
+        timings.totalDurationMs = Date.now() - timings.requestStart;
+        metricsService.recordStreamTimings(timings);
+        return;
+      }
+      // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
+      this.enqueueFinal(
+        controller,
+        encoder,
+        sseId,
+        created,
+        candidate.req,
+        timings.bytes,
+      );
+      providerHealthService.recordProviderSuccess(candidate.adapter.id);
+      providerHealthService.recordModelSuccess(candidate.req.modelId);
+      metricsService.recordRequest({
+        requestId: timings.requestId,
+        providerId: candidate.adapter.id,
+        modelId: candidate.req.modelId,
+        status: 200,
+        type: "stream",
+        message: "ok",
+        streamRequested: true,
+        ttftMs: timings.ttftMs,
+        durationMs: Date.now() - timings.requestStart,
+      });
+    } catch (err) {
+      // Mid-stream failure (after at least the pre-flight chunk was
+      // forwarded) → emit `event: error` + terminal chunk (R-2 mid-stream
+      // case). Clients parsing SSE see the structured error; clients that
+      // also check the top-level `http_status` field on the SSE error frame
+      // can recover the real HTTP status.
+      try { await gen.return(undefined); } catch { /* ignore */ }
       this.handleStreamError(
         controller,
-        lastErr,
+        err,
         timings,
-        lastCandidate.adapter.id,
-        lastCandidate.req.modelId,
+        candidate.adapter.id,
+        candidate.req.modelId,
         encoder,
         sseId,
         created,
       );
+      timings.totalDurationMs = Date.now() - timings.requestStart;
+      metricsService.recordStreamTimings(timings);
     }
-    timings.totalDurationMs = Date.now() - timings.requestStart;
-    metricsService.recordStreamTimings(timings);
   }
+
+  /**
+   * Wrap a non-GatewayError thrown by `adapter.stream()` (or by `gen.next()`
+   * during pre-flight) into a classified GatewayError. Re-uses the same
+   * auth/quota/5xx heuristic as the proxy routes so the resulting HTTP status
+   * is consistent across the canonical + legacy paths.
+   */
+  private wrapUnknownStreamErr(
+    err: unknown,
+    candidate: FailoverCandidate,
+    requestId: string,
+  ): GatewayError {
+    if (err instanceof GatewayError) return err;
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
+    const isQuota = /quota|rate.?limit|429/i.test(msg);
+    const isNotFound = /\bHTTP 404\b|not.?found|does not exist/i.test(msg);
+    if (isNotFound) {
+      return new GatewayError({
+        type: "MODEL_NOT_FOUND",
+        status: 404,
+        code: "model_not_found",
+        message: `Upstream returned 404 for model "${candidate.req.modelId}".`,
+        upstreamDetail: msg,
+        provider: candidate.adapter.id,
+        model: candidate.req.modelId,
+        requestId,
+      });
+    }
+    return new GatewayError({
+      type: isAuth ? "AUTHENTICATION_REQUIRED" : isQuota ? "RATE_LIMITED" : "UPSTREAM_5XX",
+      status: isAuth ? 401 : isQuota ? 429 : 502,
+      code: isAuth ? "authentication_required" : isQuota ? "rate_limited" : "upstream_error",
+      message: isAuth
+        ? "Provider requires authentication (HTTP 401)."
+        : isQuota
+          ? "Upstream rate limit exceeded. Retry after 60s."
+          : "Upstream provider failed to generate a response.",
+      upstreamDetail: msg,
+      provider: candidate.adapter.id,
+      model: candidate.req.modelId,
+      requestId,
+      requiresAuth: isAuth,
+      retryAfter: isQuota ? 60 : undefined,
+    });
+  }
+
+  // NOTE: the previous runStream() (which consumed candidates inside a single
+  // 200 OK stream and surfaced pre-first-token errors as in-band event:error
+  // frames) has been replaced by the pre-flight + runStreamAfterPreflight
+  // flow above. Pre-first-token errors now return a real HTTP error Response
+  // (404/502/429/401/…) with a JSON body — no more `Status: N/A` for
+  // streaming clients that read response.status.
 
   /** Emit a STREAM_ABORTED error event (PRD §59, §212). */
   private sendAborted(
@@ -524,11 +648,11 @@ if (!globalForStreamingProxy.__freeaixyzStreamingProxyService) {
   globalForStreamingProxy.__freeaixyzStreamingProxyService = streamingProxyService;
 }
 
-/** Functional entry-point (PRD §6, audit D1 failover). */
-export function streamChat(
+/** Functional entry-point (PRD §6, audit D1 failover). Now async (R-2 pre-flight). */
+export async function streamChat(
   req: ChatRequest,
   adapter: ProviderAdapter,
   fallbacks: FailoverCandidate[] = [],
-): { response: Response; timings: StreamTimings } {
+): Promise<{ response: Response; timings: StreamTimings }> {
   return streamingProxyService.streamChat(req, adapter, fallbacks);
 }
