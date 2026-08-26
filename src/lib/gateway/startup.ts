@@ -60,6 +60,25 @@ export async function initGateway(): Promise<void> {
     modelDiscoveryService.discoverAll().catch((err) =>
       console.error("[gateway.startup] initial discoverAll failed:", err),
     );
+    // 5b. Kick off the NEW isolated per-provider sync engine (Task 11-backend).
+    //     This re-fetches live model lists from every provider's /models
+    //     endpoint (or manual fallback) and pushes results into the
+    //     in-memory catalog. SpicyWriter's new "Ox Alpha" / "Gemma 4 31B T"
+    //     / "Ling 2.6 Flash" / "Lunaris" / "Nemo" free models are auto-
+    //     discovered here. Catalog serves cached/static models immediately
+    //     (stale-while-revalidate — PRD §27) and refreshes when sync
+    //     completes. Non-blocking — failures never block app readiness.
+    try {
+      const providersModule = (await import(
+        /* webpackChunkName: "providers-sync" */ "@/providers"
+      )) as typeof import("@/providers");
+      providersModule.ensureProvidersRegistered();
+      providersModule.syncAll().catch((err) =>
+        console.error("[gateway.startup] providers syncAll failed:", err),
+      );
+    } catch (err) {
+      console.error("[gateway.startup] providers module import failed:", err);
+    }
     // 6. Start periodic background refresh (PRD §30).
     try {
       modelDiscoveryService.startBackgroundRefresh();

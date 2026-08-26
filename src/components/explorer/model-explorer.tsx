@@ -294,7 +294,7 @@ export function ModelExplorer() {
                       });
                     }}
                     className={cn(
-                      "w-full flex items-center gap-2 cursor-pointer text-xs rounded-full px-3 py-1.5 transition-all",
+                      "w-full min-w-0 flex items-center gap-2 cursor-pointer text-xs rounded-full px-3 py-1.5 transition-all",
                       checked
                         ? "bg-gradient-to-r from-accent/15 to-accent-secondary/15 border border-accent/40 text-foreground"
                         : "border border-border text-muted-foreground hover:text-foreground hover:border-accent/30",
@@ -303,7 +303,7 @@ export function ModelExplorer() {
                   >
                     <span
                       className={cn(
-                        "inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border",
+                        "inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border shrink-0",
                         checked
                           ? "bg-accent border-accent text-white"
                           : "border-border",
@@ -323,10 +323,15 @@ export function ModelExplorer() {
                         </svg>
                       )}
                     </span>
-                    <span className="truncate flex-1 text-left">{p.name}</span>
+                    <span
+                      className="truncate flex-1 min-w-0 text-left overflow-hidden text-ellipsis whitespace-nowrap"
+                      title={p.name}
+                    >
+                      {p.name}
+                    </span>
                     <span
                       className={cn(
-                        "text-[9px] uppercase tracking-wider",
+                        "text-[9px] uppercase tracking-wider shrink-0",
                         checked ? "text-accent" : "text-muted-foreground/70",
                       )}
                     >
@@ -565,9 +570,10 @@ export function ModelExplorer() {
                   key={p.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-accent/30"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div
-                      className="text-xs font-medium truncate"
+                      className="text-xs font-medium truncate overflow-hidden text-ellipsis whitespace-nowrap"
+                      title={p.name}
                       style={{ fontFamily: "var(--font-mono), monospace" }}
                     >
                       {p.name}

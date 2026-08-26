@@ -40,6 +40,7 @@ import {
   ChevronsUpDown,
   Search,
   Zap,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +62,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import { useSseStream, type SseError } from "@/hooks/use-sse-stream";
+import { useModelSync } from "@/hooks/use-model-sync";
 import { StreamingDiagnostics } from "@/components/playground/streaming-diagnostics";
 import { RawSseDebugger } from "@/components/playground/raw-sse-debugger";
 
@@ -80,6 +82,7 @@ interface HealthModel {
   id: string;
   owned_by: string;
   status: string;
+  free: boolean;
   capabilities: {
     streaming?: boolean;
     tools?: boolean;
@@ -148,57 +151,108 @@ export function ChatPlayground() {
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
   const stream = useSseStream();
+  // Real-time model-registry sync (PRD §6, §7, §28, §29).
+  const modelSync = useModelSync();
 
-  // Load models list.
+  // Tracks whether the user has manually chosen a model — used to suppress the
+  // "first active streaming model" auto-pick on the very first load only.
+  const userPickedRef = React.useRef<boolean>(false);
+
+  // Fetch the model list (also called after a sync completes — PRD §43, §44).
+  const fetchModels = React.useCallback(async (): Promise<HealthModel[]> => {
+    setModelsLoading(true);
+    try {
+      const res = await fetch("/api/v1/models?health=true", { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as OAIModelList;
+      const list: HealthModel[] = (json.data as unknown[])
+        .map((d) => d as Partial<HealthModel> & Record<string, unknown>)
+        .filter((d) => typeof d.id === "string")
+        .map((d) => ({
+          id: d.id as string,
+          owned_by: (d.owned_by as string) ?? "—",
+          status: (d.status as string) ?? "unknown",
+          // Treat `free: true` as free; if field is missing default to true
+          // (FreeAIXYZ is a free-tier gateway — most models are free).
+          free: d.free !== false,
+          capabilities: {
+            streaming: Boolean(
+              (d.capabilities as { streaming?: boolean })?.streaming,
+            ),
+            tools: Boolean((d.capabilities as { tools?: boolean })?.tools),
+            vision: Boolean((d.capabilities as { vision?: boolean })?.vision),
+          },
+          context_window:
+            typeof d.context_window === "number" ? d.context_window : null,
+          last_verified:
+            typeof d.last_verified === "string" ? d.last_verified : null,
+        }));
+      // PRD §42 — free-only: filter to active + free models.
+      const freeActive = list.filter(
+        (m) => m.status === "active" && m.free !== false,
+      );
+      setModels(freeActive.length > 0 ? freeActive : list);
+      return freeActive.length > 0 ? freeActive : list;
+    } catch (e) {
+      setModelsError(e instanceof Error ? e.message : String(e));
+      return [];
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
+  // Load models list on mount.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      setModelsLoading(true);
-      try {
-        const res = await fetch("/api/v1/models?health=true", { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const json = (await res.json()) as OAIModelList;
-        if (cancelled) return;
-        const list: HealthModel[] = (json.data as unknown[])
-          .map((d) => d as Partial<HealthModel> & Record<string, unknown>)
-          .filter((d) => typeof d.id === "string")
-          .map((d) => ({
-            id: d.id as string,
-            owned_by: (d.owned_by as string) ?? "—",
-            status: (d.status as string) ?? "unknown",
-            capabilities: {
-              streaming: Boolean(
-                (d.capabilities as { streaming?: boolean })?.streaming,
-              ),
-              tools: Boolean((d.capabilities as { tools?: boolean })?.tools),
-              vision: Boolean((d.capabilities as { vision?: boolean })?.vision),
-            },
-            context_window:
-              typeof d.context_window === "number" ? d.context_window : null,
-            last_verified:
-              typeof d.last_verified === "string" ? d.last_verified : null,
-          }));
-        setModels(list);
-        const preferred =
+      const list = await fetchModels();
+      if (cancelled) return;
+      if (list.length === 0) return;
+      // Don't auto-pick if the user already selected a model (rare on first mount).
+      const preferred =
+        list.find((m) => m.capabilities.streaming && m.status === "active") ??
+        list.find((m) => m.status === "active") ??
+        list.find((m) => m.capabilities.streaming) ??
+        list[0];
+      if (preferred && !userPickedRef.current) setSelectedModel(preferred.id);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchModels]);
+
+  // After a sync completes, re-fetch the model list and auto-switch if the
+  // currently selected model is no longer present (PRD §43, §44).
+  React.useEffect(() => {
+    if (modelSync.syncing) return;
+    if (!modelSync.lastSyncAt) return;
+    let cancelled = false;
+    (async () => {
+      const list = await fetchModels();
+      if (cancelled || list.length === 0) return;
+      const stillThere = list.some((m) => m.id === selectedModel);
+      if (!stillThere) {
+        const next =
           list.find((m) => m.capabilities.streaming && m.status === "active") ??
           list.find((m) => m.status === "active") ??
-          list.find((m) => m.capabilities.streaming) ??
           list[0];
-        if (preferred) setSelectedModel(preferred.id);
-      } catch (e) {
-        if (!cancelled) {
-          setModelsError(e instanceof Error ? e.message : String(e));
+        if (next) {
+          const prev = selectedModel || "—";
+          setSelectedModel(next.id);
+          if (prev !== "—" && prev !== next.id) {
+            toast.success(
+              `Model ${prev} was removed — switched to ${next.id}`,
+            );
+          }
         }
-      } finally {
-        if (!cancelled) setModelsLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [modelSync.lastSyncAt, modelSync.syncing, fetchModels, selectedModel]);
 
   // Track scroll position to enable "Jump to latest".
   const handleScroll = React.useCallback(() => {
@@ -387,6 +441,7 @@ export function ChatPlayground() {
             models.slice(currentIdx + 1).find((m) => m.capabilities.streaming) ??
             models.find((m) => m.capabilities.streaming);
           if (next) {
+            userPickedRef.current = true;
             setSelectedModel(next.id);
             toast.success(`Switched to ${next.id}`);
             return;
@@ -397,6 +452,27 @@ export function ChatPlayground() {
     },
     [models],
   );
+
+  // Manual model-pick handler — flips the userPicked flag so the auto-pick
+  // effect doesn't override the user's choice on a later sync.
+  const handleSelectModel = React.useCallback((id: string) => {
+    userPickedRef.current = true;
+    setSelectedModel(id);
+  }, []);
+
+  // Manual sync trigger (PRD §8) — "Refresh Models" button.
+  const handleRefreshModels = React.useCallback(async () => {
+    const result = await modelSync.refresh();
+    if (result) {
+      toast.success(
+        `Models updated — new: ${result.added} · updated: ${result.updated} · removed: ${result.removed} · free: ${result.free}`,
+        { duration: 4000 },
+      );
+    } else if (modelSync.error) {
+      toast.error(`Sync failed: ${modelSync.error}`);
+    }
+    // The post-sync effect above will re-fetch + auto-switch if needed.
+  }, [modelSync]);
 
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -421,8 +497,25 @@ export function ChatPlayground() {
             loading={modelsLoading}
             error={modelsError}
             value={selectedModel}
-            onChange={setSelectedModel}
+            onChange={handleSelectModel}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshModels}
+            disabled={modelSync.syncing}
+            aria-label="Refresh models"
+            className="h-12 shrink-0 gap-1.5 text-[10px] uppercase tracking-[0.12em] border-border rounded-xl hover:bg-accent/10 hover:text-accent hover:border-accent disabled:opacity-60 disabled:pointer-events-none"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
+          >
+            {modelSync.syncing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" strokeWidth={1.75} />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5 text-accent" strokeWidth={1.75} />
+            )}
+            <span className="hidden sm:inline">Refresh models</span>
+            <span className="sm:hidden">Sync</span>
+          </Button>
           <Badge
             variant="outline"
             className="text-[10px] border-accent/30 bg-accent/5 text-accent uppercase tracking-[0.12em] rounded-full"
@@ -465,6 +558,9 @@ export function ChatPlayground() {
             )}
           </div>
         </div>
+
+        {/* Sync state line — PRD §45 (lightweight status near model selector). */}
+        <SyncStatusBar sync={modelSync} />
 
         {/* System prompt (collapsible) */}
         {showSystem && (
@@ -991,6 +1087,12 @@ function ModelPicker({
 
   const selected = models.find((m) => m.id === value);
 
+  // Empty state (PRD §46) — no free/active models currently available.
+  const isEmpty = !loading && !error && models.length === 0;
+
+  // PRD §39 — title attribute for the full provider name tooltip on overflow.
+  const selectedFullProvider = selected?.owned_by ?? "";
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -998,36 +1100,58 @@ function ModelPicker({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label="Select model"
           className="flex-1 min-w-0 h-12 justify-between border-border bg-background font-normal rounded-xl hover:border-accent/40 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         >
-          {loading ? (
-            <span className="text-muted-foreground text-xs flex items-center gap-2">
-              <Loader2 className="h-3 w-3 animate-spin text-accent" strokeWidth={1.75} />
-              Loading models…
-            </span>
-          ) : error ? (
-            <span className="text-rose-500 text-xs">Models unavailable</span>
-          ) : selected ? (
-            <span
-              className="truncate text-left"
-              style={{ fontFamily: "var(--font-mono), monospace" }}
-            >
-              <span className="text-foreground">{selected.id}</span>
-              <span className="text-muted-foreground text-[10px] ml-2 hidden sm:inline">
-                {selected.owned_by}
-                {selected.capabilities.streaming && (
-                  <span className="ml-1.5 inline-flex items-center gap-0.5">
-                    <Zap className="h-2.5 w-2.5 text-accent" strokeWidth={1.75} />
-                    stream
-                  </span>
-                )}
+          {/* Content container — PRD §36: min-w-0 + flex-1 so the inner
+              truncate spans actually clip on overflow. */}
+          <span className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
+            {loading ? (
+              <span className="text-muted-foreground text-xs flex items-center gap-2 truncate">
+                <Loader2 className="h-3 w-3 animate-spin text-accent shrink-0" strokeWidth={1.75} />
+                <span className="truncate">Loading models…</span>
               </span>
-            </span>
-          ) : (
-            <span className="text-muted-foreground text-xs">
-              Select model…
-            </span>
-          )}
+            ) : error ? (
+              <span className="text-rose-500 text-xs truncate">
+                Models unavailable
+              </span>
+            ) : isEmpty ? (
+              <span className="text-muted-foreground text-xs truncate flex items-center gap-1.5">
+                <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" strokeWidth={1.75} />
+                <span className="truncate">
+                  No free models available — Refresh to check again
+                </span>
+              </span>
+            ) : selected ? (
+              <>
+                <span
+                  className="text-foreground truncate text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+                  title={selected.id}
+                  style={{ fontFamily: "var(--font-mono), monospace" }}
+                >
+                  {selected.id}
+                </span>
+                <span
+                  className="text-muted-foreground text-[10px] hidden sm:inline-flex items-center gap-1 min-w-0 truncate overflow-hidden text-ellipsis whitespace-nowrap"
+                  title={`${selectedFullProvider}${selected.capabilities.streaming ? " · streaming" : ""}`}
+                >
+                  <span className="truncate">{selectedFullProvider}</span>
+                  {selected.capabilities.streaming && (
+                    <span className="inline-flex items-center gap-0.5 shrink-0">
+                      <Zap className="h-2.5 w-2.5 text-accent" strokeWidth={1.75} />
+                      stream
+                    </span>
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground text-xs truncate">
+                Select model…
+              </span>
+            )}
+          </span>
+          {/* PRD §40 — flex-shrink-0 on the chevron so the name gets the
+              remaining width and the chevron stays pinned. */}
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -1047,9 +1171,26 @@ function ModelPicker({
             />
           </div>
           <CommandList className="max-h-[360px] overflow-y-auto custom-scroll">
-            <CommandEmpty>
-              {query ? `No models found for "${query}".` : "Type to search…"}
-            </CommandEmpty>
+            {isEmpty ? (
+              <CommandEmpty>
+                <div className="py-8 text-center space-y-2">
+                  <AlertCircle
+                    className="h-5 w-5 mx-auto text-amber-500"
+                    strokeWidth={1.75}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    No free models currently available.
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/70">
+                    Refresh models to check again.
+                  </p>
+                </div>
+              </CommandEmpty>
+            ) : (
+              <CommandEmpty>
+                {query ? `No models found for "${query}".` : "Type to search…"}
+              </CommandEmpty>
+            )}
             {Array.from(grouped.entries()).map(([provider, list]) => (
               <CommandGroup
                 key={provider}
@@ -1066,7 +1207,7 @@ function ModelPicker({
                     }}
                     className="flex flex-col items-start gap-0.5 py-1.5"
                   >
-                    <div className="flex items-center gap-2 w-full">
+                    <div className="flex items-center gap-2 w-full min-w-0">
                       <Check
                         className={cn(
                           "h-3.5 w-3.5 shrink-0",
@@ -1075,7 +1216,8 @@ function ModelPicker({
                         strokeWidth={1.75}
                       />
                       <span
-                        className="text-sm font-medium truncate"
+                        className="text-sm font-medium truncate min-w-0 flex-1"
+                        title={m.id}
                         style={{ fontFamily: "var(--font-mono), monospace" }}
                       >
                         {m.id}
@@ -1118,5 +1260,87 @@ function ModelPicker({
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SyncStatusBar — lightweight inline sync state line (PRD §45).
+//
+// Shows "↻ Updating models…" while syncing, then briefly flashes the diff
+// result ("✓ Models updated (N new, M removed)") before fading out.
+
+interface SyncStatusBarProps {
+  sync: {
+    syncing: boolean;
+    lastSyncAt: string | null;
+    result: {
+      added: number;
+      updated: number;
+      removed: number;
+      free: number;
+    } | null;
+    error: string | null;
+  };
+}
+
+function SyncStatusBar({ sync }: SyncStatusBarProps) {
+  // Flash the result for 3 seconds after a sync completes, then fade (PRD §45).
+  const [showFlash, setShowFlash] = React.useState(false);
+  const lastResultRef = React.useRef<SyncStatusBarProps["sync"]["result"]>(null);
+  React.useEffect(() => {
+    if (sync.result && sync.result !== lastResultRef.current) {
+      lastResultRef.current = sync.result;
+      setShowFlash(true);
+      const t = window.setTimeout(() => setShowFlash(false), 3000);
+      return () => window.clearTimeout(t);
+    }
+    return;
+  }, [sync.result]);
+
+  const syncing = sync.syncing;
+  const hasResult = Boolean(sync.result);
+  const diff = sync.result;
+
+  if (!syncing && !showFlash && !sync.error) {
+    // Idle — render an invisible placeholder so layout doesn't jump when the
+    // line shows up. Use min-h to reserve the row.
+    return <div className="h-6 mt-1" aria-hidden="true" />;
+  }
+
+  return (
+    <div
+      className="mt-1 h-6 flex items-center px-1"
+      role="status"
+      aria-live="polite"
+    >
+      {syncing ? (
+        <span
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-accent"
+          style={{ fontFamily: "var(--font-mono), monospace" }}
+        >
+          <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.75} />
+          <span>↻ Updating models…</span>
+        </span>
+      ) : sync.error ? (
+        <span
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-rose-500"
+          style={{ fontFamily: "var(--font-mono), monospace" }}
+        >
+          <AlertCircle className="h-3 w-3" strokeWidth={1.75} />
+          <span>Sync failed: {sync.error}</span>
+        </span>
+      ) : showFlash && hasResult && diff ? (
+        <span
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400 transition-opacity"
+          style={{ fontFamily: "var(--font-mono), monospace" }}
+        >
+          <Check className="h-3 w-3" strokeWidth={1.75} />
+          <span>
+            ✓ Models updated · {diff.added} new · {diff.removed} removed ·{" "}
+            {diff.free} free
+          </span>
+        </span>
+      ) : null}
+    </div>
   );
 }
