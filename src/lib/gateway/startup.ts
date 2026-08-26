@@ -73,17 +73,26 @@ export async function initGateway(): Promise<void> {
     //     endpoint (or manual fallback) and pushes results into the
     //     in-memory catalog. SpicyWriter's new "Ox Alpha" / "Gemma 4 31B T"
     //     / "Ling 2.6 Flash" / "Lunaris" / "Nemo" free models are auto-
-    //     discovered here. Catalog serves cached/static models immediately
-    //     (stale-while-revalidate — PRD §27) and refreshes when sync
-    //     completes. Non-blocking — failures never block app readiness.
+    //     discovered here.
+    //
+    //     On Vercel serverless, each cold start gets a fresh module scope
+    //     (no persistence between invocations). To make the catalog actually
+    //     reflect the synced state on cold start, we AWAIT syncAll() here
+    //     instead of firing it non-blocking. The first request after a cold
+    //     start pays the sync latency (~3-5s for 17 providers in parallel);
+    //     subsequent requests on the warm instance are fast (idempotent flag
+    //     skips the await). This is the tradeoff for not running a separate
+    //     persistence layer (SQLite is ephemeral on Vercel).
     try {
       const providersModule = (await import(
         /* webpackChunkName: "providers-sync" */ "@/providers"
       )) as typeof import("@/providers");
       providersModule.ensureProvidersRegistered();
-      providersModule.syncAll().catch((err) =>
-        console.error("[gateway.startup] providers syncAll failed:", err),
-      );
+      try {
+        await providersModule.syncAll();
+      } catch (err) {
+        console.error("[gateway.startup] initial syncAll failed:", err);
+      }
     } catch (err) {
       console.error("[gateway.startup] providers module import failed:", err);
     }
