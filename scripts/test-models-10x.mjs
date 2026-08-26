@@ -108,9 +108,13 @@ function clamp(s) {
   return str.length > MAX_ERR_LEN ? str.slice(0, MAX_ERR_LEN) : str;
 }
 
-// Parse one SSE `data:` payload line. Mutates ctx (sets gotContent, lastErr).
+// Parse one SSE `data:` payload line. Mutates ctx (sets gotContent, lastErr, doneSeen).
 function handleDataLine(data, ctx) {
-  if (!data || data === '[DONE]') return;
+  if (!data) return;
+  if (data === '[DONE]') {
+    ctx.doneSeen = true;
+    return;
+  }
   let obj;
   try {
     obj = JSON.parse(data);
@@ -166,7 +170,7 @@ async function attemptModelOnce(baseUrl, modelId) {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buf = '';
-    const ctx = { gotContent: false, lastErr: null };
+    const ctx = { gotContent: false, lastErr: null, doneSeen: false };
 
     const processBuffer = (final) => {
       while (true) {
@@ -189,14 +193,31 @@ async function attemptModelOnce(baseUrl, modelId) {
       }
     };
 
+    // Read the SSE stream. Break out as soon as we see [DONE] so the gateway
+    // (which keeps the underlying HTTP body open after emitting [DONE]) can't
+    // keep us hanging until the 30s timeout fires.
     while (true) {
-      const { value, done } = await reader.read();
+      let read;
+      try {
+        read = await reader.read();
+      } catch (e) {
+        if (e?.name === 'AbortError') break;
+        throw e;
+      }
+      const { value, done } = read;
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       processBuffer(false);
+      if (ctx.doneSeen) {
+        // [DONE] sentinel received — release the reader and stop reading.
+        try { await reader.cancel(); } catch {}
+        break;
+      }
     }
-    buf += decoder.decode(); // flush decoder
-    processBuffer(true);
+    if (!ctx.doneSeen) {
+      buf += decoder.decode(); // flush decoder
+      processBuffer(true);
+    }
 
     if (ctx.gotContent) return { pass: true };
     return { pass: false, error: ctx.lastErr || 'no content delta before stream ended' };

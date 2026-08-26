@@ -7,14 +7,19 @@ import type { FreeClassification, UnifiedModel } from "../types";
  *   - tierType==="LITE"              → FREE (anonymous BASIC users get 150
  *                                     requests/day per LITE model; with anon
  *                                     user id rotation this is unlimited)
- *   - tierType==="BALANCED"          → technically free (20 req/day on BASIC)
- *                                     but mark as low-confidence free
+ *   - tierType==="BALANCED"          → NOT FREE for anonymous users. The 10x
+ *                                     reliability sweep (2026-08-26) confirmed
+ *                                     that BALANCED-tier models return HTTP 500
+ *                                     for anonymous calls — they require a
+ *                                     logged-in BASIC account, not anonymous
+ *                                     access. (Previously misclassified as free.)
  *   - tierType==="ADVANCED" +        → NOT FREE (PRO tier required, daily
  *     requiredTier==="PRO"             quota 0 for BASIC)
  *
- * This auto-detects new free models like "Ox Alpha" (the "0x" model the
+ * This auto-detects new LITE free models like "Ox Alpha" (the "0x" model the
  * user mentioned), "Gemma 4 31B T", "Lunaris", "Ling 2.6 Flash", and
- * "Nemo" without any hardcoding — PRD §21.
+ * "Nemo" without any hardcoding — PRD §21. Individual LITE models that
+ * still fail upstream are delisted in src/lib/gateway/delisted.ts.
  */
 export function classifyFree(model: UnifiedModel): FreeClassification {
   const raw = model.raw as {
@@ -33,9 +38,9 @@ export function classifyFree(model: UnifiedModel): FreeClassification {
   }
   if (tier === "BALANCED") {
     return {
-      free: true,
+      free: false,
       confidence: "provider",
-      reason: "spicywriter tierType=BALANCED (free for anonymous BASIC users, 20/day)",
+      reason: "spicywriter tierType=BALANCED (requires logged-in BASIC account, fails for anonymous)",
     };
   }
   if (tier === "ADVANCED" || required === "PRO") {

@@ -25,6 +25,7 @@ import {
   providerRegistry,
   type DiscoveredModel,
 } from "@/lib/gateway";
+import { isDelistedModel } from "@/lib/gateway/delisted";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
 
@@ -47,12 +48,17 @@ function ownedBy(m: DiscoveredModel): string {
  * gateway can actually call it for free. The legacy MODELS[] registry marks
  * all its entries as `free: true` (hand-curated free-only set), so legacy
  * models continue to appear.
+ *
+ * 10x-sweep delisted models (src/lib/gateway/delisted.ts) are also hidden
+ * — they were individually tested 10 times and failed every attempt.
  */
 function shouldInclude(m: DiscoveredModel, showAll: boolean): boolean {
   if (showAll) return true;
   // Default listing hides offline models (PRD §54 — don't permanently hide,
   // just don't surface by default). R-3: delisted providers are offline.
   if (m.status === "offline") return false;
+  // 10x-sweep delisted models — individually confirmed broken upstream.
+  if (isDelistedModel(m.id)) return false;
   // PRD §42 — free-only catalog. Paid models only appear via ?all=true.
   if (m.free === false) return false;
   return true;
