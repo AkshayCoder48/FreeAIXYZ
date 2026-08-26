@@ -54,6 +54,20 @@ function mapCapabilities(legacy: GatewayModel): ModelCapabilities {
 
 /** Convert a legacy GatewayModel entry into a DiscoveredModel. */
 function toDiscoveredModel(m: GatewayModel): DiscoveredModel {
+  // R-3: providers currently known to be broken upstream are marked offline
+  // so they don't appear in `GET /api/v1/models` by default. They're still
+  // accessible via `?all=true` for debugging, and direct calls to their
+  // models return PROVIDER_UNAVAILABLE (circuit open) — never a silent
+  // 200 with empty content.
+  //
+  // As of the 2026-08-26 reliability sweep:
+  //   - freegpt: 56 models at 0% success — the /api/challenge endpoint
+  //     now returns HTML (Cloudflare page) instead of JSON, so the WASM
+  //     signer integration can't get a valid challenge. Verified dead in
+  //     a cold isolated re-test. The fix requires reverse-engineering the
+  //     new challenge response shape — out of scope for this hotfix.
+  //     Removed from the catalogue until repaired.
+  const isDelisted = DELISTED_PROVIDERS.has(m.provider);
   return {
     id: canonicalModelId(m.provider, m.upstream),
     providerId: m.provider,
@@ -73,11 +87,23 @@ function toDiscoveredModel(m: GatewayModel): DiscoveredModel {
       },
     },
     discoveredAt: new Date().toISOString(),
-    status: "active",
+    status: isDelisted ? "offline" : "active",
     discoveryMode: "manual", // hand-curated (PRD §34)
-    discoveredFrom: "legacy-registry",
+    discoveredFrom: isDelisted ? "legacy-registry (delisted: upstream outage)" : "legacy-registry",
   };
 }
+
+/**
+ * R-3: providers currently delisted from `GET /api/v1/models` because they
+ * are confirmed dead upstream. Models still appear via `?all=true` and the
+ * adapter's chat route still returns a clean PROVIDER_UNAVAILABLE error —
+ * the delisting just stops the catalogue from advertising capability the
+ * gateway cannot deliver. Remove a provider from this set the moment its
+ * integration is repaired.
+ */
+export const DELISTED_PROVIDERS: ReadonlySet<string> = new Set([
+  "freegpt", // challenge endpoint returns HTML — integration broken upstream
+]);
 
 /** Find the legacy GatewayModel matching (provider, upstream). */
 function findLegacyModel(

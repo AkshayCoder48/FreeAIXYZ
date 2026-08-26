@@ -1,10 +1,19 @@
 /**
- * Provider + model health service with circuit breaker (PRD §46-48, §121-123).
+ * Provider + model health service with circuit breaker (PRD §46-48, §121-123, R-8).
  *
  * Per-provider circuit breaker: healthy → (N consecutive failures) → open
  * (60s cooldown) → half-open (1 probe) → healthy/closed. NEVER permanently
  * hides a provider (PRD §122). Model-level health tracks failure counts and
  * downgrades status to degraded/offline.
+ *
+ * R-8 (per-route circuit breaker): in addition to the per-provider breaker,
+ * there is now a per-MODEL breaker keyed by canonical model id. This is the
+ * direct fix for BUG-6 from the audit — a single failing model of a provider
+ * was taking down its healthy siblings (`po/openai-fast` and `ss/*` scored
+ * 0% under load but 100% when serialized). Now an individual model that
+ * fails N times opens its OWN breaker, leaving the rest of the provider's
+ * models untouched. The provider-wide breaker is still consulted for
+ * genuine provider-wide outages (e.g. FreeGPT.tech down).
  *
  * Outcomes are recorded by the streaming-proxy on every successful /
  * failed stream and by the health-check background loop.
@@ -24,6 +33,11 @@ const COOLDOWN_MS = 60 * 1000; // 60s (PRD §121)
 const SUCCESS_WINDOW = 10; // rolling window for success-rate calc
 const MODEL_DEGRADED_FAILURES = 2;
 const MODEL_OFFLINE_FAILURES = 5;
+// R-8: per-MODEL breaker threshold. Lower than the provider threshold so a
+// single misbehaving model trips its own breaker quickly without waiting
+// for the whole provider to degrade.
+const MODEL_BREAKER_THRESHOLD = 3;
+const MODEL_BREAKER_COOLDOWN_MS = 30 * 1000;
 
 type BreakerState = "closed" | "open" | "half_open";
 
@@ -44,6 +58,10 @@ interface ModelHealthInternal {
 
 class ProviderHealthService {
   private breakers = new Map<string, BreakerEntry>();
+  /** R-8: per-MODEL circuit breaker map. Keyed by canonical model id
+   * (e.g. `po/openai-fast`, `ss/qwen-2.5`). Separate from the per-provider
+   * breaker so a single failing model can't take down its siblings. */
+  private modelBreakers = new Map<string, BreakerEntry>();
   private modelHealth = new Map<string, ModelHealthInternal>();
 
   // ─── Provider-level health + circuit breaker ─────────────────────────────
@@ -180,10 +198,43 @@ class ProviderHealthService {
     return ok / b.successes.length;
   }
 
-  // ─── Model-level health (PRD §47) ────────────────────────────────────────
+  // ─── Model-level health (PRD §47, R-8 per-model breaker) ─────────────────
 
-  /** Record a successful model request — decay failures, restore status. */
+  /**
+   * R-8: True if the per-MODEL circuit breaker is currently open.
+   *
+   * The model breaker opens after MODEL_BREAKER_THRESHOLD consecutive
+   * failures (lower than the provider threshold so a single bad model
+   * trips quickly without dragging the rest of the provider down — direct
+   * fix for BUG-6 where one failing `po/openai-fast` model was poisoning
+   * the entire `po/*` pool).
+   *
+   * Cooldown is shorter (30s) than the provider cooldown (60s) so a model
+   * that recovers gets re-probed sooner.
+   */
+  isModelOpen(modelId: string): boolean {
+    const b = this.modelBreakers.get(modelId);
+    if (!b) return false;
+    if (b.status === "open") {
+      const elapsed = Date.now() - (b.openedAt ?? 0);
+      if (elapsed >= MODEL_BREAKER_COOLDOWN_MS) {
+        // Auto-promote to half-open — let the next request probe the model.
+        b.status = "half_open";
+        return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /** Record a successful model request — decay failures, restore status, close model breaker. */
   recordModelSuccess(publicId: string): void {
+    // R-8: close the per-model breaker if it was open/half-open.
+    const mb = this.modelBreakers.get(publicId);
+    if (mb) {
+      mb.consecutiveFailures = 0;
+      if (mb.status === "half_open") mb.status = "closed";
+    }
     const entry =
       this.modelHealth.get(publicId) ??
       ({ status: "active" as ModelStatus, failureCount: 0 } as ModelHealthInternal);
@@ -201,8 +252,18 @@ class ProviderHealthService {
     );
   }
 
-  /** Record a failed model request — bump failures, downgrade status. */
+  /** Record a failed model request — bump failures, downgrade status, maybe open model breaker. */
   recordModelFailure(publicId: string, err?: unknown): void {
+    // R-8: bump the per-model breaker; open it if the threshold is hit.
+    const mb = this.getModelBreaker(publicId);
+    mb.consecutiveFailures += 1;
+    if (
+      mb.status === "half_open" ||
+      mb.consecutiveFailures >= MODEL_BREAKER_THRESHOLD
+    ) {
+      mb.status = "open";
+      mb.openedAt = Date.now();
+    }
     const entry =
       this.modelHealth.get(publicId) ??
       ({ status: "active" as ModelStatus, failureCount: 0 } as ModelHealthInternal);
@@ -224,6 +285,16 @@ class ProviderHealthService {
         err instanceof Error ? err.message : err,
       );
     }
+  }
+
+  /** Get or create the per-model breaker entry (R-8). */
+  private getModelBreaker(modelId: string): BreakerEntry {
+    let b = this.modelBreakers.get(modelId);
+    if (!b) {
+      b = { status: "closed", consecutiveFailures: 0, successes: [] };
+      this.modelBreakers.set(modelId, b);
+    }
+    return b;
   }
 
   getModelHealth(publicId: string): ModelHealthInternal | undefined {

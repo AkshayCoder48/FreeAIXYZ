@@ -40,16 +40,22 @@ export type {
   StreamTimings,
 } from "@/lib/gateway/types";
 
-// Errors (PRD §62, §146-149).
+// Errors (PRD §62, §146-149, R-1..R-13).
 export {
   classifyUpstreamStatus,
   defaultStatusFor,
+  emptyContentError,
+  emptyUpstreamResponseError,
   errorResponse,
   generateRequestId,
   GatewayError,
+  hasNonEmptyContent,
   isFailoverCandidate,
   isRetryableStatus,
+  isRetryableType,
+  sanitizeUpstreamMessage,
   sseErrorEvent,
+  sseTerminalErrorChunk,
 } from "@/lib/gateway/errors";
 export type { GatewayErrorBody, GatewayErrorType } from "@/lib/gateway/errors";
 

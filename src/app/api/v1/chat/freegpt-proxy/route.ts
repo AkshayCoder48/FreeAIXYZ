@@ -7,6 +7,15 @@
  *
  * Body: { model, messages, stream, tools?, toolChoice? }
  * Response: OpenAI-compatible JSON or SSE stream
+ *
+ * R-1: empty-content validation runs BEFORE the stream is opened.
+ * R-2: mid-stream errors emit `event: error` + terminal chunk with
+ *   `finish_reason: "error"` + `[DONE]` (no more `Status: N/A`).
+ * R-4: response headers never include `content-encoding` (BUG-2 fix).
+ * R-5: empty upstream content → 502 `empty_upstream_response` (BUG-3 fix).
+ * R-7: client-payload faults → 4xx; upstream faults → 5xx.
+ * R-10: upstream error text moves to `upstream_detail`; user-facing
+ *   message is sanitized (no HTML / billing / deprecation blobs).
  */
 
 import { NextResponse } from "next/server";
@@ -20,6 +29,14 @@ import {
   type OAIChatCompletionResponse,
 } from "@/lib/openai-types";
 import { parseToolCalls } from "@/lib/tool-calls";
+import {
+  GatewayError,
+  emptyContentError,
+  emptyUpstreamResponseError,
+  hasNonEmptyContent,
+  sseErrorEvent,
+  sseTerminalErrorChunk,
+} from "@/lib/gateway/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +50,48 @@ interface ProxyRequest {
   toolChoice?: string;
 }
 
+/**
+ * R-4: SSE response headers that intentionally OMIT `content-encoding` and
+ * `transfer-encoding` (BUG-2 brotli-header leak fix).
+ */
+const SSE_HEADERS: Record<string, string> = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-store, no-transform",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
+  "X-No-Buffer": "true",
+};
+
+/** JSON error helper that returns the gateway error shape (R-7). */
+function gatewayErrorResponse(err: GatewayError): NextResponse {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (err.type === "RATE_LIMITED") {
+    headers["Retry-After"] = String(err.retryAfter ?? 60);
+  }
+  return new NextResponse(JSON.stringify({ error: err.toJSON() }), {
+    status: err.status,
+    headers,
+  });
+}
+
 export async function POST(request: Request) {
-  const body = (await request.json()) as ProxyRequest;
+  let body: ProxyRequest;
+  try {
+    body = (await request.json()) as ProxyRequest;
+  } catch {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "INVALID_REQUEST",
+        status: 400,
+        code: "invalid_request_error",
+        message: "Invalid JSON body.",
+      }),
+    );
+  }
   const model = resolveGatewayModel(body.model);
   const provider = freeGptProvider;
 
-  const messages = body.messages.map((m) => ({
+  const messages = (body.messages ?? []).map((m) => ({
     role: m.role as "system" | "user" | "assistant",
     content: m.content,
   }));
@@ -46,6 +99,16 @@ export async function POST(request: Request) {
   const tools = body.tools as ProviderTool[] | undefined;
   const toolChoice = body.toolChoice;
   const useTools = tools && tools.length > 0;
+
+  // R-1: validate non-empty content BEFORE the stream is opened. Same
+  // reasoning as the freeaixyz-proxy route — empty content would otherwise
+  // be forwarded to the FreeGPT upstream which leaks its internal
+  // challenge / cache error strings back to the client.
+  if (!hasNonEmptyContent(body.messages ?? [])) {
+    return gatewayErrorResponse(
+      emptyContentError(model?.id ?? body.model, "freegpt"),
+    );
+  }
 
   if (body.stream) {
     // Streaming response
@@ -55,6 +118,17 @@ export async function POST(request: Request) {
     const id = generateCompletionId();
     const created = Math.floor(Date.now() / 1000);
 
+    // R-2: helper that emits an SSE error event + terminal chunk with
+    // finish_reason:"error" + [DONE] before closing the writer.
+    const sendStreamError = (err: GatewayError) => {
+      try {
+        writer.write(encoder.encode(sseErrorEvent(err)));
+        writer.write(encoder.encode(sseTerminalErrorChunk(err, id, created, model.id)));
+      } catch {
+        // best-effort
+      }
+    };
+
     (async () => {
       const send = (obj: unknown) =>
         writer.write(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
@@ -62,6 +136,7 @@ export async function POST(request: Request) {
 
       const heartbeatTimer = setInterval(() => { heartbeat().catch(() => {}); }, 500);
 
+      let hadError = false;
       try {
         await send({
           id,
@@ -115,6 +190,15 @@ export async function POST(request: Request) {
               choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
             });
           } else {
+            // R-5: empty content surfaces as 502 empty_upstream_response,
+            // never a silent 200 + `content:""` + stop.
+            const content = (parsed.text || fullText).trim();
+            if (!content) {
+              hadError = true;
+              clearInterval(heartbeatTimer);
+              sendStreamError(emptyUpstreamResponseError("freegpt", model.id));
+              return;
+            }
             // Stream content
             const tokens = fullText.match(/(\s+|\S+)/g) ?? [fullText];
             for (const token of tokens) {
@@ -155,14 +239,12 @@ export async function POST(request: Request) {
               });
             }
           }
+          // R-5: refuse to silently pass on an empty stream.
           if (!hasContent) {
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [{ index: 0, delta: { content: "(empty response)" }, finish_reason: null }],
-            });
+            hadError = true;
+            clearInterval(heartbeatTimer);
+            sendStreamError(emptyUpstreamResponseError("freegpt", model.id));
+            return;
           }
           await send({
             id,
@@ -173,35 +255,42 @@ export async function POST(request: Request) {
           });
         }
       } catch (err) {
+        hadError = true;
         clearInterval(heartbeatTimer);
         const msg = err instanceof Error ? err.message : "Unknown error";
-        // Send structured SSE error event
+        // R-2 + R-7 + R-10: classify + sanitize.
         const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
         const isQuota = /quota|rate.?limit|429/i.test(msg);
-        await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({
-          error: {
-            message: msg,
-            type: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
-            code: isAuth ? "authentication_required" : isQuota ? "rate_limit_exceeded" : "upstream_error",
-          },
-        })}\n\n`));
+        const ge = new GatewayError({
+          type: isAuth ? "AUTHENTICATION_REQUIRED" : isQuota ? "RATE_LIMITED" : "UPSTREAM_5XX",
+          status: isAuth ? 401 : isQuota ? 429 : 502,
+          code: isAuth ? "authentication_required" : isQuota ? "rate_limited" : "upstream_error",
+          message: isAuth
+            ? "Provider requires authentication (HTTP 401)."
+            : isQuota
+              ? "Upstream rate limit exceeded. Retry after 60s."
+              : "Upstream provider failed to generate a response.",
+          upstreamDetail: msg,
+          provider: "freegpt",
+          model: model.id,
+          requiresAuth: isAuth,
+          retryAfter: isQuota ? 60 : undefined,
+        });
+        sendStreamError(ge);
       } finally {
         clearInterval(heartbeatTimer);
-        await writer.write(encoder.encode("data: [DONE]\n\n"));
+        // R-2: always close with [DONE] so clients waiting on the sentinel
+        // are released (best-effort — the terminal chunk already includes
+        // its own [DONE] when an error occurred).
+        if (!hadError) {
+          try { await writer.write(encoder.encode("data: [DONE]\n\n")); } catch {}
+        }
         try { await writer.close(); } catch {}
       }
     })();
 
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-        "X-No-Buffer": "true",
-        "Transfer-Encoding": "chunked",
-      },
-    });
+    // R-4: SSE_HEADERS intentionally omits content-encoding + transfer-encoding.
+    return new Response(readable, { headers: SSE_HEADERS });
   }
 
   // Non-streaming response
@@ -213,6 +302,11 @@ export async function POST(request: Request) {
       tools,
       toolChoice,
     });
+
+    // R-5: refuse to silently pass on an empty reply.
+    if (!result.text.trim()) {
+      return gatewayErrorResponse(emptyUpstreamResponseError("freegpt", model.id));
+    }
 
     if (useTools) {
       const parsed = parseToolCalls(result.text, generateToolCallId);
@@ -257,10 +351,25 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
+    // R-7 + R-10: classify + sanitize the upstream error.
     const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json(
-      { error: { message: msg, type: "upstream_error" } },
-      { status: 502 },
-    );
+    const isAuth = /\bHTTP (401|403)\b/i.test(msg) || /unauthorized|forbidden/i.test(msg);
+    const isQuota = /quota|rate.?limit|429/i.test(msg);
+    const ge = new GatewayError({
+      type: isAuth ? "AUTHENTICATION_REQUIRED" : isQuota ? "RATE_LIMITED" : "UPSTREAM_5XX",
+      status: isAuth ? 401 : isQuota ? 429 : 502,
+      code: isAuth ? "authentication_required" : isQuota ? "rate_limited" : "upstream_error",
+      message: isAuth
+        ? "Provider requires authentication (HTTP 401)."
+        : isQuota
+          ? "Upstream rate limit exceeded. Retry after 60s."
+          : "Upstream provider failed to generate a response.",
+      upstreamDetail: msg,
+      provider: "freegpt",
+      model: model.id,
+      requiresAuth: isAuth,
+      retryAfter: isQuota ? 60 : undefined,
+    });
+    return gatewayErrorResponse(ge);
   }
 }

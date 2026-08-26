@@ -20,10 +20,12 @@
  */
 
 import {
+  emptyUpstreamResponseError,
   generateRequestId,
   GatewayError,
   isFailoverCandidate,
   sseErrorEvent,
+  sseTerminalErrorChunk,
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
@@ -114,6 +116,8 @@ class StreamingProxyService {
             adapter.id,
             req.modelId,
             encoder,
+            sseId,
+            created,
           );
           try {
             controller.close();
@@ -138,7 +142,7 @@ class StreamingProxyService {
     };
   }
 
-  /** Main streaming loop — never re-paces, never buffers (PRD §137). */
+  /** Main streaming loop — never re-paces, never buffers (PRD §137, R-2, R-5). */
   private async runStream(
     controller: ReadableStreamDefaultController<Uint8Array>,
     req: ChatRequest,
@@ -156,6 +160,7 @@ class StreamingProxyService {
     ];
     let lastErr: unknown = null;
     let lastCandidate: FailoverCandidate | null = null;
+    let lastFirstEnqueued = false;
 
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
@@ -177,6 +182,7 @@ class StreamingProxyService {
       lastCandidate = candidate;
       const gen = candidate.adapter.stream(candidate.req);
       let firstEnqueued = false;
+      let anyContent = false;
       try {
         while (true) {
           if (candidate.req.signal?.aborted) {
@@ -192,6 +198,7 @@ class StreamingProxyService {
           }
           timings.chunkCount += 1;
           timings.bytes += byteLength(delta);
+          anyContent = true;
           this.enqueueChunk(controller, encoder, sseId, created, candidate.req.modelId, delta);
           if (!firstEnqueued) {
             timings.proxyFirstForward = Date.now();
@@ -205,9 +212,31 @@ class StreamingProxyService {
             return;
           }
         }
+        // R-5: if the upstream yielded ZERO content chunks, treat it as an
+        // empty_upstream_response — never emit a silent 200 + stop.
+        if (!anyContent) {
+          const emptyErr = emptyUpstreamResponseError(
+            candidate.adapter.id,
+            candidate.req.modelId,
+          );
+          this.handleStreamError(
+            controller,
+            emptyErr,
+            timings,
+            candidate.adapter.id,
+            candidate.req.modelId,
+            encoder,
+            sseId,
+            created,
+          );
+          timings.totalDurationMs = Date.now() - timings.requestStart;
+          metricsService.recordStreamTimings(timings);
+          return;
+        }
         // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
         this.enqueueFinal(controller, encoder, sseId, created, candidate.req, timings.bytes);
         providerHealthService.recordProviderSuccess(candidate.adapter.id);
+        providerHealthService.recordModelSuccess(candidate.req.modelId);
         metricsService.recordRequest({
           requestId: timings.requestId,
           providerId: candidate.adapter.id,
@@ -228,11 +257,13 @@ class StreamingProxyService {
           // ignore
         }
         lastErr = err;
+        lastFirstEnqueued = firstEnqueued;
         // Audit D1: only failover if NO content has been forwarded yet.
         // Once the client has received a content chunk, switching adapters
         // would corrupt the stream (mixed provider outputs).
         if (firstEnqueued) {
-          // Mid-stream failure — surface as an SSE error event.
+          // Mid-stream failure — surface as an SSE error event + terminal
+          // chunk with finish_reason:"error" + [DONE] (R-2).
           this.handleStreamError(
             controller,
             err,
@@ -240,6 +271,8 @@ class StreamingProxyService {
             candidate.adapter.id,
             candidate.req.modelId,
             encoder,
+            sseId,
+            created,
           );
           timings.totalDurationMs = Date.now() - timings.requestStart;
           metricsService.recordStreamTimings(timings);
@@ -257,7 +290,10 @@ class StreamingProxyService {
           requestId: timings.requestId,
         });
         if (!isFailoverCandidate(ge) || i === candidates.length - 1) {
-          // No failover possible — surface the error.
+          // No failover possible — surface the error. Pre-first-chunk failures
+          // use handleStreamError which emits the terminal chunk (R-2) — this
+          // means a client that opened the 200 stream still gets the error
+          // frame + terminal chunk + [DONE].
           this.handleStreamError(
             controller,
             err,
@@ -265,6 +301,8 @@ class StreamingProxyService {
             candidate.adapter.id,
             candidate.req.modelId,
             encoder,
+            sseId,
+            created,
           );
           timings.totalDurationMs = Date.now() - timings.requestStart;
           metricsService.recordStreamTimings(timings);
@@ -284,6 +322,8 @@ class StreamingProxyService {
         lastCandidate.adapter.id,
         lastCandidate.req.modelId,
         encoder,
+        sseId,
+        created,
       );
     }
     timings.totalDurationMs = Date.now() - timings.requestStart;
@@ -310,7 +350,7 @@ class StreamingProxyService {
     timings.error = "aborted";
   }
 
-  /** Catch-all error handler — emit SSE error event + record health/metrics. */
+  /** Catch-all error handler — emit SSE error event + terminal chunk + record health/metrics (R-2). */
   private handleStreamError(
     controller: ReadableStreamDefaultController<Uint8Array>,
     err: unknown,
@@ -318,6 +358,8 @@ class StreamingProxyService {
     providerId: string,
     modelId: string,
     encoder: TextEncoder,
+    sseId: string,
+    created: number,
   ): void {
     const ge =
       err instanceof GatewayError
@@ -332,9 +374,16 @@ class StreamingProxyService {
           });
     timings.error = ge.message;
     try {
+      // R-2: emit `event: error` frame first (clients that parse SSE events
+      // surface it as a stream error), then a terminal `data:` chunk with
+      // `finish_reason: "error"` + `[DONE]` so `Status: N/A` clients that
+      // only watch `data:` frames see a non-`stop` finish reason.
       controller.enqueue(encoder.encode(sseErrorEvent(ge)));
+      controller.enqueue(
+        encoder.encode(sseTerminalErrorChunk(ge, sseId, created, modelId)),
+      );
     } catch {
-      // best-effort
+      // best-effort — controller may already be closed
     }
     providerHealthService.recordProviderFailure(providerId, err);
     providerHealthService.recordModelFailure(modelId, err);

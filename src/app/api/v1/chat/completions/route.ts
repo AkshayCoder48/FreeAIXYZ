@@ -48,7 +48,10 @@ import {
   catalogStore,
   errorResponse as gatewayErrorResponse,
   GatewayError,
+  emptyContentError,
+  emptyUpstreamResponseError,
   generateRequestId,
+  hasNonEmptyContent,
   isFailoverCandidate,
   metricsService,
   providerHealthService,
@@ -57,6 +60,7 @@ import {
   STREAM_HEADERS,
   streamChat,
   sseErrorEvent,
+  sseTerminalErrorChunk,
   type ChatRequest,
   type DiscoveredModel,
   type FailoverCandidate,
@@ -67,6 +71,39 @@ import { ensureGateway, resolveAdapterForModel } from "@/lib/gateway/route-helpe
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * Hop-by-hop / content-encoding headers that MUST be stripped from any
+ * upstream-proxy response before passing it through to the client (R-4).
+ *
+ * The internal `fetch(origin + proxyRoute)` call asks for brotli/gzip
+ * encoding via `Accept-Encoding`; if Vercel's fetch layer (or the proxy
+ * route itself) returns `content-encoding: br` but the body is plain JSON
+ * (because the proxy route built its own response and never compressed
+ * it), every spec-compliant client (aiohttp/httpx) raises a decode error.
+ *
+ * The fix is to never inherit `content-encoding`, `content-length`, or
+ * `transfer-encoding` from the internal proxy response — let the outer
+ * Vercel edge re-compress as appropriate.
+ */
+const HOP_BY_HOP_HEADERS = new Set([
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "keep-alive",
+  "content-encoding",
+]);
+
+/** Build a clean passthrough headers object (R-4). */
+function cleanProxyHeaders(src: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  src.forEach((value, key) => {
+    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) return;
+    out[key] = value;
+  });
+  return out;
+}
 
 /** Wrap unknown errors as GatewayError PROVIDER_UNAVAILABLE (PRD §148). */
 function wrapUnknown(err: unknown, provider?: string, model?: string): GatewayError {
@@ -457,7 +494,24 @@ async function handleCanonicalRequest(
   useTools: boolean,
   wantsStream: boolean,
 ): Promise<Response> {
-  // Circuit-breaker check (PRD §121, §122).
+  // Circuit-breaker check (PRD §121, §122, R-8).
+  //
+  // R-8: the breaker is keyed per-ROUTE (model id), NOT just per-provider.
+  // The audit found that a single failing model of a provider took down
+  // its healthy siblings (`po/openai-fast`, both `ss/*` models all scored
+  // 0% under load but 100% when serialized — BUG-6). The per-provider
+  // breaker is still consulted for genuine provider-wide outages, but
+  // the per-model breaker now fires independently so one bad sibling
+  // cannot trip its healthy neighbours.
+  if (providerHealthService.isModelOpen(model.id)) {
+    const err = new GatewayError({
+      type: "PROVIDER_UNAVAILABLE",
+      message: `Model "${model.id}" is temporarily unavailable (circuit open). Retry later.`,
+      provider: model.providerId,
+      model: model.id,
+    });
+    return gatewayErrorResponse(err);
+  }
   if (providerHealthService.isOpen(model.providerId)) {
     const err = new GatewayError({
       type: "PROVIDER_UNAVAILABLE",
@@ -476,7 +530,18 @@ async function handleCanonicalRequest(
   // proxy too — the legacy adapter's fetch-based stream() cannot reach the
   // upstream successfully. (Same reasoning as the legacy `fxyz-*` ids
   // below.)
+  //
+  // R-1: validate non-empty content BEFORE routing to the proxy. The fx/*
+  // upstream leaks its internal cache-writer error string ("Data to cache
+  // (message or image) cannot be empty.") back to the client as an opaque
+  // 502 (or 200 + in-band SSE error frame when streaming). All 16 other
+  // adapters do this validation locally; the fx/* path was missing it.
+  // Variants A/E/F/G/I from the audit report all reproduce the leak —
+  // reject them here with HTTP 400 invalid_request_error instead.
   if (model.providerId === "freeaixyz") {
+    if (!hasNonEmptyContent(body.messages)) {
+      return gatewayErrorResponse(emptyContentError(model.id, model.providerId));
+    }
     const origin = new URL(request.url).origin;
     const proxyRoute = "/api/v1/chat/freeaixyz-proxy";
     const proxyBody = {
@@ -514,9 +579,14 @@ async function handleCanonicalRequest(
         body: JSON.stringify(proxyBody),
         signal: request.signal,
       });
+      // R-4: strip hop-by-hop + content-encoding headers from the internal
+      // proxy response before passing through. The internal fetch asks for
+      // brotli/gzip via Accept-Encoding, and the proxy route builds its own
+      // uncompressed body — inheriting `content-encoding: br` here would
+      // break spec-compliant HTTP clients (BUG-2).
       return new Response(proxyRes.body, {
         status: proxyRes.status,
-        headers: proxyRes.headers,
+        headers: cleanProxyHeaders(proxyRes.headers),
       });
     } catch (err) {
       return gatewayErrorResponse(wrapUnknown(err, model.providerId, model.id));
@@ -666,6 +736,33 @@ async function handleCanonicalRequest(
     streamRequested: false,
     durationMs: Date.now() - requestStart,
   });
+
+  // R-5: refuse to pass on a silent empty success. The audit found 137
+  // requests (9.2%) that returned HTTP 200 with `content:""` and
+  // `finish_reason:"stop"` — clients cannot distinguish these from a
+  // legitimate empty answer, which corrupts downstream logic. Surface
+  // them as 502 `empty_upstream_response` instead. Tool-call parsing
+  // below extracts non-empty tool envelopes even from sparse text, so
+  // the empty-check only fires when there is genuinely no content AND
+  // no tool calls.
+  const trimmedText = (text ?? "").trim();
+  if (trimmedText === "") {
+    providerHealthService.recordProviderFailure(finalAdapter.id, new Error("empty_upstream_response"));
+    providerHealthService.recordModelFailure(finalModel.id, new Error("empty_upstream_response"));
+    metricsService.recordRequest({
+      requestId,
+      providerId: finalAdapter.id,
+      modelId: finalModel.id,
+      status: 502,
+      type: "complete_error",
+      message: "empty_upstream_response",
+      streamRequested: false,
+      durationMs: Date.now() - requestStart,
+    });
+    return gatewayErrorResponse(
+      emptyUpstreamResponseError(finalAdapter.id, finalModel.id),
+    );
+  }
 
   // Tool-call envelope parsing (prompt-injection approach).
   if (useTools && text !== null) {
@@ -842,6 +939,32 @@ async function handleLegacyRequest(
       }),
     );
   }
+
+  // R-8: per-route circuit breaker for legacy ids too. The legacy model.id
+  // is the old-style slug; we use the canonical id (via `canonicalOrLegacyId`)
+  // when available so the breaker state matches between the two paths.
+  const breakerKey = canonicalOrLegacyId(model);
+  if (providerHealthService.isModelOpen(breakerKey)) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "PROVIDER_UNAVAILABLE",
+        message: `Model "${model.id}" is temporarily unavailable (circuit open). Retry later.`,
+        provider: model.provider,
+        model: model.id,
+      }),
+    );
+  }
+  if (providerHealthService.isOpen(model.provider)) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "PROVIDER_UNAVAILABLE",
+        message: `Provider "${model.provider}" is temporarily unavailable (circuit open). Retry later.`,
+        provider: model.provider,
+        model: model.id,
+      }),
+    );
+  }
+
   const messages = buildLegacyMessages(body, model);
   if (messages.length === 0) {
     return gatewayErrorResponse(
@@ -857,7 +980,16 @@ async function handleLegacyRequest(
   // FreeGPT / FreeAIXYZ special-proxy branch — kept for legacy ids (PRD §238).
   // The proxy route now surfaces GatewayError 403 from the freegpt adapter
   // (Phase 2b fix) directly to the client.
+  //
+  // R-1: validate non-empty content BEFORE routing to either proxy. Same
+  // reasoning as the canonical fx/* branch above — without this, the
+  // upstream leaks an internal cache-writer / challenge error string.
+  // R-4: strip hop-by-hop + content-encoding headers when passing through
+  // the internal proxy response (BUG-2 brotli-header leak).
   if (model.provider === "freegpt" || model.provider === "freeaixyz") {
+    if (!hasNonEmptyContent(body.messages)) {
+      return gatewayErrorResponse(emptyContentError(model.id, model.provider));
+    }
     const origin = new URL(request.url).origin;
     const proxyRoute =
       model.provider === "freegpt"
@@ -895,10 +1027,10 @@ async function handleLegacyRequest(
         body: JSON.stringify(proxyBody),
         signal: request.signal,
       });
-      // Pass the response through as-is (preserves streaming OR JSON).
+      // R-4: pass through the response with cleaned headers (BUG-2).
       return new Response(proxyRes.body, {
         status: proxyRes.status,
-        headers: proxyRes.headers,
+        headers: cleanProxyHeaders(proxyRes.headers),
       });
     } catch (err) {
       return gatewayErrorResponse(wrapUnknown(err, model.provider, model.id));
@@ -989,6 +1121,29 @@ async function legacyJsonCompletion(
     streamRequested: false,
     durationMs: Date.now() - requestStart,
   });
+
+  // R-5: refuse to pass on a silent empty success (legacy non-stream path).
+  // Same logic as the canonical path above — empty text means the upstream
+  // replied with content:"" and finish_reason:"stop", which clients can't
+  // distinguish from a legitimate empty answer. Surface as 502 instead.
+  const trimmedText = (text ?? "").trim();
+  if (trimmedText === "") {
+    providerHealthService.recordProviderFailure(model.provider, new Error("empty_upstream_response"));
+    providerHealthService.recordModelFailure(model.id, new Error("empty_upstream_response"));
+    metricsService.recordRequest({
+      requestId,
+      providerId: model.provider,
+      modelId: model.id,
+      status: 502,
+      type: "complete_error",
+      message: "empty_upstream_response",
+      streamRequested: false,
+      durationMs: Date.now() - requestStart,
+    });
+    return gatewayErrorResponse(
+      emptyUpstreamResponseError(model.provider, model.id),
+    );
+  }
 
   const promptText = messages.map((m) => m.content).join("\n");
   if (useTools) {
@@ -1243,19 +1398,30 @@ async function legacyStreamCompletion(
             }
           }
           if (!hasContent) {
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: "(empty response)" },
-                  finish_reason: null,
-                },
-              ],
+            // R-5: refuse to pass on a silent empty stream. Emit the SSE
+            // error event + terminal chunk with finish_reason:"error" +
+            // [DONE] so a `Status: N/A` client can detect the failure.
+            const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
+            try {
+              await enqueue(sseErrorEvent(emptyErr));
+              await enqueue(sseTerminalErrorChunk(emptyErr, id, created, model.id));
+            } catch {
+              // best-effort
+            }
+            providerHealthService.recordProviderFailure(model.provider, emptyErr);
+            providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
+            hadError = true;
+            metricsService.recordRequest({
+              requestId,
+              providerId: model.provider,
+              modelId: model.id,
+              status: 502,
+              type: "stream_error",
+              message: "empty_upstream_response",
+              streamRequested: true,
+              durationMs: Date.now() - requestStart,
             });
+            return;
           }
           await send({
             id,
@@ -1283,35 +1449,45 @@ async function legacyStreamCompletion(
             await writer.close();
             return;
           }
-          if (!fullText) {
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: "(empty response)" },
-                  finish_reason: null,
-                },
-              ],
+          if (!fullText.trim()) {
+            // R-5: refuse to silently pass on an empty non-stream provider
+            // response. Emit the error event + terminal chunk so streaming
+            // clients can detect the failure (no more `content:""` + stop).
+            const emptyErr = emptyUpstreamResponseError(model.provider, model.id);
+            try {
+              await enqueue(sseErrorEvent(emptyErr));
+              await enqueue(sseTerminalErrorChunk(emptyErr, id, created, model.id));
+            } catch {
+              // best-effort
+            }
+            providerHealthService.recordProviderFailure(model.provider, emptyErr);
+            providerHealthService.recordModelFailure(canonicalOrLegacyId(model), emptyErr);
+            hadError = true;
+            metricsService.recordRequest({
+              requestId,
+              providerId: model.provider,
+              modelId: model.id,
+              status: 502,
+              type: "stream_error",
+              message: "empty_upstream_response",
+              streamRequested: true,
+              durationMs: Date.now() - requestStart,
             });
-          } else {
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: fullText },
-                  finish_reason: null,
-                },
-              ],
-            });
+            return;
           }
+          await send({
+            id,
+            object: "chat.completion.chunk",
+            created,
+            model: model.id,
+            choices: [
+              {
+                index: 0,
+                delta: { content: fullText },
+                finish_reason: null,
+              },
+            ],
+          });
           await send({
             id,
             object: "chat.completion.chunk",
@@ -1333,7 +1509,11 @@ async function legacyStreamCompletion(
       }
       const ge = wrapUnknown(err, model.provider, model.id);
       try {
+        // R-2: emit event:error + terminal chunk with finish_reason:"error"
+        // before [DONE] (emitted in finally) so `Status: N/A` streaming
+        // clients can unambiguously detect the failure.
         await enqueue(sseErrorEvent(ge));
+        await enqueue(sseTerminalErrorChunk(ge, id, created, model.id));
       } catch {
         // best-effort
       }
@@ -1353,6 +1533,10 @@ async function legacyStreamCompletion(
         durationMs: Date.now() - requestStart,
       });
     } finally {
+      // R-2: always close with [DONE] so clients waiting on the sentinel
+      // are released — even when the catch block already emitted a
+      // terminal chunk (sseTerminalErrorChunk includes its own [DONE]
+      // for safety; this one is best-effort in case the chunk failed).
       try {
         await enqueue("data: [DONE]\n\n");
       } catch {
