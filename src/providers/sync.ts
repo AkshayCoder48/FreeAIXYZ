@@ -19,7 +19,7 @@
  */
 
 import { catalogStore } from "@/lib/gateway/catalog";
-import { canonicalModelId } from "@/lib/gateway/ids";
+import { canonicalModelId, getProviderEntry } from "@/lib/gateway/ids";
 import type { DiscoveredModel, ModelCapabilities } from "@/lib/gateway/types";
 import { getProviderConfig } from "./config";
 import { allProviders, getAdapter } from "./registry";
@@ -176,15 +176,18 @@ function toDiscovered(m: UnifiedModel): DiscoveredModel {
   // Gateway canonical id is `<shortId>/<upstreamId>`. Our `UnifiedModel.id`
   // is `<providerId>:<modelId>` — convert here so the catalog can resolve.
   let publicId: string;
+  let providerDisplayName = m.providerId;
   try {
+    const entry = getProviderEntry(m.providerId);
     publicId = canonicalModelId(m.providerId, m.modelId);
+    if (entry?.name) providerDisplayName = entry.name;
   } catch {
     publicId = m.id; // provider not in short-id registry — fall back
   }
   return {
     id: publicId,
     providerId: m.providerId,
-    providerName: m.providerId,
+    providerName: providerDisplayName,
     upstreamId: m.modelId,
     name: m.name,
     capabilities: caps,
@@ -205,6 +208,13 @@ function toDiscovered(m: UnifiedModel): DiscoveredModel {
         : "active",
     discoveryMode: "dynamic",
     discoveredFrom: `providers/${m.providerId}`,
+    // Free classification (PRD §42 — free-only catalog). Paid models are kept
+    // in the catalog (for ?all=true visibility) but filtered out of the default
+    // /v1/models listing. The chat playground already filters client-side;
+    // the server now enforces it too.
+    free: m.free,
+    freeConfidence: m.freeConfidence,
+    freeReason: (m as UnifiedModel & { freeReason?: string }).freeReason,
   };
 }
 
@@ -231,6 +241,17 @@ export async function syncProvider(
   }
   const cfg = getProviderConfig(adapter.id);
   if (!cfg.enabled) {
+    // Provider is disabled / delisted (e.g. freegpt is broken upstream).
+    // Purge any previously-synced entries from the catalog so they don't
+    // appear in /v1/models (the legacy DELISTED_PROVIDERS path only handles
+    // legacy MODELS[] entries — synced entries from prior runs need to be
+    // actively removed here).
+    try {
+      catalogStore.removeProviderModels(adapter.id);
+      console.log(`[MODEL_SYNC] ${adapter.id} disabled — purged catalog entries`);
+    } catch (err) {
+      console.error(`[MODEL_SYNC] ${adapter.id} disabled — purge failed:`, err);
+    }
     return {
       providerId: adapter.id,
       status: "disabled",

@@ -48,6 +48,21 @@ export interface DiscoveredModel {
   discoveryMode: DiscoveryMode;
   /** Endpoint the model was discovered from (PRD §32). */
   discoveredFrom?: string;
+  /**
+   * Free-tier classification (PRD §42 — free-only catalog).
+   * `true` if the model is genuinely free (no auth/payment required to call).
+   * `false` for paid / PRO / premium / auth-gated models. Defaults to `true`
+   * for legacy manual entries that don't carry free metadata (FreeAIXYZ is a
+   * free-tier gateway — most legacy models are free by convention).
+   */
+  free?: boolean;
+  /**
+   * Confidence level of the free classification
+   * (`provider` | `pattern` | `unknown`).
+   */
+  freeConfidence?: "provider" | "pattern" | "unknown";
+  /** Human-readable reason explaining the free classification. */
+  freeReason?: string;
 }
 
 // ─── Provider adapter interface (PRD §71) ───────────────────────────────────

@@ -1,0 +1,53 @@
+{
+  "startedAt": "2026-08-26T18:28:00.165Z",
+  "finishedAt": "2026-08-26T18:29:00.284Z",
+  "totalModels": 5,
+  "totalRequests": 10,
+  "results": [
+    {
+      "modelId": "tb/toolbaz-v4.5-fast",
+      "ownedBy": "Toolbaz",
+      "passCount": 0,
+      "failCount": 2,
+      "errorSamples": [
+        "timeout after 30s"
+      ]
+    },
+    {
+      "modelId": "tb/toolbaz_v4",
+      "ownedBy": "Toolbaz",
+      "passCount": 0,
+      "failCount": 2,
+      "errorSamples": [
+        "timeout after 30s"
+      ]
+    },
+    {
+      "modelId": "tb/gpt-5",
+      "ownedBy": "Toolbaz",
+      "passCount": 0,
+      "failCount": 2,
+      "errorSamples": [
+        "timeout after 30s"
+      ]
+    },
+    {
+      "modelId": "tb/gpt-5.2",
+      "ownedBy": "Toolbaz",
+      "passCount": 0,
+      "failCount": 2,
+      "errorSamples": [
+        "timeout after 30s"
+      ]
+    },
+    {
+      "modelId": "tb/gpt-4o-latest",
+      "ownedBy": "Toolbaz",
+      "passCount": 0,
+      "failCount": 2,
+      "errorSamples": [
+        "timeout after 30s"
+      ]
+    }
+  ]
+}

@@ -90,6 +90,14 @@ function toDiscoveredModel(m: GatewayModel): DiscoveredModel {
     status: isDelisted ? "offline" : "active",
     discoveryMode: "manual", // hand-curated (PRD §34)
     discoveredFrom: isDelisted ? "legacy-registry (delisted: upstream outage)" : "legacy-registry",
+    // Legacy MODELS[] is a hand-curated free-only registry (PRD §42).
+    // All entries are free by convention; the new sync engine may overwrite
+    // this with `free: false` for paid models it discovers on providers that
+    // also have a live /models endpoint (e.g. KiloCode returns 30 models,
+    // only 6 of which are free).
+    free: true,
+    freeConfidence: "pattern",
+    freeReason: "legacy registry (hand-curated free-only)",
   };
 }
 

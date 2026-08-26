@@ -126,7 +126,14 @@ export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
     id: "freegpt",
     pricingMode: "pattern",
     timeoutMs: 12_000,
-    enabled: true,
+    // DELISTED 2026-08-26: the FreeGPT.tech challenge endpoint now returns
+    // HTML (Cloudflare page) instead of JSON, so the WASM signer integration
+    // can't get a valid challenge. The discover() falls back to MODELS[]
+    // hard-coded ids, but the chat proxy can no longer actually call them
+    // (0% success rate in the 3,610-request reliability sweep). Disable the
+    // sync engine for freegpt so it doesn't repopulate the catalog with
+    // broken entries that override the legacy `delisted` marker.
+    enabled: false,
     freePatterns: [/(^|[-:_])free$/i, /-free-/i, /^free-/i, /free$/i],
     maxModels: 80,
   },

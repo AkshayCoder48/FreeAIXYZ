@@ -234,6 +234,37 @@ class ModelCatalogStore {
   }
 
   /**
+   * Remove every catalog entry for a single provider (used when a provider
+   * is disabled / delisted). Atomic copy-on-write swap. Does NOT throw if
+   * the provider has no entries.
+   */
+  removeProviderModels(providerId: string): void {
+    this.swapState((prev) => {
+      const newModels = new Map<string, DiscoveredModel>();
+      const removedIds = new Set<string>();
+      for (const [id, m] of prev.models) {
+        if (m.providerId === providerId) {
+          removedIds.add(id);
+        } else {
+          newModels.set(id, m);
+        }
+      }
+      const newByProvider = new Map(prev.byProvider);
+      newByProvider.delete(providerId);
+      const newModelHealth = new Map(prev.modelHealth);
+      for (const id of removedIds) newModelHealth.delete(id);
+      return {
+        models: newModels,
+        byProvider: newByProvider,
+        providerHealth: prev.providerHealth,
+        modelHealth: newModelHealth,
+        lastUpdated: new Date().toISOString(),
+        catalogStale: false,
+      };
+    });
+  }
+
+  /**
    * Apply a pure state transformation synchronously (audit C1).
    * The transform returns a NEW CatalogState; this method assigns it to
    * `this.state` atomically. Never mutate `prev` in place inside `fn`.

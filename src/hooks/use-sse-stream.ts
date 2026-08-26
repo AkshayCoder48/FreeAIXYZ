@@ -417,14 +417,62 @@ export function useSseStream(): UseSseStreamResult {
       let bytes = 0;
       let capturedError: SseError | null = null;
 
+      // ─── IDLE-TIMEOUT WATCHDOG ────────────────────────────────────────────
+      // If no chunks arrive for IDLE_TIMEOUT_MS while the stream is open, the
+      // upstream has stalled (sent a partial response then went silent). The
+      // HTTP body never closes, so reader.read() blocks forever. Without this
+      // watchdog, the UI keeps showing the "Stop" button as if the AI were
+      // still generating — even though it silently auto-stopped. We abort the
+      // stream after the idle window and call onDone so the UI flips back to
+      // the "Send" button and the partial assistant text is preserved.
+      const IDLE_TIMEOUT_MS = 25_000; // 25 seconds of total silence
+      let lastChunkAt = Date.now();
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      const armIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          // Idle window elapsed — abort the stream.
+          if (doneSeenRef.current || capturedError) return;
+          try {
+            controller.abort();
+          } catch {
+            // ignore
+          }
+          // Treat as a clean done — the upstream stopped sending.
+          if (!doneSeenRef.current) {
+            doneSeenRef.current = true;
+            const streamEndAt = Date.now();
+            setTimings({
+              requestStart,
+              firstChunkAt,
+              streamEndAt,
+              chunkCount,
+              bytes,
+            });
+            setState("done");
+            opts.onDone?.();
+          }
+        }, IDLE_TIMEOUT_MS);
+        if (idleTimer && typeof (idleTimer as { unref?: () => void }).unref === "function") {
+          (idleTimer as { unref: () => void }).unref();
+        }
+      };
+      armIdleTimer();
+
       try {
-        // eslint-disable-next-line no-constant-condition
         while (true) {
+          // Race the read against the idle timer so a stalled upstream can't
+          // keep the UI stuck on "streaming" forever.
           let read;
           try {
             read = await reader.read();
           } catch (e) {
             if ((e as Error).name === "AbortError") {
+              // Either user clicked stop OR the idle watchdog aborted.
+              if (doneSeenRef.current) {
+                // Idle-watchdog path already finalized state — just exit.
+                break;
+              }
               setState("aborted");
               break;
             }
@@ -435,6 +483,8 @@ export function useSseStream(): UseSseStreamResult {
           if (!value) continue;
           if (firstChunkAt === null) firstChunkAt = Date.now();
           bytes += value.byteLength;
+          lastChunkAt = Date.now();
+          armIdleTimer();
 
           const decoder = decoderRef.current!;
           bufferRef.current += decoder.decode(value, { stream: true });
@@ -485,6 +535,11 @@ export function useSseStream(): UseSseStreamResult {
 
           if (doneSeenRef.current) break;
           if (capturedError) break;
+        }
+
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
         }
 
         // Flush any trailing buffered event.
@@ -543,7 +598,15 @@ export function useSseStream(): UseSseStreamResult {
           opts.onDone?.();
         }
       } catch (e) {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
         if ((e as Error).name === "AbortError") {
+          if (doneSeenRef.current) {
+            // Idle-watchdog path already finalized state — just exit.
+            return;
+          }
           setState("aborted");
           setTimings((t) => ({
             ...t,

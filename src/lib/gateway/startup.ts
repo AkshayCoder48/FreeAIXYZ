@@ -56,10 +56,18 @@ export async function initGateway(): Promise<void> {
     await registerDynamicDiscoverers().catch((err) =>
       console.error("[gateway.startup] dynamic discoverers failed:", err),
     );
-    // 5. Kick off background discovery (non-blocking — PRD §28).
-    modelDiscoveryService.discoverAll().catch((err) =>
-      console.error("[gateway.startup] initial discoverAll failed:", err),
-    );
+    // 5. LEGACY discoverAll DISABLED — it was racing with the new isolated
+    //    per-provider sync engine (step 5b). The legacy `discoverAll()` walks
+    //    the legacy MODELS[] array (only 2 SpicyWriter entries, 16 Kilo Code)
+    //    and atomically REPLACES the catalog state via atomicUpdate(),
+    //    stomping over the 51 live SpicyWriter models (and 30 live Kilo Code
+    //    models) the new sync engine had just pushed in. This was the root
+    //    cause of "SpicyWriter shows only 2 models" on production even though
+    //    /api/sync/status reported "spicywriter: 51 found, 14 free".
+    //    The new sync engine (step 5b) is the single source of truth.
+    // modelDiscoveryService.discoverAll().catch((err) =>
+    //   console.error("[gateway.startup] initial discoverAll failed:", err),
+    // );
     // 5b. Kick off the NEW isolated per-provider sync engine (Task 11-backend).
     //     This re-fetches live model lists from every provider's /models
     //     endpoint (or manual fallback) and pushes results into the
@@ -79,11 +87,28 @@ export async function initGateway(): Promise<void> {
     } catch (err) {
       console.error("[gateway.startup] providers module import failed:", err);
     }
-    // 6. Start periodic background refresh (PRD §30).
+    // 6. Periodic background refresh — re-runs the new sync engine every 30
+    //    minutes (PRD §30). The legacy `modelDiscoveryService` periodic
+    //    refresh is also disabled to avoid the same race condition recurring.
+    // modelDiscoveryService.startBackgroundRefresh();
     try {
-      modelDiscoveryService.startBackgroundRefresh();
+      const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+      const refreshTimer = setInterval(async () => {
+        try {
+          const providersModule = (await import(
+            /* webpackChunkName: "providers-sync" */ "@/providers"
+          )) as typeof import("@/providers");
+          providersModule.ensureProvidersRegistered();
+          await providersModule.syncAll();
+        } catch (err) {
+          console.error("[gateway.startup] periodic syncAll failed:", err);
+        }
+      }, REFRESH_INTERVAL_MS);
+      if (typeof refreshTimer.unref === "function") {
+        refreshTimer.unref();
+      }
     } catch (err) {
-      console.error("[gateway.startup] background refresh start failed:", err);
+      console.error("[gateway.startup] periodic refresh setup failed:", err);
     }
   })();
   return g[GATEWAY_READY_FLAG]!;

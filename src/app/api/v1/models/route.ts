@@ -39,12 +39,23 @@ function ownedBy(m: DiscoveredModel): string {
   return m.providerName || m.providerId;
 }
 
-/** Whether to include a model in the listing given the showAll flag (R-3, R-6). */
+/** Whether to include a model in the listing given the showAll flag (R-3, R-6).
+ *
+ * PRD §42 — free-only catalog: by default, ONLY free models are surfaced.
+ * Paid / PRO / auth-gated models (`free: false`) are hidden — they reappear
+ * with `?all=true`. This makes the API honest: if a model is listed, the
+ * gateway can actually call it for free. The legacy MODELS[] registry marks
+ * all its entries as `free: true` (hand-curated free-only set), so legacy
+ * models continue to appear.
+ */
 function shouldInclude(m: DiscoveredModel, showAll: boolean): boolean {
   if (showAll) return true;
   // Default listing hides offline models (PRD §54 — don't permanently hide,
   // just don't surface by default). R-3: delisted providers are offline.
-  return m.status !== "offline";
+  if (m.status === "offline") return false;
+  // PRD §42 — free-only catalog. Paid models only appear via ?all=true.
+  if (m.free === false) return false;
+  return true;
 }
 
 /** Map internal ModelStatus → PRD-facing healthy|degraded|down (R-6). */
@@ -129,6 +140,10 @@ export async function GET(request: Request) {
       entry.discovery_mode = m.discoveryMode;
       entry.discovered_from = m.discoveredFrom ?? null;
       entry.discovered_at = m.discoveredAt;
+      // PRD §42 — expose the free classification so clients can verify.
+      entry.free = m.free !== false;
+      entry.free_confidence = m.freeConfidence ?? "unknown";
+      entry.free_reason = m.freeReason ?? null;
       // R-9: requires_auth flag for auth-gated models.
       entry.requires_auth = requiresAuth(m);
       const healthEntry = catalogStore.getModelHealth(m.id);
