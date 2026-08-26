@@ -90,6 +90,15 @@ export const gptOssProvider: Provider = {
       })),
       stream: false,
     };
+    // Forward OpenAI sampling params (audit E1).
+    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+    if (req.temperature !== undefined) payload.temperature = req.temperature;
+    if (req.topP !== undefined) payload.top_p = req.topP;
+    if (req.stop !== undefined) payload.stop = req.stop;
+    if (req.seed !== undefined) payload.seed = req.seed;
+    if (req.presencePenalty !== undefined) payload.presence_penalty = req.presencePenalty;
+    if (req.frequencyPenalty !== undefined) payload.frequency_penalty = req.frequencyPenalty;
+    if (req.n !== undefined) payload.n = req.n;
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
       payload.tool_choice = req.toolChoice || "auto";
@@ -128,6 +137,15 @@ export const gptOssProvider: Provider = {
       })),
       stream: true,
     };
+    // Forward OpenAI sampling params (audit E1).
+    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+    if (req.temperature !== undefined) payload.temperature = req.temperature;
+    if (req.topP !== undefined) payload.top_p = req.topP;
+    if (req.stop !== undefined) payload.stop = req.stop;
+    if (req.seed !== undefined) payload.seed = req.seed;
+    if (req.presencePenalty !== undefined) payload.presence_penalty = req.presencePenalty;
+    if (req.frequencyPenalty !== undefined) payload.frequency_penalty = req.frequencyPenalty;
+    if (req.n !== undefined) payload.n = req.n;
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
       payload.tool_choice = req.toolChoice || "auto";

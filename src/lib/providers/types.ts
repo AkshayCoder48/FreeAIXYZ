@@ -26,6 +26,19 @@ export interface ProviderCompletionRequest {
   tools?: ProviderTool[];
   /** Optional tool choice: "auto" | "none" | "required" */
   toolChoice?: string;
+  /** Sampling params (audit E1) — forwarded from the OpenAI-shaped request
+   * body to OpenAI-compatible upstreams. Non-OpenAI providers silently
+   * ignore them. */
+  temperature?: number;
+  maxTokens?: number;
+  maxCompletionTokens?: number;
+  topP?: number;
+  stop?: string | string[];
+  seed?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  n?: number;
+  streamOptions?: { include_usage?: boolean };
 }
 
 export interface ProviderCompletionResult {

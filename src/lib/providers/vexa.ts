@@ -103,10 +103,20 @@ export const vexaProvider: Provider = {
   },
 
   async *stream(req) {
-    const payload = {
+    const payload: Record<string, unknown> = {
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
       model: req.model.upstream,
     };
+    // Forward OpenAI sampling params (audit E1) — Vexa's /chat endpoint
+    // speaks the OpenAI SSE protocol and accepts these fields.
+    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+    if (req.temperature !== undefined) payload.temperature = req.temperature;
+    if (req.topP !== undefined) payload.top_p = req.topP;
+    if (req.stop !== undefined) payload.stop = req.stop;
+    if (req.seed !== undefined) payload.seed = req.seed;
+    if (req.presencePenalty !== undefined) payload.presence_penalty = req.presencePenalty;
+    if (req.frequencyPenalty !== undefined) payload.frequency_penalty = req.frequencyPenalty;
+    if (req.n !== undefined) payload.n = req.n;
 
     const res = await fetch(CHAT_ENDPOINT, {
       method: "POST",

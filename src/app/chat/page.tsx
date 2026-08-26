@@ -5,7 +5,7 @@ import { SectionLabel, SiteFooter, FadeIn } from "@/components/site";
 export const metadata = {
   title: "Chat Playground — FreeAIXYZ",
   description:
-    "Streaming chat playground with TTFT / chunk / duration diagnostics. Real token-by-token SSE.",
+    "Streaming chat playground with TTFT / chunk / duration diagnostics. Real SSE deltas (upstream pacing varies).",
 };
 
 export default function ChatPage() {
@@ -24,8 +24,9 @@ export default function ChatPage() {
             .
           </h1>
           <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
-            Tokens stream token-by-token from upstream through the proxy to the
-            browser parser to the UI — no buffering, no fake re-pacing. Live
+            Tokens stream from upstream through the proxy to the
+            browser parser to the UI — no buffering, no gateway-side re-pacing
+            (upstream pacing preserved). Live
             diagnostics show TTFT, chunk count, and duration. Hit{" "}
             <span className="font-medium text-foreground">Stop</span> to abort
             the upstream request mid-stream.

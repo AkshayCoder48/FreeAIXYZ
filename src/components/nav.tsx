@@ -7,12 +7,9 @@ import {
   Menu,
   Sun,
   Cpu,
-  ImageIcon,
-  VideoIcon,
   BookOpen,
   Settings,
   MessageSquare,
-  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +29,7 @@ function useMounted() {
 const NAV_LINKS = [
   { href: "/chat", label: "Playground", icon: MessageSquare },
   { href: "/models", label: "Models", icon: Cpu },
-  { href: "/image", label: "Image Studio", icon: ImageIcon },
-  { href: "/video", label: "Video Studio", icon: VideoIcon },
   { href: "/docs", label: "Docs", icon: BookOpen },
-  { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

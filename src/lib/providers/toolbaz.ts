@@ -2,9 +2,16 @@
  * Toolbaz provider adapter.
  *
  * Wraps the existing `complete()` from src/lib/toolbaz.ts to satisfy the
- * Provider interface. Toolbaz returns the full text in a single HTTP chunk
- * (no real streaming), so `stream()` yields the whole text once and the
- * gateway layer re-paces it for clients.
+ * Provider interface. Toolbaz's writing.php endpoint returns the full text
+ * in a single HTTP response (the upstream doesn't stream tokens) — so
+ * `stream()` yields the whole text once. The gateway's streaming-proxy
+ * wraps this single yield into a real SSE response (data: chunks + [DONE])
+ * so clients see a proper stream regardless.
+ *
+ * Audit G1: `capabilities.streaming` is true because the gateway DOES
+ * emit a real text/event-stream response for `stream: true` requests —
+ * the upstream's lack of token-level streaming is an implementation
+ * detail, not a capability gap the client should care about.
  */
 
 import { complete as toolbazComplete } from "@/lib/toolbaz";

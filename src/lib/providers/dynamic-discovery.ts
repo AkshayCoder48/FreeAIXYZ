@@ -93,6 +93,12 @@ function buildDiscoveredModel(
   raw: unknown,
   discoveredFrom: string,
   capabilities: ModelCapabilities = defaultCapabilities(),
+  /**
+   * Override the discovery mode (audit H2). Defaults to "dynamic" since
+   * this helper is used by discoverers that hit upstream /models endpoints.
+   * Callers with hardcoded id lists pass "manual" to stay honest.
+   */
+  discoveryMode: "dynamic" | "manual" = "dynamic",
 ): DiscoveredModel {
   const entry = getProviderEntry(providerId);
   return {
@@ -108,7 +114,7 @@ function buildDiscoveredModel(
     },
     discoveredAt: new Date().toISOString(),
     status: "active",
-    discoveryMode: "dynamic",
+    discoveryMode,
     discoveredFrom,
   };
 }
@@ -471,8 +477,13 @@ async function discoverVexa(): Promise<DiscoveredModel[]> {
 /**
  * FreeAIXYZ — WordPress backend (`unlimitedai.org`), NO `/models` endpoint.
  * Returns the known BOT_IDS keys (chatgpt/gemini/deepseek/claude/grok/
- * perplexity/meta/qwen) as a static "dynamic" list so the catalog always
- * has the canonical FreeAIXYZ models, regardless of WordPress availability.
+ * perplexity/meta/qwen) as a static list so the catalog always has the
+ * canonical FreeAIXYZ models, regardless of WordPress availability.
+ *
+ * Audit H2: these ids are HARDCODED (not fetched from an upstream /models
+ * endpoint), so `discoveryMode: "manual"` — don't claim "dynamic" when
+ * the source is a hand-curated constant array. Only the source URL is
+ * preserved as `discoveredFrom` for honesty.
  */
 async function discoverFreeaixyz(): Promise<DiscoveredModel[]> {
   const knownIds = [
@@ -498,6 +509,9 @@ async function discoverFreeaixyz(): Promise<DiscoveredModel[]> {
         { id, source: "static-bot-ids" },
         discoveredFrom,
         defaultCapabilities({ streaming: true }),
+        // Override discoveryMode to "manual" — these ids are hardcoded,
+        // not fetched from an upstream /models endpoint (audit H2).
+        "manual",
       ),
     );
   }
@@ -662,7 +676,9 @@ function findFreegptLegacyModel(upstreamId: string): GatewayModel {
 
 /**
  * Wrap a thrown legacy freeGptProvider error into a GatewayError. Detects
- * HTTP status codes embedded in error messages (mirrors legacy.ts).
+ * HTTP status codes embedded in error messages (mirrors legacy.ts) plus the
+ * rate-limit keyword detection (audit A4) so Pollinations-style "queue full"
+ * messages surface as RATE_LIMITED 429 to the client.
  */
 function wrapFreegptError(
   err: unknown,
@@ -670,6 +686,19 @@ function wrapFreegptError(
 ): GatewayError {
   if (err instanceof GatewayError) return err;
   const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+  if (
+    /\b429\b/.test(message) ||
+    lower.includes("rate limit") ||
+    lower.includes("queue full") ||
+    lower.includes("too many requests")
+  ) {
+    return classifyUpstreamStatus(429, {
+      provider: "freegpt",
+      model: upstreamId,
+      body: message,
+    });
+  }
   const statusMatch = message.match(/(?:HTTP|status)\D+(\d{3})/i);
   const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
   if (status > 0) {
@@ -730,6 +759,9 @@ function buildFreegptAdapter(
             { id: m.upstream, source: "fallback-manual-registry" },
             "https://freegpt.tech/api/openai/oneapi/v1/models",
             defaultCapabilities({ tools: m.capabilities.tools }),
+            // Audit H2: this is a static fallback to MODELS[], not a
+            // dynamically-fetched entry — mark as "manual".
+            "manual",
           ),
         );
       }
@@ -744,6 +776,16 @@ function buildFreegptAdapter(
           signal: req.signal,
           tools: req.tools as ProviderTool[] | undefined,
           toolChoice: req.toolChoice,
+          // Forward OpenAI sampling params (audit E1).
+          temperature: req.temperature,
+          maxTokens: req.maxTokens ?? req.maxCompletionTokens,
+          topP: req.topP,
+          stop: req.stop,
+          seed: req.seed,
+          presencePenalty: req.presencePenalty,
+          frequencyPenalty: req.frequencyPenalty,
+          n: req.n,
+          streamOptions: req.streamOptions,
         });
         return { text: result.text };
       } catch (err) {
@@ -762,6 +804,16 @@ function buildFreegptAdapter(
         signal: req.signal,
         tools: req.tools as ProviderTool[] | undefined,
         toolChoice: req.toolChoice,
+        // Forward OpenAI sampling params (audit E1).
+        temperature: req.temperature,
+        maxTokens: req.maxTokens ?? req.maxCompletionTokens,
+        topP: req.topP,
+        stop: req.stop,
+        seed: req.seed,
+        presencePenalty: req.presencePenalty,
+        frequencyPenalty: req.frequencyPenalty,
+        n: req.n,
+        streamOptions: req.streamOptions,
       });
     },
   };

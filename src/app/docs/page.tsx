@@ -1184,7 +1184,7 @@ curl ${o}/api/v1/models
 #   "data": [
 #     {"id": "toolbaz-v4.5-fast", "object": "model", "created": 1234567890, "owned_by": "toolbaz"},
 #     {"id": "gpt-4o-latest",     "object": "model", "created": 1234567890, "owned_by": "openai"},
-#     ... 283 more
+#     ... many more
 #   ]
 # }`,
   python: `from openai import OpenAI
@@ -1431,329 +1431,6 @@ puts by_provider["toolbaz"].map { |m| m["id"] }`,
 </html>`,
 });
 
-const webSearch = (o: string): Record<Lang, string> => ({
-  curl: `# Web search via Miklium (AI-powered, default)
-curl ${o}/api/v1/search \\
-  -H "Content-Type: application/json" \\
-  -d '{"query": "best AI frameworks 2025", "num": 8}'
-
-# Response shape:
-# {
-#   "query": "best AI frameworks 2025",
-#   "count": 8,
-#   "results": [
-#     {"title": "...", "url": "https://...", "snippet": "..."},
-#     ...
-#   ]
-# }`,
-  python: `import requests
-
-res = requests.post("${o}/api/v1/search", json={
-    "query": "best AI frameworks 2025",
-    "num": 8,
-})
-data = res.json()
-for r in data["results"]:
-    print(r["title"])
-    print(" ", r["url"])`,
-  javascript: `const res = await fetch("${o}/api/v1/search", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ query: "best AI frameworks 2025", num: 8 }),
-});
-const { results } = await res.json();
-for (const r of results) {
-  console.log(r.title);
-  console.log(" ", r.url);
-}`,
-  node: `const res = await fetch("${o}/api/v1/search", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ query: "best AI frameworks 2025", num: 8 }),
-});
-const data = await res.json();
-console.log(\`Found \${data.count} results for "\${data.query}"\`);
-for (const r of data.results) {
-  console.log("- " + r.title + "\\n  " + r.url);
-}`,
-  php: `<?php
-$ch = curl_init("${o}/api/v1/search");
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-    "query" => "best AI frameworks 2025",
-    "num" => 8,
-]));
-curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$data = json_decode(curl_exec($ch), true);
-foreach ($data["results"] as $r) {
-    echo $r["title"] . "\\n  " . $r["url"] . "\\n";
-}`,
-  go: `package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-)
-
-func main() {
-    body, _ := json.Marshal(map[string]interface{}{
-        "query": "best AI frameworks 2025",
-        "num":   8,
-    })
-    res, _ := http.Post("${o}/api/v1/search", "application/json", bytes.NewBuffer(body))
-    defer res.Body.Close()
-    var data struct {
-        Query   string \`json:"query"\`
-        Count   int    \`json:"count"\`
-        Results []struct {
-            Title   string \`json:"title"\`
-            URL     string \`json:"url"\`
-            Snippet string \`json:"snippet"\`
-        } \`json:"results"\`
-    }
-    json.NewDecoder(res.Body).Decode(&data)
-    fmt.Printf("Found %d results for %q\\n", data.Count, data.Query)
-    for _, r := range data.Results {
-        fmt.Println("- " + r.Title)
-        fmt.Println("  " + r.URL)
-    }
-}`,
-  ruby: `require 'net/http'
-require 'json'
-
-uri = URI("${o}/api/v1/search")
-res = Net::HTTP.post(uri, {query: "best AI frameworks 2025", num: 8}.to_json, "Content-Type" => "application/json")
-data = JSON.parse(res.body)
-puts "Found #{data['count']} results for \\"#{data['query']}\\""
-data["results"].each do |r|
-  puts "- #{r['title']}"
-  puts "  #{r['url']}"
-end`,
-  html: `<!-- Web search widget -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>FreeGPT Search</title>
-</head>
-<body>
-  <input id="q" value="best AI frameworks 2025" />
-  <button onclick="search()">Search</button>
-  <ul id="results"></ul>
-  <script>
-    async function search() {
-      const q = document.getElementById('q').value;
-      const res = await fetch("${o}/api/v1/search", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({query: q, num: 8}),
-      });
-      const {results} = await res.json();
-      document.getElementById('results').innerHTML = results
-        .map(r => \`<li><a href="\${r.url}" target="_blank">\${r.title}</a><br>\${r.snippet}</li>\`)
-        .join("");
-    }
-  </script>
-</body>
-</html>`,
-});
-
-// ─── Image Generation snippets ─────────────────────────────────────────────
-const imageGen = (o: string): Record<Lang, string> => ({
-  curl: `# Generate an image and save it to disk
-curl ${o}/api/v1/image/generate \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "prompt": "A beautiful sunset over mountains, cinematic lighting",
-    "model": "poll-flux",
-    "width": 1024,
-    "height": 1024
-  }' | python3 -c "import json,sys,urllib.request; d=json.load(sys.stdin); urllib.request.urlretrieve(d['images'][0]['url'], 'image.jpeg'); print('Saved image.jpeg')"
-
-# List all image models:
-curl ${o}/api/v1/image/generate
-
-# Response shape:
-# {
-#   "success": true,
-#   "images": [{"url": "https://...jpeg", "format": "jpeg"}],
-#   "model": "poll-flux",
-#   "model_name": "Flux (Pollinations)",
-#   "category": "mixed",
-#   "provider": "pollinations-gen",
-#   "prompt": "...",
-#   "width": 1024, "height": 1024
-# }`,
-  python: `import requests, shutil
-
-res = requests.post("${o}/api/v1/image/generate", json={
-    "prompt": "A beautiful sunset over mountains, cinematic lighting",
-    "model": "poll-flux",   # mixed. Also: freegpt-gpt-image-2 (general), freegpt-nano-banana-2 (realism)
-    "width": 1024,
-    "height": 1024,
-}, timeout=300)
-data = res.json()
-if data.get("success"):
-    img_url = data["images"][0]["url"]
-    with requests.get(img_url, stream=True) as r:
-        with open("image.jpeg", "wb") as f:
-            shutil.copyfileobj(r.raw, f)
-    print("Saved image.jpeg — model:", data["model_name"], "category:", data["category"])
-else:
-    print("Error:", data.get("error"))`,
-  javascript: `// Browser — show the generated image inline
-const res = await fetch("${o}/api/v1/image/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    prompt: "photorealistic portrait, golden hour, 8k",
-    model: "freegpt-nano-banana-2",   // realism
-    width: 1024, height: 1024,
-  }),
-});
-const data = await res.json();
-if (data.success) {
-  const img = document.createElement("img");
-  img.src = data.images[0].url;   // direct image URL
-  img.width = 512;
-  document.body.appendChild(img);
-  console.log("Model:", data.model_name, "Category:", data.category);
-} else {
-  console.error("Error:", data.error);
-}`,
-  node: `// Node.js — download to file
-import fs from "node:fs";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-
-const res = await fetch("${o}/api/v1/image/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    prompt: "cyberpunk city at night, neon, cinematic",
-    model: "casper-flux",   // mixed
-    width: 1024, height: 1024,
-  }),
-});
-const data = await res.json();
-if (data.success) {
-  const imgRes = await fetch(data.images[0].url);
-  await pipeline(Readable.fromWeb(imgRes.body), fs.createWriteStream("image.jpeg"));
-  console.log("Saved image.jpeg");
-} else {
-  console.error("Error:", data.error);
-}`,
-  php: `<?php
-$body = json_encode([
-  "prompt" => "A beautiful sunset over mountains",
-  "model" => "poll-flux",
-  "width" => 1024, "height" => 1024,
-]);
-$ch = curl_init("${o}/api/v1/image/generate");
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-$res = curl_exec($ch); curl_close($ch);
-$data = json_decode($res, true);
-if ($data["success"] ?? false) {
-  $img = file_get_contents($data["images"][0]["url"]);
-  file_put_contents("image.jpeg", $img);
-  echo "Saved image.jpeg\\n";
-} else {
-  echo "Error: " . ($data["error"] ?? "unknown") . "\\n";
-}`,
-  go: `package main
-import (
-  "bytes"; "encoding/json"; "fmt"; "io"; "net/http"; "os"
-)
-func main() {
-  body, _ := json.Marshal(map[string]any{
-    "prompt": "photorealistic mountain landscape",
-    "model": "freegpt-flux-2-flex",
-    "width": 1024, "height": 1024,
-  })
-  res, _ := http.Post("${o}/api/v1/image/generate", "application/json", bytes.NewBuffer(body))
-  var data struct {
-    Success bool \`json:"success"\`
-    Images []struct{ Url string \`json:"url"\` } \`json:"images"\`
-    Error string \`json:"error"\`
-  }
-  json.NewDecoder(res.Body).Decode(&data)
-  if data.Success {
-    imgRes, _ := http.Get(data.Images[0].Url)
-    f, _ := os.Create("image.jpeg")
-    io.Copy(f, imgRes.Body); f.Close()
-    fmt.Println("Saved image.jpeg")
-  } else {
-    fmt.Println("Error:", data.Error)
-  }
-}`,
-  ruby: `require 'net/http'
-require 'json'
-require 'open-uri'
-
-uri = URI("${o}/api/v1/image/generate")
-res = Net::HTTP.post(uri, {
-  prompt: "A beautiful sunset over mountains",
-  model: "poll-flux",
-  width: 1024, height: 1024,
-}.to_json, "Content-Type" => "application/json")
-
-data = JSON.parse(res.body)
-if data["success"]
-  URI.open(data["images"][0]["url"]) do |img|
-    File.write("image.jpeg", img.read, mode: "wb")
-  end
-  puts "Saved image.jpeg — #{data['model_name']}"
-else
-  puts "Error: #{data['error']}"
-end`,
-  html: `<!-- Image generation widget -->
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>FreeAIXYZ Image Gen</title></head>
-<body>
-  <input id="prompt" value="A beautiful sunset over mountains" style="width:320px" />
-  <select id="model">
-    <option value="poll-flux">Pollinations — Flux</option>
-    <option value="freegpt-gpt-image-2">FreeGPT — GPT-Image 2</option>
-    <option value="freegpt-nano-banana-2">FreeGPT — Nano Banana 2</option>
-    <option value="freegpt-flux-2-flex">FreeGPT — Flux 2 Flex</option>
-    <option value="freegpt-gemini-flash-image">FreeGPT — Gemini Flash Image</option>
-    <option value="casper-flux">Casper Tech — Flux</option>
-  </select>
-  <button onclick="gen()">Generate</button>
-  <div id="out"></div>
-  <script>
-    async function gen() {
-      document.getElementById('out').innerHTML = 'Generating…';
-      const res = await fetch("${o}/api/v1/image/generate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          prompt: document.getElementById('prompt').value,
-          model: document.getElementById('model').value,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        document.getElementById('out').innerHTML =
-          '<img src="' + data.images[0].url + '" style="max-width:400px" />' +
-          '<p>' + data.model_name + ' · ' + data.category + '</p>';
-      } else {
-        document.getElementById('out').innerHTML = 'Error: ' + (data.error || 'unknown');
-      }
-    }
-  </script>
-</body>
-</html>`,
-});
-
 // ─── Sidebar navigation structure ───────────────────────────────────────────
 type NavItem = {
   id: string;
@@ -1782,9 +1459,6 @@ const NAV: NavItem[] = [
       { id: "models-filter", label: "Filter by provider" },
     ],
   },
-  { id: "web-search", label: "Web Search" },
-  { id: "image-generation", label: "Image Generation" },
-  { id: "image-manipulation", label: "Image Manipulation" },
   { id: "code-examples", label: "Code Examples" },
   { id: "reverse-engineering", label: "Reverse Engineering ↗" },
 ];
@@ -1835,8 +1509,6 @@ export default function DocsPage() {
     chatToolsStreaming: chatToolsStreaming(origin),
     modelsList: modelsList(origin),
     modelsFilter: modelsFilter(origin),
-    webSearch: webSearch(origin),
-    imageGen: imageGen(origin),
   };
 
   const baseUrl = `${origin}/api/v1`;
@@ -1918,9 +1590,8 @@ export default function DocsPage() {
               </h2>
             </div>
             <p className="text-muted-foreground max-w-2xl leading-relaxed" style={{ fontFamily: "var(--font-body), serif" }}>
-              A free, OpenAI-compatible gateway with 285+ models across 34
-              providers — plus web search. No API key,
-              no auth, no rate limits. Point any OpenAI SDK at{" "}
+              A free, OpenAI-compatible gateway with 80+ models across 17
+              providers. No API key, no auth required. Upstream provider quotas may apply. Point any OpenAI SDK at{" "}
               <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{baseUrl}</code> and go.
             </p>
 
@@ -1957,11 +1628,7 @@ export default function DocsPage() {
                 </li>
                 <li>
                   <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/models</code> —
-                  List all 285+ models
-                </li>
-                <li>
-                  <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
-                  Miklium AI-powered web search
+                  List all 80+ models across 17 providers
                 </li>
               </ul>
             </div>
@@ -2017,8 +1684,8 @@ curl ${origin}/api/v1/chat/completions \\
                   POST /api/v1/chat/completions
                 </code>{" "}
                 — fully OpenAI-compatible. Supports streaming,
-                tool/function calling, multi-turn conversations, and 285+
-                models.
+                tool/function calling, multi-turn conversations, and 80+
+                models across 17 providers.
               </p>
               <CodeBlock
                 filename="request-body.json"
@@ -2055,7 +1722,7 @@ curl ${origin}/api/v1/chat/completions \\
               <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-brand), serif" }}>Streaming</h3>
               <p className="text-muted-foreground text-sm max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 Set <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>stream: true</code> to
-                receive Server-Sent Events with token-by-token deltas. Each
+                receive Server-Sent Events with real SSE deltas (upstream pacing varies). Each
                 line is{" "}
                 <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>{"data: <json>"}</code>; the
                 stream ends with{" "}
@@ -2106,7 +1773,7 @@ curl ${origin}/api/v1/chat/completions \\
               <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Models</h2>
               <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
                 <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/models</code> —
-                returns 285+ models across 34 providers in the OpenAI list
+                returns 80+ models across 17 providers in the OpenAI list
                 format.
               </p>
             </div>
@@ -2133,7 +1800,7 @@ curl ${origin}/api/v1/chat/completions \\
       "created": 1234567890,
       "owned_by": "openai"
     }
-    // ... 283 more
+    // ... many more
   ]
 }`}
               />
@@ -2148,200 +1815,6 @@ curl ${origin}/api/v1/chat/completions \\
                 render provider dropdowns.
               </p>
               <CodeTabs snippets={snippets.modelsFilter} />
-            </div>
-          </section>
-
-          {/* Web Search */}
-          <section id="web-search" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>Web Search</h2>
-            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
-              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>POST /api/v1/search</code> —
-              Miklium AI-powered web search (default). Also supports DuckDuckGo and Google. Returns titles, URLs, and snippets.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Request body
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "query": "best AI frameworks 2025",
-  "num": 8
-}`}</pre>
-              </div>
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Response shape
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "query": "best AI frameworks 2025",
-  "count": 8,
-  "results": [
-    {"title": "...", "url": "...", "snippet": "..."}
-  ]
-}`}</pre>
-              </div>
-            </div>
-            <CodeTabs snippets={snippets.webSearch} />
-          </section>
-
-          {/* Image Generation */}
-          <section id="image-generation" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
-              Image Generation
-            </h2>
-            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
-              <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                POST /api/v1/image/generate
-              </code>{" "}
-              — generate AI images from text prompts.{" "}
-              <strong className="text-foreground">6 models</strong> across 4
-              style families: anime, realism, mixed/artistic, and general. Powered by
-              Pollinations, FreeGPT.tech, and Casper Technology — all free, no API key.
-            </p>
-
-            <div className="border border-foreground p-6">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground mb-2" style={{ fontFamily: "var(--font-code), monospace" }}>
-                Providers
-              </div>
-              <ul className="text-sm text-muted-foreground space-y-1.5" style={{ fontFamily: "var(--font-body), serif" }}>
-                <li>
-                  <strong className="text-foreground">Pollinations</strong> — 1 free model (Flux).
-                  Synchronous, unlimited, instant (~0.3-1s per image).
-                </li>
-                <li>
-                  <strong className="text-foreground">FreeGPT.tech</strong> — 4 image models
-                  (GPT-Image 2, Nano Banana 2, Flux 2 Flex, Gemini Flash Image)
-                  via the WASM-secured chat endpoint.
-                </li>
-                <li>
-                  <strong className="text-foreground">Casper Tech</strong> — 1 AI image model
-                  (Flux) via apis.xcasper.space.
-                  Free, no API key. Also provides removebg, upscale, deblur, colorize, and
-                  image manipulation APIs.
-                </li>
-              </ul>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Request body
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "prompt": "A beautiful sunset over mountains",  // required
-  "model": "poll-flux",             // default: poll-flux
-  "width": 1024,                     // optional
-  "height": 1024,                    // optional
-  "seed": 42,                       // pollinations only
-  "nologo": true,                   // pollinations only
-  "enhance": true                   // pollinations only
-}`}</pre>
-              </div>
-              <div className="border border-foreground p-6">
-                <div className="text-[11px] text-muted-foreground uppercase tracking-wider" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Response shape
-                </div>
-                <pre className="mt-2 text-[12.5px] text-foreground/80" style={{ fontFamily: "var(--font-code), monospace" }}>{`{
-  "success": true,
-  "images": [
-    { "url": "https://...jpeg", "format": "jpeg" }
-  ],
-  "model": "poll-flux",
-  "model_name": "Flux (Pollinations)",
-  "category": "mixed",
-  "provider": "pollinations-gen",
-  "prompt": "A beautiful sunset over mountains",
-  "width": 1024,
-  "height": 1024
-}`}</pre>
-              </div>
-            </div>
-
-            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
-              Browse all 6 image models and their categories on the{" "}
-              <a href="/models#image-models" className="text-foreground hover:underline transition-colors duration-100">
-                Models page
-              </a>
-              . Or call <code className="text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>GET /api/v1/image/generate</code>{" "}
-              for the full machine-readable list.
-            </p>
-
-            <p className="text-muted-foreground text-sm" style={{ fontFamily: "var(--font-body), serif" }}>
-              Each example below generates an image and saves it to disk —
-              except the JavaScript tab, which displays the image inline in the
-              browser.
-            </p>
-            <CodeTabs snippets={snippets.imageGen} />
-          </section>
-
-          {/* Casper Tech Image Manipulation */}
-          <section id="image-manipulation" className="scroll-mt-20 space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), serif" }}>
-              Image Manipulation (Casper Tech)
-            </h2>
-            <p className="text-muted-foreground max-w-2xl" style={{ fontFamily: "var(--font-body), serif" }}>
-              Free image manipulation APIs powered by{" "}
-              <a href="https://apis.xcasper.space" target="_blank" rel="noopener noreferrer" className="text-foreground hover:underline">Casper Technology</a>.{" "}
-              No API key required. All endpoints use GET with query parameters.
-            </p>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="border border-foreground p-5 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Manipulate
-                </div>
-                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  POST /api/v1/image/mask
-                </code>
-                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  Multi-action: removebg, upscale, deblur, colorize, watermark removal, face swap, AI edit.
-                </p>
-                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  body: &#123;action, url, ...&#125;
-                </div>
-              </div>
-              <div className="border border-foreground p-5 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Variation
-                </div>
-                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  POST /api/v1/image/variation
-                </code>
-                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  AI-driven image variation/editing using NanoBanana v2.
-                </p>
-                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  params: url, prompt?
-                </div>
-              </div>
-              <div className="border border-foreground p-5 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Analyze
-                </div>
-                <code className="block text-sm text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  POST /api/v1/image/analyze
-                </code>
-                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  Image processing actions: removebg, enlarger, unblur, unwatermark, colorize.
-                </p>
-                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  body: &#123;action, url, ...&#125;
-                </div>
-              </div>
-              <div className="border border-foreground p-5 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  Upstream
-                </div>
-                <code className="block text-[11px] text-foreground/70 break-all" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  apis.xcasper.space/api/ai/
-                </code>
-                <p className="text-xs text-muted-foreground" style={{ fontFamily: "var(--font-body), serif" }}>
-                  8+ free image tools via Casper Technology API platform.
-                </p>
-                <div className="text-[10px] text-muted-foreground" style={{ fontFamily: "var(--font-code), monospace" }}>
-                  GET requests, no API key
-                </div>
-              </div>
             </div>
           </section>
 

@@ -10,11 +10,19 @@
  * one content chunk + stop — never fake-stream (PRD §137).
  *
  * Records StreamTimings for the debug UI (/api/debug/stream, PRD §6).
+ *
+ * Audit fixes:
+ *   - E2: stream_options.include_usage=true → emit a final usage SSE chunk
+ *     before [DONE] (estimated token counts).
+ *   - D1: when the primary adapter fails BEFORE any content is forwarded,
+ *     try the next fallback (provider failover). Cap at the size of the
+ *     fallbacks list — never cascade beyond the explicitly-provided list.
  */
 
 import {
   generateRequestId,
   GatewayError,
+  isFailoverCandidate,
   sseErrorEvent,
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
@@ -37,6 +45,17 @@ export const STREAM_HEADERS: Record<string, string> = {
   "X-No-Buffer": "true",
 };
 
+/**
+ * Failover candidate (audit D1). The gateway resolves the requested model
+ * to its adapter, then if a failover is needed, tries each fallback in
+ * order — typically alternative providers that expose the same upstream
+ * model id (e.g. `tb/gpt-5.2` rate-limited → `oc/gpt-5.2`).
+ */
+export interface FailoverCandidate {
+  req: ChatRequest;
+  adapter: ProviderAdapter;
+}
+
 class StreamingProxyService {
   /** requestId → StreamTimings for the debug UI (auto-pruned after 5 min). */
   private debugTimings = new Map<string, StreamTimings>();
@@ -45,10 +64,19 @@ class StreamingProxyService {
   /**
    * Stream chat completion → Response. Forwards every upstream delta
    * immediately as an OpenAI-shaped SSE chunk (PRD §137).
+   *
+   * Audit D1: when the primary adapter fails BEFORE any content is
+   * forwarded, each fallback is tried in order. The X-Failover header
+   * is NOT set on the streaming response (the Response is constructed
+   * before the first upstream chunk is pulled, so the header can't be
+   * known at construction time) — instead, a `: ` comment line is
+   * enqueued at the start of the stream when failover occurs so SSE
+   * clients can still observe it.
    */
   streamChat(
     req: ChatRequest,
     adapter: ProviderAdapter,
+    fallbacks: FailoverCandidate[] = [],
   ): { response: Response; timings: StreamTimings } {
     const requestId = generateRequestId();
     const now = Date.now();
@@ -69,23 +97,30 @@ class StreamingProxyService {
 
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        this.runStream(controller, req, adapter, timings, sseId, created, encoder).catch(
-          (err) => {
-            this.handleStreamError(
-              controller,
-              err,
-              timings,
-              adapter.id,
-              req.modelId,
-              encoder,
-            );
-            try {
-              controller.close();
-            } catch {
-              // already closed
-            }
-          },
-        );
+        this.runStream(
+          controller,
+          req,
+          adapter,
+          fallbacks,
+          timings,
+          sseId,
+          created,
+          encoder,
+        ).catch((err) => {
+          this.handleStreamError(
+            controller,
+            err,
+            timings,
+            adapter.id,
+            req.modelId,
+            encoder,
+          );
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+        });
       },
       cancel: () => {
         // Client disconnected — surface as aborted (PRD §59, §212).
@@ -108,66 +143,151 @@ class StreamingProxyService {
     controller: ReadableStreamDefaultController<Uint8Array>,
     req: ChatRequest,
     adapter: ProviderAdapter,
+    fallbacks: FailoverCandidate[],
     timings: StreamTimings,
     sseId: string,
     created: number,
     encoder: TextEncoder,
   ): Promise<void> {
-    timings.upstreamRequestStart = Date.now();
-    const gen = adapter.stream(req);
-    let firstEnqueued = false;
-    try {
-      while (true) {
-        // Check abort BEFORE pulling the next chunk (PRD §59, §212).
-        if (req.signal?.aborted) {
-          this.sendAborted(controller, timings, encoder);
-          return;
-        }
-        const next = await gen.next();
-        if (next.done) break;
-        const delta = next.value;
-        if (!delta) continue;
-        if (timings.upstreamFirstChunk === undefined) {
-          timings.upstreamFirstChunk = Date.now();
-        }
-        timings.chunkCount += 1;
-        timings.bytes += byteLength(delta);
-        this.enqueueChunk(controller, encoder, sseId, created, req.modelId, delta);
-        if (!firstEnqueued) {
-          timings.proxyFirstForward = Date.now();
-          timings.ttfbMs =
-            timings.proxyFirstForward - timings.requestStart;
-          timings.ttftMs = timings.ttfbMs;
-          firstEnqueued = true;
-        }
-        if (req.signal?.aborted) {
-          this.sendAborted(controller, timings, encoder);
-          return;
+    // Build the list of candidates: primary first, then fallbacks.
+    const candidates: FailoverCandidate[] = [
+      { req, adapter },
+      ...fallbacks,
+    ];
+    let lastErr: unknown = null;
+    let lastCandidate: FailoverCandidate | null = null;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      const isPrimary = i === 0;
+      timings.upstreamRequestStart = Date.now();
+      // Once we successfully fall over to a candidate, expose the
+      // switch via an SSE comment line (audit D1 observability).
+      if (!isPrimary) {
+        try {
+          controller.enqueue(
+            encoder.encode(
+              `: X-Failover ${req.modelId}→${candidate.req.modelId}\n\n`,
+            ),
+          );
+        } catch {
+          // best-effort
         }
       }
-      // Final stop chunk + [DONE] sentinel (PRD §10).
-      this.enqueueFinal(controller, encoder, sseId, created, req.modelId);
-      providerHealthService.recordProviderSuccess(adapter.id);
-      metricsService.recordRequest({
-        requestId: timings.requestId,
-        providerId: adapter.id,
-        modelId: req.modelId,
-        status: 200,
-        type: "stream",
-        message: "ok",
-        streamRequested: true,
-        ttftMs: timings.ttftMs,
-        durationMs: Date.now() - timings.requestStart,
-      });
-    } finally {
+      lastCandidate = candidate;
+      const gen = candidate.adapter.stream(candidate.req);
+      let firstEnqueued = false;
       try {
-        await gen.return(undefined);
-      } catch {
-        // generator cleanup — ignore
+        while (true) {
+          if (candidate.req.signal?.aborted) {
+            this.sendAborted(controller, timings, encoder);
+            return;
+          }
+          const next = await gen.next();
+          if (next.done) break;
+          const delta = next.value;
+          if (!delta) continue;
+          if (timings.upstreamFirstChunk === undefined) {
+            timings.upstreamFirstChunk = Date.now();
+          }
+          timings.chunkCount += 1;
+          timings.bytes += byteLength(delta);
+          this.enqueueChunk(controller, encoder, sseId, created, candidate.req.modelId, delta);
+          if (!firstEnqueued) {
+            timings.proxyFirstForward = Date.now();
+            timings.ttfbMs =
+              timings.proxyFirstForward - timings.requestStart;
+            timings.ttftMs = timings.ttfbMs;
+            firstEnqueued = true;
+          }
+          if (candidate.req.signal?.aborted) {
+            this.sendAborted(controller, timings, encoder);
+            return;
+          }
+        }
+        // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
+        this.enqueueFinal(controller, encoder, sseId, created, candidate.req, timings.bytes);
+        providerHealthService.recordProviderSuccess(candidate.adapter.id);
+        metricsService.recordRequest({
+          requestId: timings.requestId,
+          providerId: candidate.adapter.id,
+          modelId: candidate.req.modelId,
+          status: 200,
+          type: "stream",
+          message: "ok",
+          streamRequested: true,
+          ttftMs: timings.ttftMs,
+          durationMs: Date.now() - timings.requestStart,
+        });
+        return;
+      } catch (err) {
+        // Generator cleanup — ignore secondary errors.
+        try {
+          await gen.return(undefined);
+        } catch {
+          // ignore
+        }
+        lastErr = err;
+        // Audit D1: only failover if NO content has been forwarded yet.
+        // Once the client has received a content chunk, switching adapters
+        // would corrupt the stream (mixed provider outputs).
+        if (firstEnqueued) {
+          // Mid-stream failure — surface as an SSE error event.
+          this.handleStreamError(
+            controller,
+            err,
+            timings,
+            candidate.adapter.id,
+            candidate.req.modelId,
+            encoder,
+          );
+          timings.totalDurationMs = Date.now() - timings.requestStart;
+          metricsService.recordStreamTimings(timings);
+          return;
+        }
+        // Audit D1: only failover for retryable error types (5xx, rate-limit,
+        // provider-unavailable). Client errors (4xx) wouldn't be solved by
+        // switching providers — they'd just fail the same way.
+        const ge = err instanceof GatewayError ? err : new GatewayError({
+          type: "STREAM_ERROR",
+          message: err instanceof Error ? err.message : String(err),
+          status: 502,
+          provider: candidate.adapter.id,
+          model: candidate.req.modelId,
+          requestId: timings.requestId,
+        });
+        if (!isFailoverCandidate(ge) || i === candidates.length - 1) {
+          // No failover possible — surface the error.
+          this.handleStreamError(
+            controller,
+            err,
+            timings,
+            candidate.adapter.id,
+            candidate.req.modelId,
+            encoder,
+          );
+          timings.totalDurationMs = Date.now() - timings.requestStart;
+          metricsService.recordStreamTimings(timings);
+          return;
+        }
+        // Try the next fallback candidate.
+        continue;
       }
-      timings.totalDurationMs = Date.now() - timings.requestStart;
-      metricsService.recordStreamTimings(timings);
     }
+
+    // All candidates exhausted — emit the last error.
+    if (lastErr && lastCandidate) {
+      this.handleStreamError(
+        controller,
+        lastErr,
+        timings,
+        lastCandidate.adapter.id,
+        lastCandidate.req.modelId,
+        encoder,
+      );
+    }
+    timings.totalDurationMs = Date.now() - timings.requestStart;
+    metricsService.recordStreamTimings(timings);
   }
 
   /** Emit a STREAM_ABORTED error event (PRD §59, §212). */
@@ -253,14 +373,25 @@ class StreamingProxyService {
     controller.enqueue(encoder.encode(line));
   }
 
-  /** Enqueue the final stop chunk + [DONE] sentinel. */
+  /**
+   * Enqueue the final stop chunk + (optional) usage chunk + [DONE] sentinel.
+   *
+   * Audit E2: when `stream_options.include_usage === true`, the gateway
+   * appends a final SSE chunk with `choices: []` and a `usage` block before
+   * the `[DONE]` sentinel. Token counts are estimated (~4 chars/token) —
+   * the gateway doesn't have a real tokenizer, but the audit specifically
+   * asks for "honest about usage reporting" which means the chunk shape
+   * must be present and the counts must be non-zero/non-fake.
+   */
   private enqueueFinal(
     controller: ReadableStreamDefaultController<Uint8Array>,
     encoder: TextEncoder,
     sseId: string,
     created: number,
-    model: string,
+    req: ChatRequest,
+    completionBytes: number,
   ): void {
+    const model = req.modelId;
     const payload = {
       id: sseId,
       object: "chat.completion.chunk",
@@ -271,6 +402,27 @@ class StreamingProxyService {
       ],
     };
     controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+    // Audit E2: emit usage chunk when the client asked for it.
+    if (req.streamOptions?.include_usage) {
+      const promptText = req.messages.map((m) => m.content).join("\n");
+      const promptTokens = Math.max(1, Math.ceil(promptText.length / 4));
+      const completionTokens = Math.max(1, Math.ceil(completionBytes / 4));
+      const usagePayload = {
+        id: sseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [],
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: promptTokens + completionTokens,
+        },
+      };
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(usagePayload)}\n\n`),
+      );
+    }
     controller.enqueue(encoder.encode("data: [DONE]\n\n"));
   }
 
@@ -323,10 +475,11 @@ if (!globalForStreamingProxy.__freeaixyzStreamingProxyService) {
   globalForStreamingProxy.__freeaixyzStreamingProxyService = streamingProxyService;
 }
 
-/** Functional entry-point (PRD §6). */
+/** Functional entry-point (PRD §6, audit D1 failover). */
 export function streamChat(
   req: ChatRequest,
   adapter: ProviderAdapter,
+  fallbacks: FailoverCandidate[] = [],
 ): { response: Response; timings: StreamTimings } {
-  return streamingProxyService.streamChat(req, adapter);
+  return streamingProxyService.streamChat(req, adapter, fallbacks);
 }

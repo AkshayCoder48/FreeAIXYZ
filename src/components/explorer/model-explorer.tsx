@@ -7,7 +7,7 @@
  * refresh click. Renders a search box (PRD §197), a filter sidebar
  * (provider multi-select, capability toggles, status toggle — PRD §54), a
  * stale-catalog banner (PRD §172), an "updated Xs ago" indicator (PRD §114),
- * and a paginated "load more" model-card list (PRD §196 — handles 285+ models).
+ * and a paginated "load more" model-card list (PRD §196 — handles 80+ models).
  *
  * Refresh-models button triggers POST /api/discovery/refresh (PRD §113).
  *

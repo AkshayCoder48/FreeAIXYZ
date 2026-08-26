@@ -61,31 +61,45 @@ class ModelCatalogStore {
     return prev.then(() => fn()).finally(release);
   }
 
-  /** Snapshot accessor — does NOT mutate. */
+  /**
+   * Snapshot accessor — does NOT mutate (audit C1: copy-on-write invariant).
+   *
+   * Reads always see a consistent snapshot because the only writer is
+   * `atomicUpdate()` (which builds a new state in a local variable and
+   * swaps the reference at the very end) and the small mutation helpers
+   * (`setProviderHealth` / `setModelHealth` / `markStale`) which all also
+   * swap the reference (never mutate `this.state` in place).
+   */
   getCatalog(): {
     models: DiscoveredModel[];
     lastUpdated: string;
     catalogStale: boolean;
   } {
+    // Read the state reference ONCE into a local — bulletproof against a
+    // concurrent swap that reassigns `this.state` mid-call (audit C1).
+    const snapshot = this.state;
     return {
-      models: Array.from(this.state.models.values()),
-      lastUpdated: this.state.lastUpdated,
-      catalogStale: this.state.catalogStale,
+      models: Array.from(snapshot.models.values()),
+      lastUpdated: snapshot.lastUpdated,
+      catalogStale: snapshot.catalogStale,
     };
   }
 
   getModel(publicId: string): DiscoveredModel | undefined {
-    return this.state.models.get(publicId);
+    const snapshot = this.state;
+    return snapshot.models.get(publicId);
   }
 
   /** Resolve a canonical id (or bare upstream id within a namespace) → model. */
   resolveModel(publicId: string): DiscoveredModel | null {
-    const direct = this.state.models.get(publicId);
+    // Read the state reference once — never re-read `this.state` mid-call.
+    const snapshot = this.state;
+    const direct = snapshot.models.get(publicId);
     if (direct) return direct;
     const parsed = parseCanonicalModelId(publicId);
     if (!parsed) return null;
     // Graceful fallback during migration: find by (providerId, upstreamId).
-    for (const m of this.state.models.values()) {
+    for (const m of snapshot.models.values()) {
       if (
         m.providerId === parsed.providerId &&
         m.upstreamId === parsed.upstreamId
@@ -95,11 +109,12 @@ class ModelCatalogStore {
   }
 
   getProviderModels(providerId: string): DiscoveredModel[] {
-    const ids = this.state.byProvider.get(providerId);
+    const snapshot = this.state;
+    const ids = snapshot.byProvider.get(providerId);
     if (!ids) return [];
     const out: DiscoveredModel[] = [];
     for (const id of ids) {
-      const m = this.state.models.get(id);
+      const m = snapshot.models.get(id);
       if (m) out.push(m);
     }
     return out;
@@ -109,34 +124,126 @@ class ModelCatalogStore {
     return this.state.providerHealth.get(providerId);
   }
 
+  /**
+   * Copy-on-write update for provider health (audit C1).
+   * Builds a new state with the updated entry and swaps the reference
+   * atomically — concurrent readers never see a partial mutation.
+   */
   setProviderHealth(providerId: string, result: HealthResult): void {
-    this.state.providerHealth.set(providerId, result);
+    this.swapState((prev) => ({
+      models: prev.models,
+      byProvider: prev.byProvider,
+      providerHealth: new Map(prev.providerHealth).set(providerId, result),
+      modelHealth: prev.modelHealth,
+      lastUpdated: prev.lastUpdated,
+      catalogStale: prev.catalogStale,
+    }));
   }
 
   getModelHealth(publicId: string): ModelHealthEntry | undefined {
     return this.state.modelHealth.get(publicId);
   }
 
+  /**
+   * Copy-on-write update for model-level health (audit C1).
+   * The corresponding model object's `status` field is also updated by
+   * replacing the model entry in the new Map (NOT by mutating the original
+   * model object in place — that would leak the mutation to the previous
+   * snapshot via shared reference).
+   */
   setModelHealth(
     publicId: string,
     status: ModelStatus,
     latencyMs?: number,
   ): void {
-    const prev = this.state.modelHealth.get(publicId);
-    this.state.modelHealth.set(publicId, {
-      status,
-      failureCount: prev?.failureCount ?? 0,
-      lastSuccess: prev?.lastSuccess,
-      lastFailure: prev?.lastFailure,
-      latencyMs: latencyMs ?? prev?.latencyMs,
+    this.swapState((prev) => {
+      const prevEntry = prev.modelHealth.get(publicId);
+      const newEntry: ModelHealthEntry = {
+        status,
+        failureCount: prevEntry?.failureCount ?? 0,
+        lastSuccess: prevEntry?.lastSuccess,
+        lastFailure: prevEntry?.lastFailure,
+        latencyMs: latencyMs ?? prevEntry?.latencyMs,
+      };
+      const newModelHealth = new Map(prev.modelHealth).set(publicId, newEntry);
+      // Clone the model object if its status actually changes — never mutate
+      // the original (it's shared with the previous snapshot).
+      const oldModel = prev.models.get(publicId);
+      if (oldModel && oldModel.status !== status) {
+        const newModels = new Map(prev.models);
+        newModels.set(publicId, { ...oldModel, status });
+        return {
+          models: newModels,
+          byProvider: prev.byProvider,
+          providerHealth: prev.providerHealth,
+          modelHealth: newModelHealth,
+          lastUpdated: prev.lastUpdated,
+          catalogStale: prev.catalogStale,
+        };
+      }
+      return {
+        models: prev.models,
+        byProvider: prev.byProvider,
+        providerHealth: prev.providerHealth,
+        modelHealth: newModelHealth,
+        lastUpdated: prev.lastUpdated,
+        catalogStale: prev.catalogStale,
+      };
     });
-    const m = this.state.models.get(publicId);
-    if (m && m.status !== status) m.status = status;
   }
 
-  /** Mark the catalog as stale when discovery fails (PRD §171). */
+  /** Mark the catalog as stale when discovery fails (PRD §171). Copy-on-write. */
   markStale(): void {
-    this.state.catalogStale = true;
+    this.swapState((prev) => ({
+      ...prev,
+      catalogStale: true,
+    }));
+  }
+
+  /**
+   * Synchronously seed the catalog from legacy MODELS[] entries (audit C1).
+   *
+   * Called by startup.ts when loadFromDb() returns 0 rows — without this
+   * seed, the gateway returns "ready" with an EMPTY catalog and the first
+   * burst of parallel requests all get spurious 404s before the background
+   * discovery (which is kicked off non-blocking) populates the catalog.
+   *
+   * Atomic swap: builds a fresh CatalogState and assigns it. If the catalog
+   * is already populated, the seed is merged in (existing entries preserved,
+   * new ones added).
+   */
+  seedSync(models: DiscoveredModel[]): void {
+    this.swapState((prev) => {
+      const newModels = new Map(prev.models);
+      const newByProvider = new Map(prev.byProvider);
+      for (const m of models) {
+        newModels.set(m.id, { ...m });
+        const set = newByProvider.get(m.providerId) ?? new Set<string>();
+        set.add(m.id);
+        newByProvider.set(m.providerId, set);
+      }
+      return {
+        models: newModels,
+        byProvider: newByProvider,
+        providerHealth: prev.providerHealth,
+        modelHealth: prev.modelHealth,
+        lastUpdated: new Date().toISOString(),
+        catalogStale: false,
+      };
+    });
+  }
+
+  /**
+   * Apply a pure state transformation synchronously (audit C1).
+   * The transform returns a NEW CatalogState; this method assigns it to
+   * `this.state` atomically. Never mutate `prev` in place inside `fn`.
+   *
+   * Synchronous (no lock) because the assignment itself is atomic in JS's
+   * single-threaded event loop. The discovery lock is only needed for
+   * `atomicUpdate()` which spans multiple awaits.
+   */
+  private swapState(fn: (prev: CatalogState) => CatalogState): void {
+    this.state = fn(this.state);
   }
 
   /**
@@ -185,7 +292,12 @@ class ModelCatalogStore {
           for (const id of prior) {
             if (!newIds.has(id)) {
               const m = next.models.get(id);
-              if (m && m.status !== "offline") m.status = "degraded";
+              // Audit C1: replace the model entry with a shallow-cloned copy
+              // when its status changes — never mutate the shared object in
+              // place (it would leak the change to the previous snapshot).
+              if (m && m.status !== "offline") {
+                next.models.set(id, { ...m, status: "degraded" });
+              }
             }
           }
         }

@@ -61,6 +61,22 @@ export interface ChatRequest {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  /** OpenAI's newer alternative spelling for max_tokens (audit E1). */
+  maxCompletionTokens?: number;
+  /** nucleus sampling param (audit E1). */
+  topP?: number;
+  /** stop sequences (audit E1). */
+  stop?: string | string[];
+  /** deterministic sampling seed (audit E1). */
+  seed?: number;
+  /** -2.0 to 2.0 (audit E1). */
+  presencePenalty?: number;
+  /** -2.0 to 2.0 (audit E1). */
+  frequencyPenalty?: number;
+  /** number of completions to generate (audit E1). */
+  n?: number;
+  /** OpenAI stream options object (audit E1, E2). */
+  streamOptions?: { include_usage?: boolean };
   tools?: unknown[];
   toolChoice?: string;
 }

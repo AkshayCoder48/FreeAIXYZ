@@ -37,10 +37,18 @@ export interface OAIChatCompletionRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number | null;
+  /** OpenAI's newer alternative spelling (audit E1). */
+  max_completion_tokens?: number | null;
   top_p?: number;
   frequency_penalty?: number;
   presence_penalty?: number;
   n?: number | null;
+  /** Stop sequences (audit E1). */
+  stop?: string | string[] | null;
+  /** Deterministic sampling seed (audit E1). */
+  seed?: number | null;
+  /** OpenAI stream options (audit E1, E2). */
+  stream_options?: { include_usage?: boolean } | null;
   user?: string;
   tools?: OAITool[];
   tool_choice?: OAIToolChoice;

@@ -33,7 +33,7 @@ const FEATURES = [
   {
     icon: Zap,
     title: "True End-to-End SSE",
-    desc: "stream:true returns real token-by-token deltas. Every layer (upstream → proxy → runtime → browser → parser → UI) streams. No fake re-pacing.",
+    desc: "stream:true returns real SSE deltas (upstream pacing varies). Every layer (upstream → proxy → runtime → browser → parser → UI) streams. No gateway-side re-pacing (upstream pacing preserved).",
   },
   {
     icon: ShieldOff,

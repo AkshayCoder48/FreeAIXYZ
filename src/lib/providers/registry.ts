@@ -257,7 +257,7 @@ export const MODELS: readonly GatewayModel[] = [
   vx("vx-gpt-4-1-nano", "gpt-4.1-nano", "GPT-4.1 nano via Vexa — lightweight OpenAI model", "professional", 128000),
 ];
 
-/** Toolbaz model helper. Note: Toolbaz returns full text at once (no real streaming). */
+/** Toolbaz model helper (audit G1: streaming=true — gateway emits real SSE). */
 function tb(
   id: string,
   upstream: string,
@@ -273,7 +273,12 @@ function tb(
     category,
     contextWindow,
     capabilities: {
-      streaming: false, // Toolbaz returns full text at once — gateway re-paces it
+      // Audit G1: Toolbaz DOES emit a real SSE response (data: chunks +
+      // [DONE]). The gateway's streaming-proxy wraps the provider's
+      // single-chunk yield into a real SSE stream, so the capabilities
+      // flag should be `true` — clients who check `streaming` before
+      // requesting a stream should see Toolbaz as stream-capable.
+      streaming: true,
       tools: true,
       systemPrompt: true,
       multiTurn: true,

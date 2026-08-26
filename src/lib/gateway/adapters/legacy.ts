@@ -115,7 +115,11 @@ function synthesizeLegacyModel(
 /**
  * Wrap a thrown legacy provider error into a GatewayError when possible.
  * Detects HTTP status codes embedded in error messages and classifies them
- * via the canonical taxonomy (PRD §148).
+ * via the canonical taxonomy (PRD §148, audit A3-A6).
+ *
+ * Also recognises common rate-limit phrasing ("rate limit", "queue full",
+ * "too many requests", "429") so that providers whose retry logic consumes
+ * the upstream's 429 status still surface RATE_LIMITED to the client.
  */
 function wrapLegacyError(
   err: unknown,
@@ -124,6 +128,22 @@ function wrapLegacyError(
 ): GatewayError {
   if (err instanceof GatewayError) return err;
   const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+  // Keyword-based detection for rate limits (some providers swallow the HTTP
+  // status code and surface a friendlier message after their own retries).
+  if (
+    /\b429\b/.test(message) ||
+    lower.includes("rate limit") ||
+    lower.includes("queue full") ||
+    lower.includes("too many requests")
+  ) {
+    return classifyUpstreamStatus(429, {
+      provider: providerId,
+      model: upstreamId,
+      requestId: generateRequestId(),
+      body: message,
+    });
+  }
   // Naive status-code detection from legacy error text.
   const statusMatch = message.match(/(?:HTTP|status)\D+(\d{3})/i);
   const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
@@ -194,6 +214,29 @@ async function probeHealth(
   }
 }
 
+/**
+ * Build the common sampling/option fields for a ProviderCompletionRequest
+ * from a gateway ChatRequest (audit E1). The caller adds the `model` field
+ * (resolved separately) before passing to the provider.
+ */
+function toProviderRequest(req: ChatRequest) {
+  return {
+    messages: req.messages,
+    signal: req.signal,
+    tools: req.tools as ProviderTool[] | undefined,
+    toolChoice: req.toolChoice,
+    temperature: req.temperature,
+    maxTokens: req.maxTokens ?? req.maxCompletionTokens,
+    topP: req.topP,
+    stop: req.stop,
+    seed: req.seed,
+    presencePenalty: req.presencePenalty,
+    frequencyPenalty: req.frequencyPenalty,
+    n: req.n,
+    streamOptions: req.streamOptions,
+  };
+}
+
 /** Build a ProviderAdapter for a single legacy provider. */
 function buildLegacyAdapter(providerId: string): ProviderAdapter {
   const info = PROVIDER_INFO[providerId as keyof typeof PROVIDER_INFO];
@@ -221,11 +264,8 @@ function buildLegacyAdapter(providerId: string): ProviderAdapter {
         synthesizeLegacyModel(providerId, req.upstreamId);
       try {
         const result = await provider.complete({
+          ...toProviderRequest(req),
           model,
-          messages: req.messages,
-          signal: req.signal,
-          tools: req.tools as ProviderTool[] | undefined,
-          toolChoice: req.toolChoice,
         });
         return { text: result.text };
       } catch (err) {
@@ -244,11 +284,8 @@ function buildLegacyAdapter(providerId: string): ProviderAdapter {
         // adapters that DON'T truly stream have capabilities.streaming=false
         // and the streaming-proxy emits one honest content chunk + stop.
         yield* provider.stream({
+          ...toProviderRequest(req),
           model,
-          messages: req.messages,
-          signal: req.signal,
-          tools: req.tools as ProviderTool[] | undefined,
-          toolChoice: req.toolChoice,
         });
       } catch (err) {
         throw wrapLegacyError(err, providerId, req.upstreamId);
@@ -260,6 +297,19 @@ function buildLegacyAdapter(providerId: string): ProviderAdapter {
 /** Get the legacy Provider instance for a given id (throws if not registered). */
 export function getLegacyProvider(providerId: string) {
   return getProvider(providerId as ProviderId);
+}
+
+/**
+ * Build the full legacy catalog synchronously (audit C1 cold-start fix).
+ *
+ * Maps every MODELS[] entry (across all providers) into the new
+ * DiscoveredModel shape. Used by startup.ts to seed the in-memory catalog
+ * immediately after `loadFromDb` so the gateway can return "ready" with a
+ * non-empty catalog — without this, the first burst of parallel requests
+ * before background discovery completes would all get spurious 404s.
+ */
+export function buildLegacyDiscoveredModels(): DiscoveredModel[] {
+  return MODELS.map(toDiscoveredModel);
 }
 
 /** Build one ProviderAdapter per legacy PROVIDERS entry (PRD §71). */

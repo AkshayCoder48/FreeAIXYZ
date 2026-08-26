@@ -28,7 +28,7 @@ const calistoga = Calistoga({
 export const metadata: Metadata = {
   title: "FreeAIXYZ — Observable AI Gateway",
   description:
-    "Free, observable, dynamically-discovering AI gateway. OpenAI-compatible API with 40+ models across 17 providers. Real end-to-end SSE streaming. No API key required.",
+    "Free, observable, dynamically-discovering AI gateway. OpenAI-compatible API with 80+ models across 17 providers. Real end-to-end SSE streaming. No API key required.",
   keywords: [
     "free AI",
     "OpenAI compatible API",
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "FreeAIXYZ — Observable AI Gateway",
     description:
-      "Free AI inference with 40+ models. OpenAI-compatible, real SSE streaming, dynamic discovery, no key required.",
+      "Free AI inference with 80+ models. OpenAI-compatible, real SSE streaming, dynamic discovery, no key required.",
     type: "website",
   },
 };

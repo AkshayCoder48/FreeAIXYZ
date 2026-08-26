@@ -47,6 +47,7 @@ export {
   errorResponse,
   generateRequestId,
   GatewayError,
+  isFailoverCandidate,
   isRetryableStatus,
   sseErrorEvent,
 } from "@/lib/gateway/errors";
@@ -84,7 +85,11 @@ export {
 export type { SseEvent } from "@/lib/gateway/sse-parser";
 
 // Services (PRD §6, §27-39, §46-48, §115-117, §141, §200).
-export { buildLegacyAdapters, getLegacyProvider } from "@/lib/gateway/adapters/legacy";
+export {
+  buildLegacyAdapters,
+  buildLegacyDiscoveredModels,
+  getLegacyProvider,
+} from "@/lib/gateway/adapters/legacy";
 export { catalogStore } from "@/lib/gateway/catalog";
 export type { ModelHealthEntry } from "@/lib/gateway/catalog";
 export { providerRegistry } from "@/lib/gateway/registry";
@@ -101,6 +106,7 @@ export {
   streamChat,
   streamingProxyService,
 } from "@/lib/gateway/streaming-proxy";
+export type { FailoverCandidate } from "@/lib/gateway/streaming-proxy";
 export { metricsService } from "@/lib/gateway/metrics";
 export type { RequestMetric } from "@/lib/gateway/metrics";
 export { initGateway, isGatewayReady } from "@/lib/gateway/startup";
