@@ -18,6 +18,7 @@ import {
   GatewayError,
   type DiscoveredModel,
 } from "@/lib/gateway";
+import { isDelistedModel } from "@/lib/gateway/delisted";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 
 export const runtime = "nodejs";
@@ -39,9 +40,22 @@ export async function GET(request: Request) {
     const capability = url.searchParams.get("capability")?.trim();
     const status = url.searchParams.get("status")?.trim();
     const q = url.searchParams.get("q")?.trim().toLowerCase();
+    // ?all=true — include paid / delisted / offline models (debugging only).
+    const showAll = url.searchParams.get("all") === "true";
 
     const catalog = catalogStore.getCatalog();
     let models = catalog.models;
+
+    // PRD §42 — free-only catalog by default. Hide paid models, delisted
+    // models, and offline models unless ?all=true is set.
+    if (!showAll) {
+      models = models.filter(
+        (m) =>
+          m.status !== "offline" &&
+          !isDelistedModel(m.id) &&
+          m.free !== false,
+      );
+    }
 
     if (provider) {
       models = models.filter(
