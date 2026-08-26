@@ -24,6 +24,11 @@
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
+import {
+  GatewayError,
+  classifyUpstreamStatus,
+} from "@/lib/gateway/errors";
+import { canonicalModelId } from "@/lib/gateway/ids";
 
 const BASE_URL = "https://freegpt.tech";
 const CHALLENGE_PATH = "/api/challenge";
@@ -432,27 +437,51 @@ export const freeGptProvider: Provider = {
 
     if (status !== 200) {
       const txt = resBody.slice(0, 500);
+      const ctx = {
+        provider: "freegpt" as const,
+        model: req.model.upstream,
+      };
+      // 403 → PROVIDER_UNAVAILABLE (NOT retried — PRD §63, §148).
       if (status === 403) {
-        throw new Error(
-          "FreeGPT returned HTTP 403 (challenge validation failed). Try a different model or provider.",
-        );
+        throw classifyUpstreamStatus(403, { ...ctx, body: txt });
       }
+      // 400 token-pool exhausted → PROVIDER_UNAVAILABLE (upstream side, not retryable here).
       if (status === 400 && txt.includes("没有可用的tokens")) {
-        throw new Error(
-          "FreeGPT's upstream token pool is temporarily exhausted. Try a different model or retry in a few minutes.",
-        );
+        throw new GatewayError({
+          type: "PROVIDER_UNAVAILABLE",
+          message:
+            "FreeGPT's upstream token pool is temporarily exhausted. Try a different model or retry in a few minutes.",
+          status: 502,
+          upstreamStatus: 400,
+          provider: "freegpt",
+          model: canonicalModelId("freegpt", req.model.upstream),
+        });
       }
+      // 400 upstream provider failure → PROVIDER_UNAVAILABLE.
       if (status === 400 && txt.includes("Provider failed")) {
-        throw new Error(
-          `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
-        );
+        throw new GatewayError({
+          type: "PROVIDER_UNAVAILABLE",
+          message: `FreeGPT upstream provider error: ${txt.slice(0, 150)}. Try a different model or retry shortly.`,
+          status: 502,
+          upstreamStatus: 400,
+          provider: "freegpt",
+          model: canonicalModelId("freegpt", req.model.upstream),
+        });
       }
+      // 401 subscription required → AUTHENTICATION_REQUIRED.
       if (status === 401 && txt.includes("订阅")) {
-        throw new Error(
-          `This FreeGPT model requires a subscription. Try a different model — the free-tier models work without subscription.`,
-        );
+        throw new GatewayError({
+          type: "AUTHENTICATION_REQUIRED",
+          message:
+            "This FreeGPT model requires a subscription. Try a different model — the free-tier models work without subscription.",
+          status: 401,
+          upstreamStatus: 401,
+          provider: "freegpt",
+          model: canonicalModelId("freegpt", req.model.upstream),
+        });
       }
-      throw new Error(`FreeGPT returned HTTP ${status}: ${txt}`);
+      // Fallback: classify by status code (4xx → UPSTREAM_4XX, 5xx → UPSTREAM_5XX, etc.).
+      throw classifyUpstreamStatus(status, { ...ctx, body: txt });
     }
 
     const json = JSON.parse(resBody) as unknown;
@@ -536,10 +565,23 @@ export const freeGptProvider: Provider = {
       body.tool_choice = req.toolChoice || "auto";
     }
 
-    // POST via curl for streaming
+    // POST via curl for streaming. Add `-w "\n__HTTP_STATUS__%{http_code}"` so
+    // we can detect upstream HTTP status (esp. 403 Cloudflare blocks) instead
+    // of silently parsing the HTML error page as zero SSE deltas (PRD §148).
+    // Keep `-N` for no-buffering so genuine streaming is preserved (PRD §137).
     const cp = await import("node:child_process");
     const url = `${BASE_URL}${COMPLETIONS_PATH}`;
-    const curlArgs = ["-s", "-S", "-N", "--max-time", "120", "-d", JSON.stringify(body)];
+    const curlArgs = [
+      "-s",
+      "-S",
+      "-N",
+      "--max-time",
+      "120",
+      "-w",
+      "\n__HTTP_STATUS__%{http_code}",
+      "-d",
+      JSON.stringify(body),
+    ];
     for (const [k, v] of Object.entries(headers)) {
       curlArgs.push("-H", `${k}: ${v}`);
     }
@@ -547,27 +589,76 @@ export const freeGptProvider: Provider = {
 
     const proc = cp.spawn("curl", curlArgs, { timeout: 130000 });
 
+    const STATUS_MARKER = "__HTTP_STATUS__";
+
     let buffer = "";
     let firstChunk = true;
     let errorDetected = false;
+    let firstChunkPreview = "";
+    let httpStatus: number | null = null;
 
     try {
       for await (const chunk of proc.stdout as AsyncIterable<Buffer>) {
         const text = chunk.toString();
-        if (firstChunk) {
+        buffer += text;
+
+        // Extract status marker if present (curl writes it at end-of-stream;
+        // lastIndexOf on the buffer handles markers split across chunks).
+        const markerIdx = buffer.lastIndexOf(STATUS_MARKER);
+        if (markerIdx >= 0) {
+          const after = buffer.slice(markerIdx + STATUS_MARKER.length);
+          const codeMatch = after.match(/^\s*(\d{3})/);
+          if (codeMatch) {
+            httpStatus = parseInt(codeMatch[1], 10);
+          }
+          // Strip the marker (and any trailing status text) from the SSE buffer.
+          buffer = buffer.slice(0, markerIdx);
+        }
+
+        // If non-200 status has already been observed via the marker, throw
+        // BEFORE yielding any further SSE delta (PRD §148).
+        if (httpStatus !== null && httpStatus !== 200) {
+          throw classifyUpstreamStatus(httpStatus, {
+            provider: "freegpt",
+            model: req.model.upstream,
+            body: firstChunkPreview || buffer.slice(0, 240),
+          });
+        }
+
+        // First-chunk error-page detection (BEFORE yielding any delta).
+        if (firstChunk && buffer.trim()) {
           firstChunk = false;
-          // Check for HTTP error in first chunk (non-SSE response)
-          if (text.includes('"error"')) {
+          firstChunkPreview = buffer.trim().slice(0, 240);
+          const lower = firstChunkPreview.toLowerCase();
+          // HTML / Cloudflare block page → throw structured 403 immediately.
+          if (
+            firstChunkPreview.startsWith("<!") ||
+            firstChunkPreview.startsWith("<html") ||
+            lower.includes("<!doctype") ||
+            lower.includes("cloudflare") ||
+            lower.includes("cf-ray") ||
+            lower.includes("cf-mitigated") ||
+            lower.includes("access denied")
+          ) {
+            throw classifyUpstreamStatus(httpStatus ?? 403, {
+              provider: "freegpt",
+              model: req.model.upstream,
+              body: firstChunkPreview,
+            });
+          }
+          // JSON error response (e.g. {"error":{...}}) → accumulate + throw at end.
+          if (firstChunkPreview.includes('"error"')) {
             errorDetected = true;
-            buffer += text;
             continue;
           }
         }
+
         if (errorDetected) {
-          buffer += text;
+          // Accumulate the full error body for end-of-stream parsing.
           continue;
         }
-        buffer += text;
+
+        // Genuine streaming: parse SSE lines as they arrive (PRD §10, §137).
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
@@ -575,17 +666,38 @@ export const freeGptProvider: Provider = {
           if (delta) yield delta;
         }
       }
-      // Flush remaining
+
+      // ── End of stream — finalize error detection ──
+
       if (errorDetected) {
-        // Parse the error response
+        // Try to parse the accumulated body as an OpenAI-shaped JSON error.
+        let errMsg = buffer.slice(0, 240);
         try {
-          const errJson = JSON.parse(buffer) as { error?: { message?: string } };
-          throw new Error(`FreeGPT error: ${errJson.error?.message || buffer.slice(0, 200)}`);
-        } catch (e) {
-          if (e instanceof Error && e.message.startsWith("FreeGPT error:")) throw e;
-          throw new Error(`FreeGPT error: ${buffer.slice(0, 200)}`);
+          const errJson = JSON.parse(buffer) as {
+            error?: { message?: string };
+          };
+          if (errJson.error?.message) errMsg = errJson.error.message;
+        } catch {
+          // not JSON — use raw preview
         }
+        const status = httpStatus && httpStatus !== 200 ? httpStatus : 400;
+        throw classifyUpstreamStatus(status, {
+          provider: "freegpt",
+          model: req.model.upstream,
+          body: errMsg,
+        });
       }
+
+      // Non-200 detected via marker (e.g. empty 4xx/5xx body).
+      if (httpStatus !== null && httpStatus !== 200) {
+        throw classifyUpstreamStatus(httpStatus, {
+          provider: "freegpt",
+          model: req.model.upstream,
+          body: firstChunkPreview || buffer.slice(0, 240),
+        });
+      }
+
+      // Flush any remaining SSE buffer.
       const delta = parseOpenAISseLine(buffer);
       if (delta) yield delta;
     } finally {

@@ -1,98 +1,101 @@
+/**
+ * GET /api/v1/models — OpenAI-compatible model listing (PRD §49, §54, §166).
+ *
+ * Now served dynamically from the gateway catalog instead of the hard-coded
+ * MODELS[] array. Lists every DiscoveredModel that has a registered adapter
+ * and is not in "offline" status.
+ *
+ * Query params:
+ *   - ?health=true   — include capabilities + status + contextWindow
+ *   - ?all=true      — include degraded + offline models too (PRD §54)
+ *
+ * Backward-compat: legacy clients that request an old-style id like
+ * `fgpt-gpt-5-5` won't find it here (the chat route handles resolution
+ * via the legacy fallback). The /v1/models listing now exposes the
+ * canonical `<shortId>/<upstreamId>` ids (PRD §166).
+ */
+
 import { NextResponse } from "next/server";
-import { MODELS, type GatewayModel } from "@/lib/providers";
+import {
+  catalogStore,
+  providerRegistry,
+  type DiscoveredModel,
+} from "@/lib/gateway";
+import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
-const CREATED = Math.floor(Date.now() / 1000);
+const CREATED_EPOCH = Math.floor(Date.now() / 1000);
 
-/**
- * Models that are known to be consistently broken or unavailable upstream.
- * These are excluded from /models by default to avoid confusing clients.
- * Users can still request them directly — they'll get a proper error.
- *
- * Based on retest 2025-08-12:
- *   - FreeGPT: 39 rate-limited, 17 challenge-blocked (403)
- *   - Kilo Code: 3 paid-auth (401), 2 unavailable (404)
- *   - LLM7: 2 missing API key (401)
- *   - OpenCode: 2 unsupported/auth (401)
- *   - Swarm: 1 HTML 500, 1 TTFT timeout 503
- *   - Pollinations: 1 payment/deprecation
- *   - Standalone services: 2 wrong-endpoint (search/music)
- */
-const KNOWN_UNHEALTHY = new Set([
-  // FreeGPT models consistently hitting rate limit (8 req/min) or 403 challenge block
-  "fgpt-gpt-5-5", "fgpt-gpt-5-6-luna", "fgpt-gpt-5-6-sol",
-  "fgpt-deepseek-v4-pro", "fgpt-gemini-3-pro-preview",
-  "fgpt-gemini-3-5-flash", "fgpt-gemini-3-flash-preview",
-  "fgpt-gemini-3-1-pro-preview", "fgpt-claude-fable-5",
-  "fgpt-claude-sonnet-5", "fgpt-claude-opus-5", "fgpt-claude-opus-4-8",
-  "fgpt-claude-opus-4-7", "fgpt-claude-opus-4-6", "fgpt-claude-sonnet-4-6",
-  "fgpt-grok-4-20", "fgpt-grok-4-20-non-reasoning", "fgpt-gpt-4o",
-  "fgpt-gpt-4-1", "fgpt-o3", "fgpt-o4-mini", "fgpt-gpt-oss-120b",
-  "fgpt-baidu-eb50", "fgpt-baidu-eb45t", "fgpt-mimo-v2-5", "fgpt-mimo-v2-5-pro",
-  "fgpt-gemini-3-1-flash-image",
-  // Kilo Code: paid auth required / unavailable
-  "nemotron-safety", // safety classifier exposed as chat model
-  // Swarm: persistent 500/503
-  "sw-qwen2-5-7b", // often times out
-  // Standalone services (not chat models — have dedicated endpoints)
-  "web-search", "music-generate",
-]);
-
-/**
- * Provider-level health status.
- * Providers that have known issues get a degraded status.
- */
-function providerHealth(provider: string): "healthy" | "degraded" | "unhealthy" {
-  // FreeGPT has high rate-limit + challenge block rate
-  if (provider === "freegpt") return "degraded";
-  // These providers are generally healthy
-  return "healthy";
+/** Owned_by field — fall back to providerId when display name is missing. */
+function ownedBy(m: DiscoveredModel): string {
+  return m.providerName || m.providerId;
 }
 
-/**
- * Check if a model should be included in /models listing.
- * Filters out known-broken models and non-chat services.
- */
-function isModelVisible(m: GatewayModel): boolean {
-  // Always hide standalone service models (no longer in registry, but
-  // keep as a safety check in case of stale cached model data)
-  if (m.provider === "search" || m.provider === "music") return false;
-  // Hide known unhealthy models
-  if (KNOWN_UNHEALTHY.has(m.id)) return false;
-  // Hide image-generation models from chat model list
-  if (m.modality === "text-to-image") return false;
-  return true;
+/** Whether to include a model in the listing given the showAll flag. */
+function shouldInclude(m: DiscoveredModel, showAll: boolean): boolean {
+  if (showAll) return true;
+  // Default listing hides offline models (PRD §54 — don't permanently hide,
+  // just don't surface by default).
+  return m.status !== "offline";
 }
 
-/** GET /api/v1/models — OpenAI-compatible model listing. */
+/** GET /api/v1/models. */
 export async function GET(request: Request) {
-  const url = new URL(request.url);
+  await ensureGateway();
+
+  let url: URL;
+  try {
+    url = new URL(request.url);
+  } catch {
+    url = new URL("http://localhost/");
+  }
   const showAll = url.searchParams.get("all") === "true";
   const showHealth = url.searchParams.get("health") === "true";
 
-  const visibleModels = showAll ? MODELS : MODELS.filter(isModelVisible);
+  let models: DiscoveredModel[];
+  try {
+    const catalog = catalogStore.getCatalog();
+    models = catalog.models.filter((m) => shouldInclude(m, showAll));
+  } catch (err) {
+    console.error("[/v1/models] catalog read failed:", err);
+    // Best-effort empty listing rather than a 500 — clients can retry.
+    models = [];
+  }
+
+  // Only list models whose provider has a registered adapter.
+  const visible = models.filter((m) => providerRegistry.get(m.providerId));
 
   const payload: OAIModelList = {
     object: "list",
-    data: visibleModels.map((m) => {
-      const entry: Record<string, unknown> = {
+    data: visible.map((m) => {
+      const base = {
         id: m.id,
-        object: "model",
-        created: CREATED,
-        owned_by: m.provider,
+        object: "model" as const,
+        created: CREATED_EPOCH,
+        owned_by: ownedBy(m),
       };
-      // Optionally include health and capability metadata
-      if (showHealth) {
-        entry.health = KNOWN_UNHEALTHY.has(m.id) ? "unhealthy" : providerHealth(m.provider);
-        entry.capabilities = m.capabilities;
-        entry.category = m.category;
-        entry.context_window = m.contextWindow;
-        entry.modality = m.modality ?? "text";
-      }
-      return entry as { id: string; object: string; created: number; owned_by: string };
+      if (!showHealth) return base;
+      // ?health=true → include capabilities + status + context window.
+      const entry: Record<string, unknown> = { ...base };
+      entry.capabilities = m.capabilities;
+      entry.status = m.status;
+      entry.context_window = m.metadata?.contextWindow ?? null;
+      entry.last_verified = m.lastVerifiedAt ?? null;
+      entry.discovery_mode = m.discoveryMode;
+      entry.discovered_from = m.discoveredFrom ?? null;
+      entry.discovered_at = m.discoveredAt;
+      const healthEntry = catalogStore.getModelHealth(m.id);
+      if (healthEntry) entry.health = healthEntry;
+      return entry as unknown as {
+        id: string;
+        object: "model";
+        created: number;
+        owned_by: string;
+      };
     }),
   };
   return NextResponse.json(payload);

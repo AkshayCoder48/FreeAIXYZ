@@ -674,31 +674,22 @@ export function findModel(id: string | undefined): GatewayModel | undefined {
 /** The default model used when a request omits `model`. */
 export const DEFAULT_MODEL_ID = "oc-big-pickle";
 
-/** Resolve a requested model id. Falls back to the default if unknown. */
+/**
+ * Resolve a requested model id. Returns `undefined` if the model is unknown —
+ * callers MUST surface a 404 MODEL_NOT_FOUND error rather than silently
+ * routing to an unrelated provider (the previous behaviour forwarded unknown
+ * ids to OpenCode as a passthrough, which surfaced as confusing 401
+ * "Model <shortId>/<upstreamId> is not supported" errors instead of a clear
+ * MODEL_NOT_FOUND). The default model id is returned only when the request
+ * omits the model field entirely.
+ */
 export function resolveGatewayModel(
   requested: string | undefined,
-): GatewayModel {
-  const found = findModel(requested);
-  if (found) return found;
-  // Unknown model — pass through to OpenCode (which has the broadest model
-  // support and real streaming) instead of Toolbaz (which doesn't stream).
-  const id = requested && requested.trim() ? requested.trim() : DEFAULT_MODEL_ID;
-  return {
-    id,
-    provider: "opencode",
-    upstream: id,
-    description: "Unknown model (passed through to OpenCode)",
-    category: "professional",
-    contextWindow: 0,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
-    },
-  };
+): GatewayModel | undefined {
+  if (!requested || !requested.trim()) {
+    return findModel(DEFAULT_MODEL_ID);
+  }
+  return findModel(requested);
 }
 
 /** Provider display metadata. */

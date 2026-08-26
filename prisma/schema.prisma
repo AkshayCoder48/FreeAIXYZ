@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,6 +10,121 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Gateway model catalog (PRD §79-84) ──────────────────────────────────────
+
+model Provider {
+  id                String   @id
+  shortId           String   @unique
+  name              String
+  baseUrl           String?
+  status            String   @default("unknown") // healthy|degraded|offline|unknown
+  discoveryMode     String   @default("manual") // dynamic|manual
+  lastDiscoveryAt   DateTime?
+  lastHealthCheckAt DateTime?
+  latencyMs        Int?
+  successRate       Float?
+  errorRate         Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  models            ProviderModel[]
+
+  @@index([status])
+}
+
+model ProviderModel {
+  id               String   @id @default(cuid())
+  providerId       String
+  upstreamId       String
+  publicId         String   @unique // <shortId>/<upstreamId> (PRD §25)
+  name             String
+  discoveredFrom   String?
+  discoveryMode    String   @default("manual")
+  status           String   @default("active") // active|degraded|offline|unknown
+  firstDiscoveredAt DateTime @default(now())
+  lastDiscoveredAt DateTime @default(now())
+  lastVerifiedAt   DateTime?
+  rawMetadata      String?  // JSON blob — never secrets (PRD §82)
+
+  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, upstreamId]) // dedup key (PRD §68, §169)
+  @@index([providerId])
+  @@index([status])
+}
+
+model ModelCapability {
+  id         String  @id @default(cuid())
+  modelId    String
+  text       Boolean @default(false)
+  image      Boolean @default(false)
+  imageEdit  Boolean @default(false)
+  audioInput Boolean @default(false)
+  audioOutput Boolean @default(false)
+  vision     Boolean @default(false)
+  tools      Boolean @default(false)
+  streaming  Boolean @default(false)
+
+  @@unique([modelId])
+}
+
+model ModelHealth {
+  id           String   @id @default(cuid())
+  modelId      String
+  status       String   @default("unknown")
+  failureCount Int      @default(0)
+  lastFailure  DateTime?
+  lastSuccess  DateTime?
+  lastChecked  DateTime @default(now())
+  latencyMs    Int?
+
+  @@unique([modelId])
+}
+
+model DiscoveryRun {
+  id           String   @id @default(cuid())
+  providerId   String?
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  modelsFound  Int      @default(0)
+  modelsAdded  Int      @default(0)
+  modelsRemoved Int     @default(0)
+  error        String?
+  mode         String   @default("manual")
+}
+
+model VerificationRun {
+  id         String   @id @default(cuid())
+  modelId    String
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  text       String?  // PASS|FAIL|N/A
+  stream     String?
+  image      String?
+  status     String?
+  latencyMs  Int?
+  error      String?
+}
+
+model ApiMetric {
+  id         String   @id @default(cuid())
+  requestId  String
+  providerId String?
+  modelId    String?
+  status     Int
+  type       String
+  message    String
+  streamRequested Boolean @default(false)
+  ttftMs     Int?
+  durationMs Int?
+  at         DateTime @default(now())
+
+  @@index([providerId])
+  @@index([modelId])
+  @@index([at])
+}
+
+// Legacy scaffold models retained for compatibility.
 model User {
   id        String   @id @default(cuid())
   email     String   @unique

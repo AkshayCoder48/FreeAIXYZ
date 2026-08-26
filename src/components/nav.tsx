@@ -45,20 +45,26 @@ export function Nav() {
   const mounted = useMounted();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-foreground bg-background">
-      <nav className="mx-auto max-w-6xl h-16 px-6 flex items-center justify-between">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      <nav className="mx-auto max-w-7xl h-16 px-4 sm:px-6 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 shrink-0 group">
+        <Link href="/" className="flex items-center gap-2 shrink-0 group">
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0052FF] to-[#4D7CFF] text-white text-sm font-bold shadow-accent"
+            aria-hidden
+          >
+            F
+          </span>
           <span
             className="block text-lg font-bold tracking-tight text-foreground"
-            style={{ fontFamily: "var(--font-brand), serif" }}
+            style={{ fontFamily: "var(--font-display), Georgia, serif" }}
           >
-            FreeAI<span className="text-muted-foreground">4All</span>
+            FreeAI<span className="text-muted-foreground">XYZ</span>
           </span>
         </Link>
 
         {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-0">
+        <div className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -67,13 +73,13 @@ export function Nav() {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-widest transition-colors duration-100 border-b-2",
+                  "flex items-center gap-1.5 px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] rounded-full transition-all duration-200",
                   active
-                    ? "border-foreground text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                    ? "bg-accent/10 text-accent"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
                 )}
               >
-                <Icon className="h-3 w-3" strokeWidth={1.5} />
+                <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
                 {label}
               </Link>
             );
@@ -97,9 +103,9 @@ export function Nav() {
                   <span className="sr-only">Menu</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-72 p-6 bg-background border-l border-foreground">
+              <SheetContent side="right" className="w-72 p-6 bg-background border-l border-border">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
-                <div className="flex flex-col gap-0 mt-4">
+                <div className="flex flex-col gap-1 mt-4">
                   {NAV_LINKS.map(({ href, label, icon: Icon }) => {
                     const active =
                       href === "/"
@@ -111,10 +117,10 @@ export function Nav() {
                         href={href}
                         onClick={() => setMobileOpen(false)}
                         className={cn(
-                          "flex items-center gap-3 px-4 py-3 text-sm font-medium uppercase tracking-widest border-b border-foreground/10 transition-colors duration-100",
+                          "flex items-center gap-3 px-4 py-3 text-sm font-medium uppercase tracking-[0.12em] rounded-lg transition-colors duration-150",
                           active
-                            ? "bg-foreground text-background"
-                            : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+                            ? "bg-accent/10 text-accent"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted",
                         )}
                       >
                         <Icon className="h-4 w-4" strokeWidth={1.5} />

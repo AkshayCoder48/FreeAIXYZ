@@ -171,6 +171,33 @@ export async function POST(request: NextRequest) {
   const useTools = body.tools && body.tools.length > 0;
   const wantsStream = body.stream === true;
 
+  // The chat completions route now also forwards canonical `fx/<upstreamId>`
+  // ids to this proxy (the legacy adapter's fetch-based stream() is blocked
+  // by Cloudflare TLS fingerprinting — curl is the only way to reach the
+  // upstream). `resolveGatewayModel` only resolves legacy ids like
+  // `fxyz-chatgpt`; for canonical ids we have to parse the `fx/` prefix
+  // ourselves and synthesize a minimal model descriptor so the rest of the
+  // route handler keeps working unchanged.
+  let modelId: string;
+  let modelUpstream: string;
+  if (model) {
+    modelId = model.id;
+    modelUpstream = model.upstream;
+  } else {
+    const raw = String(body.model ?? "").trim();
+    const slashIdx = raw.indexOf("/");
+    if (slashIdx > 0) {
+      modelUpstream = raw.slice(slashIdx + 1);
+      modelId = raw;
+    } else {
+      // Unknown — surface a clean 404 so the client isn't confused.
+      return NextResponse.json(
+        { error: { type: "MODEL_NOT_FOUND", message: `Model "${raw}" was not found.` } },
+        { status: 404 },
+      );
+    }
+  }
+
   if (wantsStream) {
     const encoder = new TextEncoder();
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -181,30 +208,30 @@ export async function POST(request: NextRequest) {
 
     (async () => {
       try {
-        await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
+        await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
 
         if (useTools) {
           let fullText = "";
-          for await (const delta of streamFromUpstream(model.upstream, messages)) { if (delta) fullText += delta; }
+          for await (const delta of streamFromUpstream(modelUpstream, messages)) { if (delta) fullText += delta; }
           const parsed = parseToolCalls(fullText, generateToolCallId);
           if (parsed.toolCalls.length > 0) {
             for (let i = 0; i < parsed.toolCalls.length; i++) {
               const tc: OAIToolCall = parsed.toolCalls[i];
-              await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: tc.id, type: "function", function: { name: tc.function.name, arguments: tc.function.arguments } }] }, finish_reason: null }] });
+              await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: tc.id, type: "function", function: { name: tc.function.name, arguments: tc.function.arguments } }] }, finish_reason: null }] });
             }
-            await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
+            await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
           } else {
             const tokens = (parsed.text || fullText).match(/(\s+|\S+)/g) ?? [parsed.text || fullText];
-            for (const t of tokens) await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { content: t }, finish_reason: null }] });
-            await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+            for (const t of tokens) await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: t }, finish_reason: null }] });
+            await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
           }
         } else {
           let hasContent = false;
-          for await (const delta of streamFromUpstream(model.upstream, messages)) {
-            if (delta) { hasContent = true; await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] }); }
+          for await (const delta of streamFromUpstream(modelUpstream, messages)) {
+            if (delta) { hasContent = true; await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] }); }
           }
-          if (!hasContent) await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: { content: "(empty response)" }, finish_reason: null }] });
-          await send({ id, object: "chat.completion.chunk", created, model: model.id, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+          if (!hasContent) await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: { content: "(empty response)" }, finish_reason: null }] });
+          await send({ id, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
@@ -230,12 +257,12 @@ export async function POST(request: NextRequest) {
   // Non-streaming
   try {
     let text = "";
-    for await (const delta of streamFromUpstream(model.upstream, messages)) { text += delta; }
+    for await (const delta of streamFromUpstream(modelUpstream, messages)) { text += delta; }
     if (useTools) {
       const parsed = parseToolCalls(text, generateToolCallId);
-      if (parsed.toolCalls.length > 0) return NextResponse.json({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: model.id, choices: [{ index: 0, message: { role: "assistant", content: parsed.text || null, tool_calls: parsed.toolCalls }, finish_reason: "tool_calls" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
+      if (parsed.toolCalls.length > 0) return NextResponse.json({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, message: { role: "assistant", content: parsed.text || null, tool_calls: parsed.toolCalls }, finish_reason: "tool_calls" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
     }
-    return NextResponse.json({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: model.id, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
+    return NextResponse.json({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
   } catch (err) {
     return NextResponse.json({ error: { message: err instanceof Error ? err.message : "Unknown error", type: "upstream_error" } }, { status: 502 });
   }

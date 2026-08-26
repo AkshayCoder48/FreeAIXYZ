@@ -6,10 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-body), Georgia, serif;
-  --font-mono: var(--font-code), monospace;
-  --font-brand: var(--font-brand), "Playfair Display", Georgia, serif;
-  --font-script: var(--font-script), cursive;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+  --font-display: var(--font-display), Georgia, serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -29,6 +28,7 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-accent-secondary: var(--accent-secondary);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -39,81 +39,94 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
-/* ─── Light Theme (Minimalist Monochrome) ──────────────────────────────────── */
+/* ─── Minimalist Modern Theme — Electric Blue accent ────────────────────────── */
 :root {
-  --radius: 0px;
-  --background: #FFFFFF;
-  --foreground: #000000;
+  --radius: 12px;
+  --background: #FAFAFA;
+  --foreground: #0F172A;
   --card: #FFFFFF;
-  --card-foreground: #000000;
+  --card-foreground: #0F172A;
   --popover: #FFFFFF;
-  --popover-foreground: #000000;
-  --primary: #000000;
+  --popover-foreground: #0F172A;
+  --primary: #0052FF;
   --primary-foreground: #FFFFFF;
-  --secondary: #F5F5F5;
-  --secondary-foreground: #000000;
-  --muted: #F5F5F5;
-  --muted-foreground: #525252;
-  --accent: #000000;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #0052FF;
+  --accent-secondary: #4D7CFF;
   --accent-foreground: #FFFFFF;
-  --destructive: #000000;
-  --border: #000000;
-  --input: #E5E5E5;
-  --ring: #000000;
-  --chart-1: #000000;
-  --chart-2: #525252;
-  --chart-3: #737373;
-  --chart-4: #A3A3A3;
-  --chart-5: #D4D4D4;
+  --destructive: #E11D48;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #0052FF;
+  --chart-1: #0052FF;
+  --chart-2: #4D7CFF;
+  --chart-3: #64748B;
+  --chart-4: #94A3B8;
+  --chart-5: #CBD5E1;
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #000000;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #0052FF;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F5F5F5;
-  --sidebar-accent-foreground: #000000;
-  --sidebar-border: #E5E5E5;
-  --sidebar-ring: #000000;
+  --sidebar-accent: #F1F5F9;
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: #E2E8F0;
+  --sidebar-ring: #0052FF;
+  /* Accent shadows / glows */
+  --shadow-accent: 0 4px 14px rgba(0, 82, 255, 0.25);
+  --shadow-accent-lg: 0 8px 24px rgba(0, 82, 255, 0.35);
+  /* Display / Mono font vars (set by next/font in layout.tsx) */
+  --font-display: var(--font-display), Georgia, serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+  --font-body: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* ─── Dark Theme (Inverted Monochrome) ─────────────────────────────────────── */
+/* ─── Dark Theme — Inverted with Electric Blue accent ─────────────────────────── */
 .dark {
-  --background: #000000;
-  --foreground: #FFFFFF;
-  --card: #000000;
-  --card-foreground: #FFFFFF;
-  --popover: #000000;
-  --popover-foreground: #FFFFFF;
-  --primary: #FFFFFF;
-  --primary-foreground: #000000;
-  --secondary: #1A1A1A;
-  --secondary-foreground: #FFFFFF;
-  --muted: #1A1A1A;
-  --muted-foreground: #A3A3A3;
-  --accent: #FFFFFF;
-  --accent-foreground: #000000;
-  --destructive: #FFFFFF;
-  --border: #FFFFFF;
-  --input: #262626;
-  --ring: #FFFFFF;
-  --chart-1: #FFFFFF;
-  --chart-2: #A3A3A3;
-  --chart-3: #737373;
-  --chart-4: #525252;
-  --chart-5: #262626;
-  --sidebar: #000000;
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #FFFFFF;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #1A1A1A;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #262626;
-  --sidebar-ring: #FFFFFF;
+  --background: #0F172A;
+  --foreground: #FAFAFA;
+  --card: #1E293B;
+  --card-foreground: #FAFAFA;
+  --popover: #1E293B;
+  --popover-foreground: #FAFAFA;
+  --primary: #4D7CFF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E293B;
+  --secondary-foreground: #FAFAFA;
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+  --accent: #4D7CFF;
+  --accent-secondary: #6B96FF;
+  --accent-foreground: #FFFFFF;
+  --destructive: #FB7185;
+  --destructive-foreground: #FFFFFF;
+  --border: #334155;
+  --input: #334155;
+  --ring: #4D7CFF;
+  --chart-1: #4D7CFF;
+  --chart-2: #6B96FF;
+  --chart-3: #94A3B8;
+  --chart-4: #64748B;
+  --chart-5: #475569;
+  --sidebar: #1E293B;
+  --sidebar-foreground: #FAFAFA;
+  --sidebar-primary: #4D7CFF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-border: #334155;
+  --sidebar-ring: #4D7CFF;
+  --shadow-accent: 0 4px 14px rgba(77, 124, 255, 0.3);
+  --shadow-accent-lg: 0 8px 24px rgba(77, 124, 255, 0.4);
 }
 
 @layer base {
@@ -122,99 +135,139 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+  code, pre, .font-mono {
+    font-family: var(--font-mono), ui-monospace, monospace;
   }
 }
 
-/* ─── Subtle Texture Patterns (Depth, Not Flatness) ─────────────────────────── */
-
-/* Global horizontal-line texture */
-.texture-lines {
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 1px,
-    var(--foreground) 1px,
-    var(--foreground) 2px
-  );
-  background-size: 100% 4px;
-  opacity: 0.015;
+/* ─── Dot Pattern Overlay (for InvertedSection) ───────────────────────────────── */
+.dot-pattern {
+  background-image: radial-gradient(circle, #ffffff 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: 0 0;
 }
 
-/* Grid texture for editorial sections */
-.texture-grid {
-  background-image:
-    linear-gradient(var(--foreground) 1px, transparent 1px),
-    linear-gradient(90deg, var(--foreground) 1px, transparent 1px);
-  background-size: 40px 40px;
-  opacity: 0.03;
+/* ─── Corner Radial Glow (for InvertedSection) ───────────────────────────────── */
+.glow-corner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 600px at 0% 0%, rgba(0, 82, 255, 0.18), transparent 60%),
+    radial-gradient(circle 600px at 100% 100%, rgba(77, 124, 255, 0.12), transparent 60%);
+  z-index: 0;
 }
 
-/* Diagonal lines for process/timeline sections */
-.texture-diagonal {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 40px,
-    var(--foreground) 40px,
-    var(--foreground) 42px
-  );
-  opacity: 0.02;
+/* ─── Custom Scrollbar ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
 
-/* Vertical lines for inverted sections */
-.texture-vertical {
-  background-image: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 1px,
-    var(--foreground) 1px,
-    var(--foreground) 2px
-  );
-  background-size: 4px 100%;
-  opacity: 0.03;
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 82, 255, 0.4);
+  border-radius: 999px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }
 
-/* ─── Monochrome Focus States ──────────────────────────────────────────────── */
-
-.focus-mono {
-  outline: 3px solid var(--foreground);
-  outline-offset: 3px;
+/* ─── Keyframes (continuous animations) ───────────────────────────────────────── */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* ─── Minimalist Animations (Instant, Purposeful) ──────────────────────────── */
-
-@keyframes mono-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
 }
 
-.animate-mono-fade-in {
-  animation: mono-fade-in 100ms ease-out;
+@keyframes float-lg {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-14px); }
 }
 
-/* ─── Reduced Motion ────────────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 60s linear infinite;
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+.animate-float-lg {
+  animation: float-lg 7s ease-in-out infinite;
+}
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ─── Reduced Motion ───────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .animate-mono-fade-in {
+  .animate-spin-slow,
+  .animate-float,
+  .animate-float-lg,
+  .animate-pulse-dot {
     animation: none !important;
   }
 }
 
-/* ─── Custom Scrollbar (Monochrome) ────────────────────────────────────────── */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ─── Focus ring helper (a11y) ────────────────────────────────────────────────── */
+.focus-accent:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--accent);
 }
 
-::-webkit-scrollbar-track {
-  background: var(--muted);
+/* ─── Gradient utility classes ─────────────────────────────────────────────────── */
+.bg-accent-gradient {
+  background-image: linear-gradient(to right, #0052FF, #4D7CFF);
 }
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
+.text-accent-gradient {
+  background-image: linear-gradient(to right, #0052FF, #4D7CFF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
+.border-accent-gradient {
+  border-image: linear-gradient(to bottom right, #0052FF, #4D7CFF, #0052FF) 1;
 }

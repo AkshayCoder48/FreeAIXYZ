@@ -1,33 +1,34 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Source_Serif_4, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Calistoga } from "next/font/google";
 import "./globals.css";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
-const playfair = Playfair_Display({
-  variable: "--font-brand",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  style: ["normal", "italic"],
-});
-
-const sourceSerif = Source_Serif_4({
+const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
-const jetbrains = JetBrains_Mono({
-  variable: "--font-code",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500"],
+  display: "swap",
+});
+
+const calistoga = Calistoga({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["400"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "FreeAI4All — Free AI Inference Platform",
+  title: "FreeAIXYZ — Observable AI Gateway",
   description:
-    "Free, unlimited AI inference platform. OpenAI-compatible API with 90+ models across 15+ providers. No API key required.",
+    "Free, observable, dynamically-discovering AI gateway. OpenAI-compatible API with 40+ models across 17 providers. Real end-to-end SSE streaming. No API key required.",
   keywords: [
     "free AI",
     "OpenAI compatible API",
@@ -37,15 +38,17 @@ export const metadata: Metadata = {
     "chat completions API",
     "no auth AI",
     "AI playground",
+    "SSE streaming",
+    "model discovery",
   ],
-  authors: [{ name: "FreeAI4All" }],
+  authors: [{ name: "FreeAIXYZ" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "FreeAI4All — Free AI Inference Platform",
+    title: "FreeAIXYZ — Observable AI Gateway",
     description:
-      "Free AI inference with 90+ models. OpenAI-compatible, no key required.",
+      "Free AI inference with 40+ models. OpenAI-compatible, real SSE streaming, dynamic discovery, no key required.",
     type: "website",
   },
 };
@@ -58,7 +61,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${playfair.variable} ${sourceSerif.variable} ${jetbrains.variable} antialiased bg-background text-foreground`}
+        className={`${inter.variable} ${jetbrainsMono.variable} ${calistoga.variable} antialiased bg-background text-foreground`}
         suppressHydrationWarning
       >
         <ThemeProvider
@@ -73,7 +76,8 @@ export default function RootLayout({
           position="bottom-right"
           toastOptions={{
             classNames: {
-              toast: "border-border bg-popover text-popover-foreground rounded-none",
+              toast:
+                "border border-border bg-popover text-popover-foreground rounded-lg",
             },
           }}
         />
