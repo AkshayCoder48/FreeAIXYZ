@@ -21,6 +21,7 @@
 
 import { db } from "@/lib/db";
 import { catalogStore } from "@/lib/gateway/catalog";
+import { getByShortId } from "@/lib/gateway/ids";
 import { providerRegistry } from "@/lib/gateway/registry";
 import type {
   HealthResult,
@@ -38,6 +39,42 @@ const MODEL_OFFLINE_FAILURES = 5;
 // for the whole provider to degrade.
 const MODEL_BREAKER_THRESHOLD = 3;
 const MODEL_BREAKER_COOLDOWN_MS = 30 * 1000;
+
+// Task 3 fix (v4): per-provider circuit-breaker tuning. Some providers have
+// a known intermittent base-failure rate from shared cloud egress IPs that
+// would otherwise trip the default threshold (3 for models, 5 for provider)
+// probabilistically over a long load test and cascade into a multi-minute
+// "circuit open" outage affecting every healthy sibling model.
+//
+// Toolbaz direct-wire diagnosis (10 runs from sandbox): 10/10 success.
+// From Vercel production egress: 8/10 success (~20% intermittent empty-200
+// or 5xx). The intermittent failures do NOT persist across a fresh session
+// id + fingerprint (the adapter now retries once with a fresh identity —
+// see src/lib/toolbaz.ts). But even with the adapter retry, 3 consecutive
+// residual failures (probabilistically certain at ~4% post-retry base rate
+// over 250 requests) would still trip the default model breaker for 30s.
+//
+// Raising toolbaz's model-breaker threshold to 10 + shortening its cooldown
+// to 10s means a real sustained outage still trips within seconds under
+// load (10 rapid failures), but noise-floor intermittent blips no longer
+// cascade into a 54% error-rate amplifier. Direct-wire data shows the
+// upstream recovers in 1–2s; 10s cooldown is 5–10× the recovery window.
+const PROVIDER_BREAKER_THRESHOLDS: Record<string, number> = {
+  toolbaz: 10,
+};
+const PROVIDER_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
+  toolbaz: 10 * 1000,
+};
+// Per-MODEL breaker overrides, keyed by provider id. The model id is
+// canonical (`<shortId>/<upstream>`) — the provider is resolved via
+// parseCanonicalModelId so the override applies to every model of that
+// provider.
+const MODEL_BREAKER_THRESHOLDS_BY_PROVIDER: Record<string, number> = {
+  toolbaz: 10,
+};
+const MODEL_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
+  toolbaz: 10 * 1000,
+};
 
 type BreakerState = "closed" | "open" | "half_open";
 
@@ -133,7 +170,11 @@ class ProviderHealthService {
     if (!b) return false;
     if (b.status === "open") {
       const elapsed = Date.now() - (b.openedAt ?? 0);
-      if (elapsed >= COOLDOWN_MS) {
+      // Task 3: per-provider cooldown override (toolbaz recovers in 1–2s;
+      // 60s default was 30–60× too long).
+      const cooldown =
+        PROVIDER_COOLDOWN_OVERRIDES_MS[providerId] ?? COOLDOWN_MS;
+      if (elapsed >= cooldown) {
         // Auto-promote to half-open on next check (PRD §122).
         b.status = "half_open";
         return false;
@@ -166,9 +207,14 @@ class ProviderHealthService {
       if (b.status === "half_open") b.status = "closed";
     } else {
       b.consecutiveFailures += 1;
+      // Task 3: per-provider threshold override (toolbaz's ~5–15% intermittent
+      // base rate means 5 consecutive failures is the noise floor, not a
+      // real outage — raise to 10 so only a sustained outage trips it).
+      const threshold =
+        PROVIDER_BREAKER_THRESHOLDS[providerId] ?? FAILURE_THRESHOLD;
       if (
         b.status === "half_open" ||
-        b.consecutiveFailures >= FAILURE_THRESHOLD
+        b.consecutiveFailures >= threshold
       ) {
         b.status = "open";
         b.openedAt = Date.now();
@@ -217,7 +263,11 @@ class ProviderHealthService {
     if (!b) return false;
     if (b.status === "open") {
       const elapsed = Date.now() - (b.openedAt ?? 0);
-      if (elapsed >= MODEL_BREAKER_COOLDOWN_MS) {
+      // Task 3: per-provider model-breaker cooldown override.
+      const providerId = this.providerFromModelId(modelId);
+      const cooldown =
+        MODEL_COOLDOWN_OVERRIDES_MS[providerId] ?? MODEL_BREAKER_COOLDOWN_MS;
+      if (elapsed >= cooldown) {
         // Auto-promote to half-open — let the next request probe the model.
         b.status = "half_open";
         return false;
@@ -257,9 +307,16 @@ class ProviderHealthService {
     // R-8: bump the per-model breaker; open it if the threshold is hit.
     const mb = this.getModelBreaker(publicId);
     mb.consecutiveFailures += 1;
+    // Task 3: per-provider model-breaker threshold override (toolbaz needs
+    // a higher threshold because its intermittent Vercel-egress failure
+    // rate would otherwise trip the default-3 threshold on noise).
+    const providerId = this.providerFromModelId(publicId);
+    const threshold =
+      MODEL_BREAKER_THRESHOLDS_BY_PROVIDER[providerId] ??
+      MODEL_BREAKER_THRESHOLD;
     if (
       mb.status === "half_open" ||
-      mb.consecutiveFailures >= MODEL_BREAKER_THRESHOLD
+      mb.consecutiveFailures >= threshold
     ) {
       mb.status = "open";
       mb.openedAt = Date.now();
@@ -295,6 +352,18 @@ class ProviderHealthService {
       this.modelBreakers.set(modelId, b);
     }
     return b;
+  }
+
+  /**
+   * Resolve the provider id from a canonical model id (`<shortId>/<upstream>`).
+   * Returns the empty string if the prefix is not a registered short id —
+   * in that case the default breaker thresholds apply.
+   */
+  private providerFromModelId(modelId: string): string {
+    const slash = modelId.indexOf("/");
+    if (slash <= 0) return "";
+    const entry = getByShortId(modelId.slice(0, slash));
+    return entry?.id ?? "";
   }
 
   getModelHealth(publicId: string): ModelHealthInternal | undefined {

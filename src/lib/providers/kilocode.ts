@@ -38,6 +38,25 @@ function parseSseLine(line: string): string | null {
       }));
       return JSON.stringify({ __tool_calls: formatted });
     }
+    // Task 4 fix (v4): yield delta.reasoning as content. Kilo Code (via
+    // OpenRouter) emits the model's chain-of-thought in `delta.reasoning`
+    // BEFORE the final answer arrives in `delta.content`. The reasoning
+    // phase can last 5-44s (run #22: 986 reasoning deltas over 43.8s before
+    // the first content delta — within 16s of Vercel's 60s maxDuration).
+    //
+    // Before this fix, parseSseLine returned null for reasoning deltas →
+    // the adapter's stream() generator yielded NOTHING for the entire
+    // reasoning phase → the gateway's pre-flight (which awaits the first
+    // yielded chunk) timed out OR the upstream closed mid-reasoning →
+    // 502 empty_upstream_response (44/252 errors in the v3 load test).
+    //
+    // Yielding reasoning content makes the adapter produce output during
+    // the reasoning phase → pre-flight succeeds within ~2s TTFB → the
+    // 200 OK stream opens immediately → no timeout, no empty_response.
+    // The reasoning text is honest model output; clients see the model
+    // "thinking" before the answer (verbose but correct).
+    const reasoning = choice.delta?.reasoning;
+    if (typeof reasoning === "string" && reasoning) return reasoning;
     return null;
   } catch {
     return null;

@@ -11,8 +11,8 @@
  *   - General models get a clean descriptive id.
  *   - Unrestricted / uncensored models get a clean descriptive id.
  *
- * Total: 89 chat/text models + 142 text-to-image models (separate registry)
- * across 16 text providers + 5 image providers.
+ * Total: 91 chat/text models + 142 text-to-image models (separate registry)
+ * across 18 text providers + 5 image providers.
  */
 
 export type ProviderId =
@@ -32,7 +32,9 @@ export type ProviderId =
   | "swarm"
   | "freeaixyz"
   | "gptoss"
-  | "vexa";
+  | "vexa"
+  | "uncloseai"
+  | "free2gpt";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -255,6 +257,17 @@ export const MODELS: readonly GatewayModel[] = [
   // ─── Vexa AI provider: free multi-provider AI, no key ──────────────────
   vx("vx-vexa", "vexa", "Vexa — default free model via DeepAI, real token streaming", "professional", 8000),
   vx("vx-gpt-4-1-nano", "gpt-4.1-nano", "GPT-4.1 nano via Vexa — lightweight OpenAI model", "professional", 128000),
+
+  // ─── UncloseAI provider: free no-auth OpenAI-compatible (Task 7 v4) ──────
+  // Live-verified: POST https://hermes.ai.unturf.com/v1/chat/completions
+  // returns real OpenAI SSE with delta.content + [DONE]. No key, no signup.
+  un("qwen3-6-27b", "Lorbus/Qwen3.6-27B-int4-AutoRound", "Qwen 3.6 27B (int4) via UncloseAI — community-hosted, uncensored, no signup, real token streaming", "unrestricted", 32768),
+
+  // ─── Free2GPT (chat4) provider: free signed-request API (Task 7 v4) ─────
+  // Live-verified: POST https://chat4.free2gpt.com/api/generate with a
+  // sha256 signature (empty secret) returns plain text. Server picks the
+  // model. No key, no signup.
+  f2("free2gpt-auto", "free2gpt-auto", "Free2GPT Auto — server-routed free chat, no signup, signed-request API", "professional", 8000),
 ];
 
 /** Toolbaz model helper (audit G1: streaming=true — gateway emits real SSE). */
@@ -669,6 +682,60 @@ function vx(
   };
 }
 
+/** UncloseAI model helper. Free, no-auth, OpenAI-compatible SSE (Task 7 v4). */
+function un(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "uncloseai",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** Free2GPT model helper. Free, no-auth, signed-request plain-text API (Task 7 v4). */
+function f2(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "free2gpt",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      // Upstream returns plain text (NOT SSE). Gateway emits one honest
+      // content chunk + stop (PRD §137: never fake-stream).
+      streaming: false,
+      tools: false,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -745,6 +812,14 @@ export const PROVIDER_INFO: Record<
   "vexa": {
     name: "Vexa AI",
     description: "15+ free models via multi-provider routing (DeepAI, Pollinations, AIFree, TalkAI, Toolbaz) — no account, no API key, SSE streaming",
+  },
+  "uncloseai": {
+    name: "UncloseAI",
+    description: "Free no-auth OpenAI-compatible API — single community GPU serving Qwen 3.6 27B (int4), uncensored, real token streaming. No signup.",
+  },
+  "free2gpt": {
+    name: "Free2GPT",
+    description: "Free no-auth signed-request chat API (sha256 with empty secret) — server-routed to free models, no signup, plain-text response",
   },
   "auroraai": {
     name: "AuroraAI",

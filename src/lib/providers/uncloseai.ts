@@ -1,16 +1,35 @@
 /**
- * LLM7.io provider.
+ * UncloseAI provider — free, no-auth, OpenAI-compatible API.
  *
- * Free, no-auth API. 3 models work anonymously (gpt-oss:20b, minimax-m2.7,
- * codestral-latest). Others require a token from dash.llm7.io.
+ * Endpoint: POST https://hermes.ai.unturf.com/v1/chat/completions
  *
- * Endpoint: POST https://api.llm7.io/v1/chat/completions
- * Response: standard OpenAI SSE
+ * Live-verified (Task 7 discovery): pure OpenAI SSE shape, no API key, no
+ * signup, no cookies, no signing. Returns standard
+ * `data: {"choices":[{"delta":{"content":"..."}}]}` frames + `[DONE]`.
+ *
+ * Single community-hosted GPU serving `Lorbus/Qwen3.6-27B-int4-AutoRound`
+ * (an int4-quantized Qwen 3.6 27B). Slow (2–40s TTFB) but uncensored and
+ * genuinely free with no strings attached.
+ *
+ * Credit: UncloseAI / Hermes (https://hermes.ai.unturf.com)
+ * Discovered via: https://uncloseai.com (free AI services directory)
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
 
-const ENDPOINT = "https://api.llm7.io/v1/chat/completions";
+const ENDPOINT = "https://hermes.ai.unturf.com/v1/chat/completions";
+
+interface UncloseAiDelta {
+  choices?: {
+    delta?: {
+      content?: string;
+      reasoning?: string;
+      role?: string;
+    };
+    finish_reason?: string | null;
+  }[];
+  error?: { message?: string };
+}
 
 function parseSseLine(line: string): string | null {
   const trimmed = line.trim();
@@ -18,39 +37,36 @@ function parseSseLine(line: string): string | null {
   const data = trimmed.slice(5).trim();
   if (!data || data === "[DONE]") return null;
   try {
-    const json = JSON.parse(data);
-    const choice = json?.choices?.[0];
-    if (!choice) return null;
-    const content = choice.delta?.content;
-    if (typeof content === "string" && content) return content;
-    const toolCalls = choice.delta?.tool_calls;
-    if (toolCalls && toolCalls.length > 0) {
-      const formatted = toolCalls.map((tc: { function?: { name?: string; arguments?: string } }) => ({
-        name: tc.function?.name || "",
-        arguments: tc.function?.arguments || "",
-      }));
-      return JSON.stringify({ __tool_calls: formatted });
+    const json = JSON.parse(data) as UncloseAiDelta;
+    // Surface inline stream errors so the caller can throw.
+    if (json.error?.message) {
+      throw new Error(`UncloseAI stream error: ${json.error.message}`);
     }
-    // Task 4 fix (v4): yield delta.reasoning as content. LLM7.io routes
-    // through OpenRouter's free model pool, which emits the model's
-    // chain-of-thought in `delta.reasoning` BEFORE the final answer in
-    // `delta.content`. Same fix as kilocode.ts — without this, the
-    // adapter yields nothing during the (potentially long) reasoning
-    // phase → the gateway's pre-flight times out → 502
-    // empty_upstream_response. Yielding reasoning content keeps the
-    // stream alive and surfaces the model's thinking to the client.
-    const reasoning = choice.delta?.reasoning;
-    if (typeof reasoning === "string" && reasoning) return reasoning;
+    const delta = json?.choices?.[0]?.delta;
+    if (!delta) return null;
+    // Standard content delta.
+    if (typeof delta.content === "string" && delta.content) return delta.content;
+    // Qwen-family models sometimes emit chain-of-thought in `reasoning`.
+    // Yield it so the stream stays alive during long thinking phases
+    // (same fix as kilocode.ts / llm7.ts — prevents empty_upstream_response).
+    if (typeof delta.reasoning === "string" && delta.reasoning) {
+      return delta.reasoning;
+    }
     return null;
-  } catch {
+  } catch (err) {
+    // Re-throw UncloseAI stream errors so the caller can surface them.
+    if (err instanceof Error && err.message.startsWith("UncloseAI stream error:")) {
+      throw err;
+    }
     return null;
   }
 }
 
-export const llm7Provider: Provider = {
-  id: "llm7",
+export const uncloseAiProvider: Provider = {
+  id: "uncloseai",
 
   async complete(req) {
+    // Buffer the stream for non-streaming requests.
     let text = "";
     for await (const chunk of this.stream(req)) {
       text += chunk;
@@ -67,7 +83,8 @@ export const llm7Provider: Provider = {
       })),
       stream: true,
     };
-    // Forward OpenAI sampling params (audit E1).
+    // Forward OpenAI sampling params (audit E1) — UncloseAI speaks the
+    // full OpenAI chat-completions contract.
     if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
     if (req.temperature !== undefined) payload.temperature = req.temperature;
     if (req.topP !== undefined) payload.top_p = req.topP;
@@ -76,6 +93,7 @@ export const llm7Provider: Provider = {
     if (req.presencePenalty !== undefined) payload.presence_penalty = req.presencePenalty;
     if (req.frequencyPenalty !== undefined) payload.frequency_penalty = req.frequencyPenalty;
     if (req.n !== undefined) payload.n = req.n;
+    // Tools pass through natively (OpenAI-compatible endpoint).
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
       payload.tool_choice = req.toolChoice || "auto";
@@ -90,7 +108,9 @@ export const llm7Provider: Provider = {
 
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => "");
-      throw new Error(`LLM7.io returned HTTP ${res.status}: ${errText.slice(0, 200)}`);
+      throw new Error(
+        `UncloseAI returned HTTP ${res.status}: ${errText.slice(0, 200)}`,
+      );
     }
 
     const reader = res.body.getReader();

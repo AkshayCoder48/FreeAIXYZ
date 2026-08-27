@@ -255,37 +255,120 @@ export interface CompletionResult {
  *
  * No context compression or chunking — if the prompt is too long,
  * Toolbaz will return an error and the caller can handle it.
+ *
+ * Task 3 fix (v4): Toolbaz intermittently returns HTTP 200 + empty body OR
+ * HTTP 5xx from Vercel's shared cloud egress IP (~10–20% observed in
+ * production load tests). Direct-wire diagnosis from a sandbox IP produced
+ * 10/10 success with the exact same protocol — the failures are a
+ * per-IP-reputation blip on data.toolbaz.com's nginx that does NOT persist
+ * across a fresh session id + fingerprint. So we retry ONCE with a fresh
+ * identity on transient (empty-200 / 5xx / network-timeout) failures.
+ *
+ * This is NOT a fallback to another provider — it's a same-provider retry
+ * with a freshly rotated identity, which is exactly what the adapter already
+ * does per request. The retry is capped at 1 to avoid amplifying load.
+ *
+ * A 30s hard timeout is enforced on the writing.php fetch (direct-wire data
+ * shows max ~4s response time; 30s is ample and prevents hitting Vercel's
+ * 60s serverless maxDuration, which would otherwise surface as an
+ * `upstream_timeout` to the client).
  */
 export async function complete({
   model,
   turns,
   signal,
 }: CompletionOptions): Promise<CompletionResult> {
-  const { captcha, sessionId, userAgent } = await requestCaptchaToken();
-
   const text = turnsToText(turns);
-  const body = new URLSearchParams({
-    text,
-    capcha: captcha,
-    model,
-    session_id: sessionId,
-  }).toString();
+  const MAX_ATTEMPTS = 2;
+  let lastError: unknown = null;
 
-  const res = await fetch(WRITING_ENDPOINT, {
-    method: "POST",
-    headers: buildHeaders(userAgent),
-    body,
-    signal,
-  });
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // Caller-initiated abort should never trigger a retry — propagate immediately.
+    if (signal?.aborted) throw new Error("Aborted by caller.");
 
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    throw new ToolbazError(model, res.status, raw);
+    try {
+      // Fresh session id + fingerprint PER attempt (requestCaptchaToken
+      // generates them internally on every call — no shared state).
+      const { captcha, sessionId, userAgent } = await requestCaptchaToken();
+
+      const body = new URLSearchParams({
+        text,
+        capcha: captcha,
+        model,
+        session_id: sessionId,
+      }).toString();
+
+      // 30s hard timeout — combines the caller's signal with a timeout
+      // abort so either one fires the abort.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const onCallerAbort = () => controller.abort();
+      if (signal) signal.addEventListener("abort", onCallerAbort, { once: true });
+
+      let res: Response;
+      try {
+        res = await fetch(WRITING_ENDPOINT, {
+          method: "POST",
+          headers: buildHeaders(userAgent),
+          body,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+        if (signal) signal.removeEventListener("abort", onCallerAbort);
+      }
+
+      if (!res.ok) {
+        const raw = await res.text().catch(() => "");
+        // Transient 5xx → retry with a fresh identity.
+        if (res.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+          lastError = new ToolbazError(model, res.status, raw);
+          continue;
+        }
+        throw new ToolbazError(model, res.status, raw);
+      }
+
+      const raw = await res.text();
+
+      // Transient empty output (200 + empty body OR "Output is empty!")
+      // → retry with a fresh identity. This is the dominant intermittent
+      // failure mode from Vercel egress — direct-wire data confirms a
+      // fresh session id succeeds on the 2nd attempt.
+      const isEmpty = raw.trim() === "" || /^Output is empty!/i.test(raw);
+      if (isEmpty) {
+        if (attempt < MAX_ATTEMPTS - 1) {
+          lastError = new ToolbazError(model, 200, raw || "Output is empty!");
+          continue;
+        }
+        throw new ToolbazError(model, 200, raw || "Output is empty!");
+      }
+
+      const cleaned = cleanResponse(raw);
+      return { text: cleaned, model, sessionId };
+    } catch (err) {
+      // Caller-initiated abort → propagate immediately, no retry.
+      if (signal?.aborted) throw err;
+
+      // ToolbazError: retry only if transient (5xx or empty-output).
+      if (err instanceof ToolbazError) {
+        const isTransient =
+          err.upstreamStatus >= 500 || /empty/i.test(err.message);
+        if (!isTransient || attempt >= MAX_ATTEMPTS - 1) throw err;
+        lastError = err;
+        continue;
+      }
+
+      // Network/timeout errors (AbortError, TypeError fetch failed, etc.)
+      // → retry once with a fresh identity.
+      if (attempt < MAX_ATTEMPTS - 1) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const raw = await res.text();
-  const cleaned = cleanResponse(raw);
-  return { text: cleaned, model, sessionId };
+  throw lastError ?? new Error("Toolbaz: retry attempts exhausted.");
 }
 
 /**

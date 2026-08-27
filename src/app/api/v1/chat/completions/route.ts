@@ -446,39 +446,60 @@ function normalizeMessagesForGateway(
 
 /** POST /api/v1/chat/completions. */
 export async function POST(request: Request) {
-  await ensureGateway();
-
-  let body: OAIChatCompletionRequest;
+  // v4 requirement: every error response MUST carry the standard JSON
+  // envelope `{ error: { type, message, provider, model, request_id, code,
+  // status } }` — including 500s. Before this wrapper, any uncaught
+  // exception (TypeError from an unexpected body shape, a bug in
+  // resolveAdapterForModel, an OOM, a thrown string instead of an Error)
+  // escaped to Next.js's default handler, which returns HTTP 500 with a
+  // ZERO-BYTE body. 26 of those blank 500s were observed in the v3 load
+  // test (hitting l7/deepseek-v4-flash, tb/codestral-latest, l7/minimax-m2.7
+  // and four other tb/* models) — clients parsing JSON got nothing to act
+  // on, breaking the R-11 contract. This outermost try/catch guarantees
+  // every escape route produces the structured envelope.
+  let body: OAIChatCompletionRequest | undefined;
   try {
-    body = (await request.json()) as OAIChatCompletionRequest;
-  } catch {
-    return gatewayErrorResponse(
-      new GatewayError({
-        type: "INVALID_REQUEST",
-        message: "Invalid JSON body.",
-      }),
-    );
+    await ensureGateway();
+
+    try {
+      body = (await request.json()) as OAIChatCompletionRequest;
+    } catch {
+      return gatewayErrorResponse(
+        new GatewayError({
+          type: "INVALID_REQUEST",
+          message: "Invalid JSON body.",
+        }),
+      );
+    }
+
+    // ─── Audit B1/A2: validate input BEFORE model lookup ────────────────────
+    // Wrong-typed params (e.g. `"model": 123`) now return 400 with a clear
+    // message instead of crashing with HTTP 500 empty body (unhandled exception).
+    const validationError = validateChatRequest(body);
+    if (validationError) {
+      return gatewayErrorResponse(validationError);
+    }
+
+    const wantsStream = body.stream === true;
+    const useTools = hasTools(body.tools);
+
+    // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
+    const resolved = resolveAdapterForModel(body.model);
+    if (resolved) {
+      return handleCanonicalRequest(body, request, resolved.model, resolved.adapter, useTools, wantsStream);
+    }
+
+    // ─── LEGACY FALLBACK (old-style ids like fgpt-gpt-5-5, oc-big-pickle) ─────
+    return handleLegacyRequest(body, request, useTools, wantsStream);
+  } catch (err) {
+    // v4: any uncaught exception → standard JSON envelope (never a blank 500).
+    // wrapUnknown converts TypeError/Error/string into a GatewayError with
+    // type PROVIDER_UNAVAILABLE (retryable 503) so clients can retry. The
+    // model id is surfaced if `body` was already parsed.
+    const modelId =
+      body && typeof body.model === "string" ? body.model : undefined;
+    return gatewayErrorResponse(wrapUnknown(err, undefined, modelId));
   }
-
-  // ─── Audit B1/A2: validate input BEFORE model lookup ────────────────────
-  // Wrong-typed params (e.g. `"model": 123`) now return 400 with a clear
-  // message instead of crashing with HTTP 500 empty body (unhandled exception).
-  const validationError = validateChatRequest(body);
-  if (validationError) {
-    return gatewayErrorResponse(validationError);
-  }
-
-  const wantsStream = body.stream === true;
-  const useTools = hasTools(body.tools);
-
-  // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
-  const resolved = resolveAdapterForModel(body.model);
-  if (resolved) {
-    return handleCanonicalRequest(body, request, resolved.model, resolved.adapter, useTools, wantsStream);
-  }
-
-  // ─── LEGACY FALLBACK (old-style ids like fgpt-gpt-5-5, oc-big-pickle) ─────
-  return handleLegacyRequest(body, request, useTools, wantsStream);
 }
 
 // ───────────────────────────────────────────────────────────────────────────

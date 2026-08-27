@@ -41,6 +41,13 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   { id: "freeaixyz", shortId: "fx", name: "FreeAIXYZ", baseUrl: "https://api.freeaixyz.com" },
   { id: "gptoss", shortId: "go", name: "GPT-OSS", baseUrl: "https://broken-water-d859.junioralive.workers.dev" },
   { id: "vexa", shortId: "vx", name: "Vexa", baseUrl: "https://vexa-ai.pages.dev" },
+  // Task 7 (v4): new free providers discovered via web research + live-tested.
+  // `un` — UncloseAI (hermes.ai.unturf.com): pure OpenAI-compatible, no auth,
+  //        no signup. Single community GPU serving Qwen 3.6 27B (int4).
+  // `f2` — Free2GPT (chat4.free2gpt.com): signed-request API (sha256 with
+  //        empty secret), plain-text response. No auth, no signup.
+  { id: "uncloseai", shortId: "un", name: "UncloseAI", baseUrl: "https://hermes.ai.unturf.com" },
+  { id: "free2gpt", shortId: "f2", name: "Free2GPT", baseUrl: "https://chat4.free2gpt.com" },
   // Image providers (no chat adapter but used for image model catalog).
   { id: "pollinations-image", shortId: "pi", name: "Pollinations Image", baseUrl: "https://image.pollinations.ai" },
   { id: "jollygen-image", shortId: "ji", name: "JollyGen Image", baseUrl: "https://api.jollygenapi.space" },
