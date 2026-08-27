@@ -29,6 +29,7 @@ import {
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
+import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import type {
   ChatRequest,
   ProviderAdapter,
@@ -279,6 +280,11 @@ class StreamingProxyService {
 
     let firstEnqueued = false;
     let anyContent = false;
+    // PRD §24 — one ToolCallNormalizer per stream. It accumulates tool-call
+    // fragments across deltas so `__tool_calls` markers from OpenAI-native
+    // providers (kilocode/opencode/gptoss/freegpt/llm7/swarm) become proper
+    // `delta.tool_calls` SSE chunks — NEVER raw assistant text (§8).
+    const normalizer = new ToolCallNormalizer();
 
     // Emit the buffered first chunk immediately (no buffering beyond the
     // single pre-flight chunk — the price of returning a real HTTP status
@@ -286,15 +292,16 @@ class StreamingProxyService {
     if (firstDelta) {
       timings.chunkCount += 1;
       timings.bytes += byteLength(firstDelta);
-      anyContent = true;
-      this.enqueueChunk(
+      const hadFrag = this.enqueueNormalizedDelta(
         controller,
         encoder,
         sseId,
         created,
         candidate.req.modelId,
         firstDelta,
+        normalizer,
       );
+      if (hadFrag) anyContent = true;
       timings.proxyFirstForward = Date.now();
       timings.ttfbMs = timings.proxyFirstForward - timings.requestStart;
       timings.ttftMs = timings.ttfbMs;
@@ -316,15 +323,16 @@ class StreamingProxyService {
         }
         timings.chunkCount += 1;
         timings.bytes += byteLength(delta);
-        anyContent = true;
-        this.enqueueChunk(
+        const hadFrag = this.enqueueNormalizedDelta(
           controller,
           encoder,
           sseId,
           created,
           candidate.req.modelId,
           delta,
+          normalizer,
         );
+        if (hadFrag) anyContent = true;
         if (!firstEnqueued) {
           timings.proxyFirstForward = Date.now();
           timings.ttfbMs = timings.proxyFirstForward - timings.requestStart;
@@ -358,6 +366,9 @@ class StreamingProxyService {
         return;
       }
       // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
+      // PRD §13: if the normalizer emitted any tool calls, the finish_reason
+      // is "tool_calls" (not "stop") so OpenAI clients route to the tool
+      // execution pipeline instead of treating the turn as complete.
       this.enqueueFinal(
         controller,
         encoder,
@@ -365,6 +376,7 @@ class StreamingProxyService {
         created,
         candidate.req,
         timings.bytes,
+        normalizer.didEmitToolCalls ? "tool_calls" : "stop",
       );
       providerHealthService.recordProviderSuccess(candidate.adapter.id);
       providerHealthService.recordModelSuccess(candidate.req.modelId);
@@ -524,26 +536,64 @@ class StreamingProxyService {
     });
   }
 
-  /** Enqueue one OpenAI-shaped content-delta chunk (PRD §137 — no buffering). */
-  private enqueueChunk(
+  /**
+   * Enqueue one OpenAI-shaped delta chunk, routing through the
+   * ToolCallNormalizer (PRD §24, §137 — no buffering).
+   *
+   * The normalizer consumes the raw provider delta and returns either:
+   *   - `content` (plain text) → emitted as `delta.content`
+   *   - `toolCalls` (incremental fragments) → emitted as `delta.tool_calls`
+   *   - both (mixed text + marker)
+   *
+   * `__tool_calls` markers NEVER reach the client as `delta.content`
+   * (PRD §8, §16) — the normalizer intercepts them at the correct
+   * architectural layer, between raw provider stream and unified SSE output.
+   *
+   * Returns true if the delta produced any forwardable fragment (content or
+   * tool call), false otherwise (e.g. a suppressed unparseable marker).
+   */
+  private enqueueNormalizedDelta(
     controller: ReadableStreamDefaultController<Uint8Array>,
     encoder: TextEncoder,
     sseId: string,
     created: number,
     model: string,
     delta: string,
-  ): void {
-    const payload = {
-      id: sseId,
-      object: "chat.completion.chunk",
-      created,
-      model,
-      choices: [
-        { index: 0, delta: { content: delta }, finish_reason: null },
-      ],
-    };
-    const line = `data: ${JSON.stringify(payload)}\n\n`;
-    controller.enqueue(encoder.encode(line));
+    normalizer: ToolCallNormalizer,
+  ): boolean {
+    const norm = normalizer.consume(delta);
+    let forwarded = false;
+    if (norm.content) {
+      const payload = {
+        id: sseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          { index: 0, delta: { content: norm.content }, finish_reason: null },
+        ],
+      };
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+      );
+      forwarded = true;
+    }
+    if (norm.toolCalls && norm.toolCalls.length > 0) {
+      const payload = {
+        id: sseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          { index: 0, delta: { tool_calls: norm.toolCalls }, finish_reason: null },
+        ],
+      };
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+      );
+      forwarded = true;
+    }
+    return forwarded;
   }
 
   /**
@@ -563,6 +613,7 @@ class StreamingProxyService {
     created: number,
     req: ChatRequest,
     completionBytes: number,
+    finishReason: "stop" | "tool_calls" = "stop",
   ): void {
     const model = req.modelId;
     const payload = {
@@ -571,7 +622,7 @@ class StreamingProxyService {
       created,
       model,
       choices: [
-        { index: 0, delta: {}, finish_reason: "stop" },
+        { index: 0, delta: {}, finish_reason: finishReason },
       ],
     };
     controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));

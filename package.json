@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "bun tests/run-tests.mjs",
     "test:streaming": "node test-streaming.mjs",
+    "diagnose": "node scripts/provider-diagnose.mjs",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

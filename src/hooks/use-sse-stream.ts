@@ -68,6 +68,37 @@ export interface UseSseStreamResult {
   reset: () => void;
 }
 
+/**
+ * One OpenAI-shaped tool-call delta fragment (PRD §11-§17, §24).
+ *
+ * The wire format mirrors `delta.tool_calls[i]` exactly:
+ *  - `index`       identifies which tool call this fragment belongs to
+ *                  (the client MUST accumulate by index across deltas).
+ *  - `id`          appears ONLY on the FIRST delta for a given index
+ *                  (stable thereafter; client should keep the first non-empty
+ *                  id and ignore subsequent ids for the same index).
+ *  - `function.name` appears ONLY on the delta that introduces the name
+ *                  (empty/absent name deltas must NOT erase the accumulated
+ *                  name — PRD §11).
+ *  - `function.arguments` is the INCREMENTAL fragment — the client MUST
+ *                  concatenate across deltas for the same index. NEVER
+ *                  JSON.parse the partial buffer — only parse when the
+ *                  stream ends or `finish_reason:"tool_calls"` arrives
+ *                  (PRD §12).
+ */
+export interface ToolCallDelta {
+  index: number;
+  /** Stable per-index id; present ONLY on the first delta for this index. */
+  id?: string;
+  type: "function";
+  function: {
+    /** Present only on the delta that introduces the name (PRD §11). */
+    name?: string;
+    /** INCREMENTAL fragment — the client must concatenate by index. */
+    arguments?: string;
+  };
+}
+
 export interface StartOpts {
   url: string;
   method?: string;
@@ -75,6 +106,12 @@ export interface StartOpts {
   body?: string;
   /** Fired for each content delta (string). */
   onDelta: (content: string) => void;
+  /**
+   * Fired for each `delta.tool_calls` chunk (PRD §11-§17). The array passed
+   * is the array of tool-call fragments from ONE SSE event — typically one
+   * fragment per call, but multiple can appear in a single chunk.
+   */
+  onToolCallDelta?: (tc: ToolCallDelta[]) => void;
   /** Fired for an `event: error` SSE event (PRD §61). */
   onError?: (err: SseError) => void;
   /** Fired when stream completes successfully. */
@@ -99,6 +136,17 @@ function tryJson<T = unknown>(data: string): T | null {
   }
 }
 
+/**
+ * Defense-in-depth (PRD §8): never leak a raw `__tool_calls` marker string as
+ * assistant text. The server-side `ToolCallNormalizer`
+ * (`src/lib/gateway/tool-call-normalizer.ts`) should already have converted
+ * these into proper `delta.tool_calls` chunks before they reach the client.
+ * This regex is a backstop for any legacy code path that still emits the
+ * marker as `delta.content`. Match a leading `{"__tool_calls":` (with
+ * optional leading whitespace) — the canonical marker shape.
+ */
+const RAW_TOOL_CALL_MARKER_RE = /^\s*\{"__tool_calls"\s*:/;
+
 /** Extract a content delta from an OpenAI-shaped SSE event. */
 function extractContentDelta(data: string): string | null {
   const json = tryJson<{
@@ -114,16 +162,64 @@ function extractContentDelta(data: string): string | null {
   const choice = json.choices?.[0];
   const delta = choice?.delta;
   if (!delta) return null;
-  if (typeof delta.content === "string" && delta.content) return delta.content;
+  if (typeof delta.content === "string" && delta.content) {
+    // PRD §8 backstop — never leak raw __tool_calls markers as text.
+    if (RAW_TOOL_CALL_MARKER_RE.test(delta.content)) {
+      return null;
+    }
+    return delta.content;
+  }
   if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
+    // Reasoning text never carries a __tool_calls marker — pass through.
     return delta.reasoning_content;
   }
-  if (delta.tool_calls && delta.tool_calls.length > 0) {
-    // Surface tool-call deltas as a JSON marker so the UI can render them
-    // distinctly if desired. Mostly treated as text.
-    return null;
-  }
+  // tool_calls are handled separately via extractToolCallDelta — never
+  // surfaced as text content (PRD §8, §16).
   return null;
+}
+
+/**
+ * Extract an array of tool-call delta fragments from an OpenAI-shaped SSE
+ * event. Returns null if the event has no `delta.tool_calls` array or the
+ * array is empty. The caller accumulates by index (PRD §11-§17).
+ */
+function extractToolCallDelta(data: string): ToolCallDelta[] | null {
+  const json = tryJson<{
+    choices?: Array<{
+      delta?: {
+        tool_calls?: Array<{
+          index: number;
+          id?: string;
+          type?: string;
+          function?: { name?: string; arguments?: string };
+        }>;
+      };
+    }>;
+  }>(data);
+  if (!json) return null;
+  const choice = json.choices?.[0];
+  const delta = choice?.delta;
+  if (!delta?.tool_calls || delta.tool_calls.length === 0) return null;
+  const out: ToolCallDelta[] = [];
+  for (const raw of delta.tool_calls) {
+    if (!raw || typeof raw.index !== "number") continue;
+    const fn = raw.function ?? {};
+    out.push({
+      index: raw.index,
+      id:
+        typeof raw.id === "string" && raw.id.length > 0 ? raw.id : undefined,
+      type: "function",
+      function: {
+        name:
+          typeof fn.name === "string" && fn.name.length > 0
+            ? fn.name
+            : undefined,
+        arguments:
+          typeof fn.arguments === "string" ? fn.arguments : undefined,
+      },
+    });
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Extract an error object from an SSE event payload (PRD §61, §146). */
@@ -175,6 +271,14 @@ export function useSseStream(): UseSseStreamResult {
   const currentDataRef = useRef<string[]>([]);
   const currentEventRef = useRef<string | undefined>(undefined);
   const doneSeenRef = useRef<boolean>(false);
+  /**
+   * Idempotent finalize guard (PRD §A5 — watchdog hardening). Once true, no
+   * termination path (idle-watchdog, [DONE], end-of-stream) may re-fire
+   * `opts.onDone?.()` or re-call `setState("done")`. Prevents the harmless-but-
+   * noisy double-fire that occurred when the idle watchdog aborted the stream
+   * and the subsequent end-of-stream pass re-finalized.
+   */
+  const finalizedRef = useRef<boolean>(false);
 
   const reset = useCallback(() => {
     if (abortRef.current) {
@@ -190,6 +294,7 @@ export function useSseStream(): UseSseStreamResult {
     currentDataRef.current = [];
     currentEventRef.current = undefined;
     doneSeenRef.current = false;
+    finalizedRef.current = false;
     setState("idle");
     setError(null);
     setTimings({
@@ -317,6 +422,7 @@ export function useSseStream(): UseSseStreamResult {
       currentDataRef.current = [];
       currentEventRef.current = undefined;
       doneSeenRef.current = false;
+      finalizedRef.current = false;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -417,6 +523,26 @@ export function useSseStream(): UseSseStreamResult {
       let bytes = 0;
       let capturedError: SseError | null = null;
 
+      // ─── IDEMPOTENT FINALIZE (PRD §A5 — watchdog hardening) ─────────────
+      // Exactly one of the three termination paths (idle-watchdog, [DONE],
+      // end-of-stream) may fire `opts.onDone?.()` + `setState("done")`. The
+      // `finalizedRef` boolean ensures the others short-circuit. The watchdog
+      // aborts the fetch on idle; without this guard, the subsequent
+      // end-of-stream pass would re-finalize and double-fire `onDone`.
+      const finalizeDone = (streamEndAt: number) => {
+        if (finalizedRef.current) return;
+        finalizedRef.current = true;
+        setTimings({
+          requestStart,
+          firstChunkAt,
+          streamEndAt,
+          chunkCount,
+          bytes,
+        });
+        setState("done");
+        opts.onDone?.();
+      };
+
       // ─── IDLE-TIMEOUT WATCHDOG ────────────────────────────────────────────
       // If no chunks arrive for IDLE_TIMEOUT_MS while the stream is open, the
       // upstream has stalled (sent a partial response then went silent). The
@@ -438,19 +564,12 @@ export function useSseStream(): UseSseStreamResult {
           } catch {
             // ignore
           }
-          // Treat as a clean done — the upstream stopped sending.
+          // Treat as a clean done — the upstream stopped sending. The
+          // finalizeDone() helper is idempotent (PRD §A5) so a later
+          // end-of-stream pass through the same closure won't double-fire.
           if (!doneSeenRef.current) {
             doneSeenRef.current = true;
-            const streamEndAt = Date.now();
-            setTimings({
-              requestStart,
-              firstChunkAt,
-              streamEndAt,
-              chunkCount,
-              bytes,
-            });
-            setState("done");
-            opts.onDone?.();
+            finalizeDone(Date.now());
           }
         }, IDLE_TIMEOUT_MS);
         if (idleTimer && typeof (idleTimer as { unref?: () => void }).unref === "function") {
@@ -523,6 +642,10 @@ export function useSseStream(): UseSseStreamResult {
             }
             const delta = extractContentDelta(ev.data);
             if (delta) opts.onDelta(delta);
+            // Tool-call deltas (PRD §11-§17) — accumulate by index in the UI;
+            // never surfaced as text content (PRD §8, §16).
+            const tcDelta = extractToolCallDelta(ev.data);
+            if (tcDelta) opts.onToolCallDelta?.(tcDelta);
           }
 
           setTimings({
@@ -570,6 +693,8 @@ export function useSseStream(): UseSseStreamResult {
             }
             const delta = extractContentDelta(ev.data);
             if (delta) opts.onDelta(delta);
+            const tcDelta = extractToolCallDelta(ev.data);
+            if (tcDelta) opts.onToolCallDelta?.(tcDelta);
           }
         }
 
@@ -580,22 +705,22 @@ export function useSseStream(): UseSseStreamResult {
         }
 
         const streamEndAt = Date.now();
-        setTimings({
-          requestStart,
-          firstChunkAt,
-          streamEndAt,
-          chunkCount,
-          bytes,
-        });
         if (capturedError) {
+          // Error path is NOT guarded by finalizedRef — errors are terminal
+          // and never co-occur with a clean done.
+          setTimings({
+            requestStart,
+            firstChunkAt,
+            streamEndAt,
+            chunkCount,
+            bytes,
+          });
           setState("error");
-        } else if (doneSeenRef.current) {
-          setState("done");
-          opts.onDone?.();
         } else {
-          // Stream ended without [DONE] — treat as done (server may not emit it).
-          setState("done");
-          opts.onDone?.();
+          // [DONE] seen OR stream ended without [DONE] (server may omit it) —
+          // treat as clean done. Idempotent: no-op if the watchdog already
+          // finalized (PRD §A5).
+          finalizeDone(streamEndAt);
         }
       } catch (e) {
         if (idleTimer) {

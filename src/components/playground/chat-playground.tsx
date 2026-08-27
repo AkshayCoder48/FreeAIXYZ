@@ -61,10 +61,11 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { useSseStream, type SseError } from "@/hooks/use-sse-stream";
+import { useSseStream, type SseError, type ToolCallDelta } from "@/hooks/use-sse-stream";
 import { useModelSync } from "@/hooks/use-model-sync";
 import { StreamingDiagnostics } from "@/components/playground/streaming-diagnostics";
 import { RawSseDebugger } from "@/components/playground/raw-sse-debugger";
+import { ToolCallCard } from "@/components/playground/tool-call-card";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -76,6 +77,32 @@ interface ChatMessage {
   provider?: string;
   /** True while this message is being streamed. */
   streaming?: boolean;
+  /**
+   * Tool calls accumulated during streaming (assistant only). One entry per
+   * `index` — the SAME entry is mutated as fragments arrive (PRD §17).
+   */
+  toolCalls?: ToolCallState[];
+}
+
+/**
+ * Per-tool-call accumulator state on a ChatMessage (PRD §11-§17).
+ *
+ * Built incrementally from `ToolCallDelta` fragments emitted by the SSE
+ * hook. The `argumentsBuffer` is the CONCATENATION of all argument
+ * fragments for this index — NEVER parsed mid-stream (PRD §12). The
+ * `ToolCallCard` pretty-prints it lazily on render once complete.
+ */
+interface ToolCallState {
+  /** OpenAI tool-call index (stable across deltas for the same call). */
+  index: number;
+  /** Stable id — kept from the FIRST delta that supplied a non-empty id. */
+  id: string;
+  /** Function name — kept from the FIRST delta that supplied a non-empty name. */
+  name: string;
+  /** Concatenated argument fragments (PRD §11, §12). */
+  argumentsBuffer: string;
+  /** `streaming` while fragments arrive, `ready` once the stream ends. */
+  status: "streaming" | "ready";
 }
 
 interface HealthModel {
@@ -335,6 +362,56 @@ export function ChatPlayground() {
           bottomRef.current?.scrollIntoView({ behavior: "auto" });
         }
       },
+      /**
+       * Tool-call delta accumulator (PRD §11-§17). Mutates the LAST assistant
+       * message's `toolCalls` array by index: stable id, first non-empty name
+       * wins (empty name deltas MUST NOT erase — PRD §11), arguments
+       * CONCATENATED (never overwritten, never JSON.parsed mid-stream —
+       * PRD §12). One card per index, never per delta (PRD §17).
+       */
+      onToolCallDelta: (tcs: ToolCallDelta[]) => {
+        setMessages((prev) => {
+          const arr = [...prev];
+          const last = arr[arr.length - 1];
+          if (last?.role !== "assistant") return prev;
+          // Deep-copy the existing tool-calls array so React sees a new ref.
+          const existing: ToolCallState[] = (last.toolCalls ?? []).map((t) => ({
+            ...t,
+          }));
+          for (const tc of tcs) {
+            const idx = existing.findIndex((e) => e.index === tc.index);
+            if (idx === -1) {
+              // First delta for this index — initialize the accumulator.
+              existing.push({
+                index: tc.index,
+                id: tc.id ?? `call_${tc.index}`,
+                name: tc.function.name ?? "",
+                argumentsBuffer: tc.function.arguments ?? "",
+                status: "streaming",
+              });
+            } else {
+              const cur = existing[idx];
+              // Stable id: keep the FIRST non-empty id (PRD §11).
+              if (!cur.id && tc.id) cur.id = tc.id;
+              // First non-empty name wins — empty/absent name MUST NOT erase
+              // the accumulated name (PRD §11).
+              if (!cur.name && tc.function.name) cur.name = tc.function.name;
+              // Concatenate the argument FRAGMENT — NEVER overwrite
+              // (PRD §11), NEVER JSON.parse the partial buffer (PRD §12).
+              if (tc.function.arguments) {
+                cur.argumentsBuffer =
+                  cur.argumentsBuffer + tc.function.arguments;
+              }
+              // status stays "streaming" until the stream ends.
+            }
+          }
+          arr[arr.length - 1] = { ...last, toolCalls: existing };
+          return arr;
+        });
+        if (nearBottom) {
+          bottomRef.current?.scrollIntoView({ behavior: "auto" });
+        }
+      },
       onError: (err) => {
         setMessages((prev) => {
           const arr = [...prev];
@@ -358,7 +435,21 @@ export function ChatPlayground() {
           const arr = [...prev];
           const last = arr[arr.length - 1];
           if (last?.role === "assistant") {
-            arr[arr.length - 1] = { ...last, streaming: false };
+            // Mark every accumulated tool call as ready (PRD §11). The
+            // ToolCallCard lazily pretty-prints the now-complete arguments
+            // buffer on render (PRD §12).
+            const toolCalls =
+              last.toolCalls && last.toolCalls.length > 0
+                ? last.toolCalls.map((tc) => ({
+                    ...tc,
+                    status: "ready" as const,
+                  }))
+                : last.toolCalls;
+            arr[arr.length - 1] = {
+              ...last,
+              streaming: false,
+              toolCalls,
+            };
           }
           return arr;
         });
@@ -794,6 +885,10 @@ function MessageBubble({
   const isUser = message.role === "user";
   const isStreaming = Boolean(message.streaming);
   const isError = Boolean(message.error);
+  const hasToolCalls =
+    !isUser &&
+    Boolean(message.toolCalls) &&
+    (message.toolCalls?.length ?? 0) > 0;
 
   return (
     <article
@@ -827,31 +922,55 @@ function MessageBubble({
             )}
           </div>
         )}
-        <div
-          className={cn(
-            "px-5 py-3.5 text-sm leading-relaxed rounded-2xl",
-            isUser
-              ? "bg-gradient-to-r from-[#0052FF] to-[#4D7CFF] text-white"
-              : isError
-                ? "border-2 border-rose-300 bg-rose-50 text-rose-900"
-                : "border border-border bg-card text-foreground",
-          )}
-        >
-          {isUser ? (
-            <div className="whitespace-pre-wrap break-words">{message.content}</div>
-          ) : message.content ? (
-            <MarkdownRenderer text={message.content} />
-          ) : isStreaming ? (
-            <span className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin text-accent" strokeWidth={1.75} />
-              Generating…
-            </span>
-          ) : isError ? (
-            <div className="text-foreground">
-              {message.errorPayload?.message ?? "Error"}
-            </div>
-          ) : null}
-        </div>
+        {/* Tool-call cards (PRD §17) — one per index, ABOVE the markdown
+            content. Rendered for assistant messages only, when tool calls
+            have been accumulated. Cards stand alone when content is empty. */}
+        {hasToolCalls && message.toolCalls && (
+          <div className="w-full flex flex-col gap-2">
+            {message.toolCalls.map((tc) => (
+              <ToolCallCard
+                key={tc.id || tc.index}
+                name={tc.name}
+                argumentsRaw={tc.argumentsBuffer}
+                status={tc.status}
+              />
+            ))}
+          </div>
+        )}
+        {/* Assistant bubble — skipped when there is no text content AND
+            tool calls are present (the cards stand alone). For all other
+            cases (user content, assistant markdown, streaming spinner, or
+            error) the bubble renders as before. Raw __tool_calls markers
+            never reach here — they are filtered upstream (PRD §8). */}
+        {isUser ||
+        message.content ||
+        (!hasToolCalls && (isStreaming || isError)) ? (
+          <div
+            className={cn(
+              "px-5 py-3.5 text-sm leading-relaxed rounded-2xl",
+              isUser
+                ? "bg-gradient-to-r from-[#0052FF] to-[#4D7CFF] text-white"
+                : isError
+                  ? "border-2 border-rose-300 bg-rose-50 text-rose-900"
+                  : "border border-border bg-card text-foreground",
+            )}
+          >
+            {isUser ? (
+              <div className="whitespace-pre-wrap break-words">{message.content}</div>
+            ) : message.content ? (
+              <MarkdownRenderer text={message.content} />
+            ) : isStreaming ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-accent" strokeWidth={1.75} />
+                Generating…
+              </span>
+            ) : isError ? (
+              <div className="text-foreground">
+                {message.errorPayload?.message ?? "Error"}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {isError && message.errorPayload && (
           <InlineErrorCard
             err={message.errorPayload}
@@ -859,7 +978,7 @@ function MessageBubble({
             onShuffle={onShuffle}
           />
         )}
-        {!isUser && !isStreaming && !isError && message.content && (
+        {!isUser && !isStreaming && !isError && (message.content || hasToolCalls) && (
           <div className="flex items-center gap-2">
             <button
               type="button"

@@ -1,0 +1,561 @@
+{
+  "generatedAt": "2026-08-27T04:30:39.028Z",
+  "provider": "kilocode",
+  "model": {
+    "canonical": "kc/kilo-auto/free",
+    "upstream": "kilo-auto/free"
+  },
+  "target": "gateway",
+  "runsRequested": 2,
+  "runs": [
+    {
+      "target": "gateway",
+      "run": 1,
+      "test": "A",
+      "request": {
+        "method": "POST",
+        "url": "https://freeaixyz4all.vercel.app/api/v1/chat/completions",
+        "endpointPath": "/api/v1/chat/completions",
+        "model": "kc/kilo-auto/free",
+        "body": {
+          "stream": true,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Hello"
+            }
+          ],
+          "model": "kc/kilo-auto/free"
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        "stream": true,
+        "toolDefinitions": 0,
+        "messageStructure": [
+          {
+            "role": "user",
+            "contentLength": 5
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "httpStatusText": "OK",
+        "responseHeaders": {
+          "cache-control": "no-cache, no-store, no-transform",
+          "content-type": "text/event-stream; charset=utf-8",
+          "date": "Thu, 27 Aug 2026 04:30:36 GMT",
+          "server": "Vercel",
+          "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+          "transfer-encoding": "chunked",
+          "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+          "x-accel-buffering": "no",
+          "x-matched-path": "/api/v1/chat/completions",
+          "x-no-buffer": "true",
+          "x-vercel-cache": "MISS",
+          "x-vercel-id": "hkg1::iad1::qkvpc-1787805034360-6a228944e813"
+        },
+        "contentType": "text/event-stream; charset=utf-8",
+        "transferEncoding": "chunked",
+        "contentEncoding": null
+      },
+      "timings": {
+        "requestStart": 1787805034292,
+        "fetchResolved": 1787805036409,
+        "firstByte": 1787805036414,
+        "firstSseEvent": 1787805036415,
+        "firstTextDelta": 1787805036415,
+        "firstToolCallDelta": null,
+        "finalChunk": 1787805036754,
+        "streamClose": 1787805036756,
+        "clientCompletion": 1787805036756,
+        "chunks": [
+          {
+            "index": 0,
+            "arrivalMs": 2122,
+            "byteLength": 214
+          },
+          {
+            "index": 1,
+            "arrivalMs": 2191,
+            "byteLength": 219
+          },
+          {
+            "index": 2,
+            "arrivalMs": 2262,
+            "byteLength": 211
+          },
+          {
+            "index": 3,
+            "arrivalMs": 2461,
+            "byteLength": 194
+          },
+          {
+            "index": 4,
+            "arrivalMs": 2462,
+            "byteLength": 14
+          }
+        ]
+      },
+      "rawChunks": [
+        {
+          "index": 0,
+          "arrivalMs": 2122,
+          "byteLength": 214,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_rea"
+        },
+        {
+          "index": 1,
+          "arrivalMs": 2191,
+          "byteLength": 219,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finis"
+        },
+        {
+          "index": 2,
+          "arrivalMs": 2262,
+          "byteLength": 211,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason"
+        },
+        {
+          "index": 3,
+          "arrivalMs": 2461,
+          "byteLength": 194,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        },
+        {
+          "index": 4,
+          "arrivalMs": 2462,
+          "byteLength": 14,
+          "textPreview": "data: [DONE]\n\n"
+        }
+      ],
+      "sseEvents": [
+        {
+          "data": "{\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "[DONE]",
+          "raw": "data: [DONE]\n\n",
+          "done": true
+        }
+      ],
+      "parsedPayloads": [
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_8159dfe4513ef4710e810958",
+            "object": "chat.completion.chunk",
+            "created": 1787805034,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": "Hello! How"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_8159dfe4513ef4710e810958",
+            "object": "chat.completion.chunk",
+            "created": 1787805034,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": " can I help you"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_8159dfe4513ef4710e810958",
+            "object": "chat.completion.chunk",
+            "created": 1787805034,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": " today?"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_8159dfe4513ef4710e810958",
+            "object": "chat.completion.chunk",
+            "created": 1787805034,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_8159dfe4513ef4710e810958\",\"object\":\"chat.completion.chunk\",\"created\":1787805034,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        },
+        {
+          "type": "DONE",
+          "raw": "data: [DONE]\n\n"
+        }
+      ],
+      "failureLayer": null,
+      "failureReason": null,
+      "classification": "success",
+      "normalizedClass": "n/a",
+      "sawToolCallDelta": false,
+      "sawToolCallMarkerInContent": false,
+      "sawTextDelta": true,
+      "sawFinish": true,
+      "sawDone": true,
+      "parserErrors": 0,
+      "prematureTermination": false
+    },
+    {
+      "target": "gateway",
+      "run": 2,
+      "test": "A",
+      "request": {
+        "method": "POST",
+        "url": "https://freeaixyz4all.vercel.app/api/v1/chat/completions",
+        "endpointPath": "/api/v1/chat/completions",
+        "model": "kc/kilo-auto/free",
+        "body": {
+          "stream": true,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Hello"
+            }
+          ],
+          "model": "kc/kilo-auto/free"
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        "stream": true,
+        "toolDefinitions": 0,
+        "messageStructure": [
+          {
+            "role": "user",
+            "contentLength": 5
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "httpStatusText": "OK",
+        "responseHeaders": {
+          "cache-control": "no-cache, no-store, no-transform",
+          "content-type": "text/event-stream; charset=utf-8",
+          "date": "Thu, 27 Aug 2026 04:30:38 GMT",
+          "server": "Vercel",
+          "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+          "transfer-encoding": "chunked",
+          "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+          "x-accel-buffering": "no",
+          "x-matched-path": "/api/v1/chat/completions",
+          "x-no-buffer": "true",
+          "x-vercel-cache": "MISS",
+          "x-vercel-id": "hkg1::iad1::c2xk7-1787805036779-e014887582b7"
+        },
+        "contentType": "text/event-stream; charset=utf-8",
+        "transferEncoding": "chunked",
+        "contentEncoding": null
+      },
+      "timings": {
+        "requestStart": 1787805036757,
+        "fetchResolved": 1787805038690,
+        "firstByte": 1787805038694,
+        "firstSseEvent": 1787805038694,
+        "firstTextDelta": 1787805038694,
+        "firstToolCallDelta": null,
+        "finalChunk": 1787805039027,
+        "streamClose": 1787805039027,
+        "clientCompletion": 1787805039027,
+        "chunks": [
+          {
+            "index": 0,
+            "arrivalMs": 1937,
+            "byteLength": 214
+          },
+          {
+            "index": 1,
+            "arrivalMs": 1977,
+            "byteLength": 219
+          },
+          {
+            "index": 2,
+            "arrivalMs": 2035,
+            "byteLength": 211
+          },
+          {
+            "index": 3,
+            "arrivalMs": 2260,
+            "byteLength": 194
+          },
+          {
+            "index": 4,
+            "arrivalMs": 2270,
+            "byteLength": 14
+          }
+        ]
+      },
+      "rawChunks": [
+        {
+          "index": 0,
+          "arrivalMs": 1937,
+          "byteLength": 214,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_rea"
+        },
+        {
+          "index": 1,
+          "arrivalMs": 1977,
+          "byteLength": 219,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finis"
+        },
+        {
+          "index": 2,
+          "arrivalMs": 2035,
+          "byteLength": 211,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason"
+        },
+        {
+          "index": 3,
+          "arrivalMs": 2260,
+          "byteLength": 194,
+          "textPreview": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        },
+        {
+          "index": 4,
+          "arrivalMs": 2270,
+          "byteLength": 14,
+          "textPreview": "data: [DONE]\n\n"
+        }
+      ],
+      "sseEvents": [
+        {
+          "data": "{\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "{\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+          "done": false
+        },
+        {
+          "data": "[DONE]",
+          "raw": "data: [DONE]\n\n",
+          "done": true
+        }
+      ],
+      "parsedPayloads": [
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_3f4521b5dd67a3f42e2fbc9c",
+            "object": "chat.completion.chunk",
+            "created": 1787805036,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": "Hello! How"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello! How\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_3f4521b5dd67a3f42e2fbc9c",
+            "object": "chat.completion.chunk",
+            "created": 1787805036,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": " can I help you"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" can I help you\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_3f4521b5dd67a3f42e2fbc9c",
+            "object": "chat.completion.chunk",
+            "created": 1787805036,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": " today?"
+                },
+                "finish_reason": null
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" today?\"},\"finish_reason\":null}]}\n\n"
+        },
+        {
+          "type": "JSON",
+          "data": {
+            "id": "chatcmpl-req_3f4521b5dd67a3f42e2fbc9c",
+            "object": "chat.completion.chunk",
+            "created": 1787805036,
+            "model": "kc/kilo-auto/free",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+              }
+            ]
+          },
+          "raw": "data: {\"id\":\"chatcmpl-req_3f4521b5dd67a3f42e2fbc9c\",\"object\":\"chat.completion.chunk\",\"created\":1787805036,\"model\":\"kc/kilo-auto/free\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        },
+        {
+          "type": "DONE",
+          "raw": "data: [DONE]\n\n"
+        }
+      ],
+      "failureLayer": null,
+      "failureReason": null,
+      "classification": "success",
+      "normalizedClass": "n/a",
+      "sawToolCallDelta": false,
+      "sawToolCallMarkerInContent": false,
+      "sawTextDelta": true,
+      "sawFinish": true,
+      "sawDone": true,
+      "parserErrors": 0,
+      "prematureTermination": false
+    }
+  ],
+  "summary": {
+    "byTarget": {
+      "upstream": {
+        "total": 0,
+        "successful": 0,
+        "failed": 0,
+        "successfulToolCalls": 0,
+        "rawToolCallsLeak": 0,
+        "prematureTermination": 0,
+        "parserErrors": 0,
+        "fallbackUsage": 0,
+        "byFailureLayer": {
+          "Provider": 0,
+          "Transport": 0,
+          "Parser": 0,
+          "Normalizer": 0,
+          "Client": 0,
+          "UI": 0
+        },
+        "byNormalizedClass": {
+          "correct": 0,
+          "bug": 0,
+          "mixed": 0,
+          "text_only": 0,
+          "none": 0,
+          "n_a": 0,
+          "upstream_emits_tool_calls": 0,
+          "upstream_emits_text_only": 0,
+          "upstream_no_delta": 0
+        }
+      },
+      "gateway": {
+        "total": 2,
+        "successful": 2,
+        "failed": 0,
+        "successfulToolCalls": 0,
+        "rawToolCallsLeak": 0,
+        "prematureTermination": 0,
+        "parserErrors": 0,
+        "fallbackUsage": 0,
+        "byFailureLayer": {
+          "Provider": 0,
+          "Transport": 0,
+          "Parser": 0,
+          "Normalizer": 0,
+          "Client": 0,
+          "UI": 0
+        },
+        "byNormalizedClass": {
+          "correct": 0,
+          "bug": 0,
+          "mixed": 0,
+          "text_only": 0,
+          "none": 0,
+          "n_a": 2,
+          "upstream_emits_tool_calls": 0,
+          "upstream_emits_text_only": 0,
+          "upstream_no_delta": 0
+        }
+      }
+    },
+    "rootCause": "no tool calls observed in the gateway stream — either the model chose not to call the tool, or no tool-bearing test ran",
+    "fix": "no fix needed for the normalizer path (no leak observed)",
+    "regressionStatus": "PASS"
+  }
+}

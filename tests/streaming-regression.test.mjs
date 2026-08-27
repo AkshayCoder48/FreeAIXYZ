@@ -56,7 +56,7 @@ export async function run() {
     stream: true,
   };
 
-  const { response, timings } = streamChat(req, fakeProvider);
+  const { response, timings } = await streamChat(req, fakeProvider);
   const t0 = timings.requestStart; // t=0 reference (Date.now() at call)
 
   assert.ok(response && response.body, "streamChat must return a Response with a body");
