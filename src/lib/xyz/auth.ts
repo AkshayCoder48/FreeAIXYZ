@@ -11,7 +11,7 @@
  * server-side and surfaced via `devCode` for testability only.
  */
 
-import { db } from "@/lib/db";
+import { db, ensureDbSchema } from "@/lib/db";
 import {
   hashWithSalt,
   numericCode,
@@ -52,13 +52,23 @@ export function normalizeEmail(email: string): string {
 // ─── User lookup / creation (PRD §83, §85, §87) ───────────────────────────────
 
 async function lookupUserByEmail(email: string): Promise<UserAccount | null> {
-  const row = await db.user.findUnique({ where: { email } });
-  return row ? toUserAccount(row) : null;
+  await ensureDbSchema();
+  try {
+    const row = await db.user.findUnique({ where: { email } });
+    return row ? toUserAccount(row) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function getUser(userId: string): Promise<UserAccount | null> {
-  const row = await db.user.findUnique({ where: { id: userId } });
-  return row ? toUserAccount(row) : null;
+  await ensureDbSchema();
+  try {
+    const row = await db.user.findUnique({ where: { id: userId } });
+    return row ? toUserAccount(row) : null;
+  } catch {
+    return null;
+  }
 }
 
 function toUserAccount(row: {
@@ -79,10 +89,18 @@ function toUserAccount(row: {
 }
 
 async function createUser(email: string): Promise<UserAccount> {
-  const row = await db.user.create({
-    data: { email, status: "active", lastLoginAt: new Date() },
-  });
-  return toUserAccount(row);
+  await ensureDbSchema();
+  try {
+    const row = await db.user.create({
+      data: { email, status: "active", lastLoginAt: new Date() },
+    });
+    return toUserAccount(row);
+  } catch (err) {
+    // Re-check lookup — maybe the user was created by a concurrent request.
+    const existing = await lookupUserByEmail(email);
+    if (existing) return existing;
+    throw err;
+  }
 }
 
 async function touchLogin(userId: string): Promise<void> {
@@ -151,10 +169,15 @@ export async function sendVerificationCode(
   // cooldown window, refuse — keeps the "code is invalid immediately" bug
   // (which was caused by overlapping codes / silent OnyxBase failures) out.
   const now = new Date();
-  const recent = await db.emailCode.findFirst({
-    where: { userId: user.id, consumed: false, createdAt: { gt: new Date(now.getTime() - CODE_RESEND_COOLDOWN_MS) } },
-    orderBy: { createdAt: "desc" },
-  });
+  let recent: Awaited<ReturnType<typeof db.emailCode.findFirst>> = null;
+  try {
+    recent = await db.emailCode.findFirst({
+      where: { userId: user.id, consumed: false, createdAt: { gt: new Date(now.getTime() - CODE_RESEND_COOLDOWN_MS) } },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch {
+    // Schema may not exist yet on cold start — proceed to create.
+  }
   if (recent) {
     return {
       ok: false,
@@ -163,25 +186,37 @@ export async function sendVerificationCode(
   }
 
   // Invalidate all prior unconsumed codes for this user — single active code.
-  await db.emailCode.updateMany({
-    where: { userId: user.id, consumed: false },
-    data: { consumed: true },
-  });
+  try {
+    await db.emailCode.updateMany({
+      where: { userId: user.id, consumed: false },
+      data: { consumed: true },
+    });
+  } catch {
+    // Schema may not exist yet on cold start — proceed to create.
+  }
 
   const code = numericCode();
   const salt = randomSalt();
   const codeHash = `${salt}:${await hashWithSalt(salt, code)}`;
-  await db.emailCode.create({
-    data: {
-      userId: user.id,
-      email,
-      codeHash,
-      attempts: 0,
-      consumed: false,
-      expiresAt: new Date(now.getTime() + CODE_TTL_MS), // SERVER-SIDE expiry (PRD §6)
-      ip,
-    },
-  });
+  try {
+    await db.emailCode.create({
+      data: {
+        userId: user.id,
+        email,
+        codeHash,
+        attempts: 0,
+        consumed: false,
+        expiresAt: new Date(now.getTime() + CODE_TTL_MS), // SERVER-SIDE expiry (PRD §6)
+        ip,
+      },
+    });
+  } catch (err) {
+    // Schema creation failed — surface the error to the caller.
+    return {
+      ok: false,
+      message: "Could not issue a verification code. Please try again.",
+    };
+  }
 
   await sendEmail(
     email,
