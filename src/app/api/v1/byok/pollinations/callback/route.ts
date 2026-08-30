@@ -50,6 +50,27 @@ const PROVIDERS_PAGE = "/providers";
 const PKCE_VERIFIER_COOKIE = "pollinations_pkce_verifier";
 const OAUTH_STATE_COOKIE = "pollinations_oauth_state";
 
+/**
+ * Build a 303-redirect Response that may ALSO carry Set-Cookie headers
+ * (to clear the PKCE + state cookies). We can't use Response.redirect()
+ * here because its Headers object is immutable, so .append("Set-Cookie", …)
+ * throws "TypeError: immutable" at runtime on Vercel. Instead we construct
+ * the Response manually with an array of [name, value] header pairs — the
+ * array form of HeadersInit creates multiple same-named headers (needed
+ * for multiple Set-Cookie values on a single response).
+ */
+function buildRedirect(
+  target: URL,
+  clearPkceCookies: boolean,
+): Response {
+  const headers: [string, string][] = [["Location", target.toString()]];
+  if (clearPkceCookies) {
+    headers.push(["Set-Cookie", `${PKCE_VERIFIER_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`]);
+    headers.push(["Set-Cookie", `${OAUTH_STATE_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`]);
+  }
+  return new Response(null, { status: 303, headers });
+}
+
 function redirectWithError(
   reason: string,
   fallbackOrigin = "http://localhost:3000",
@@ -59,23 +80,15 @@ function redirectWithError(
   target.searchParams.set("connect", "error");
   target.searchParams.set("provider", "pollinations");
   target.searchParams.set("reason", reason);
-  const res = Response.redirect(target, 303);
-  if (clearCookies) {
-    res.headers.append("Set-Cookie", `${PKCE_VERIFIER_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`);
-    res.headers.append("Set-Cookie", `${OAUTH_STATE_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`);
-  }
-  return res;
+  return buildRedirect(target, clearCookies);
 }
 
 function redirectWithSuccess(fallbackOrigin = "http://localhost:3000"): Response {
   const target = new URL(PROVIDERS_PAGE, fallbackOrigin);
   target.searchParams.set("connect", "ok");
   target.searchParams.set("provider", "pollinations");
-  const res = Response.redirect(target, 303);
   // Always clear PKCE cookies on success — they're single-use.
-  res.headers.append("Set-Cookie", `${PKCE_VERIFIER_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`);
-  res.headers.append("Set-Cookie", `${OAUTH_STATE_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`);
-  return res;
+  return buildRedirect(target, true);
 }
 
 /** Read a single cookie value out of the request's Cookie header. */
