@@ -155,7 +155,8 @@ export async function getUnifiedModels(
   return {
     models: [...native, ...g4f.models, ...gratisfy],
     providers: [...nativeProviders, ...g4f.providers, ...gratisfyProviders],
-    stale: false,
+    // Stale when G4F live discovery was blocked (seed fallback served).
+    stale: g4f.stale,
   };
 }
 
