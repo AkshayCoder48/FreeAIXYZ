@@ -470,6 +470,20 @@ export async function POST(request: Request) {
     const wantsStream = body.stream === true;
     const useTools = hasTools(body.tools);
 
+    // ─── BYOK SOURCE-AWARE PATH (PRD §17, §61) ──────────────────────────────
+    // Model ids of the form `gratisfy:<provider>:<model>` or `g4f:<provider>:
+    // <model>` are routed to the BYOK handler. The user's BYOK key is read
+    // from the X-Gratisfy-API-Key / X-G4F-API-Key header (priority) or the
+    // authenticated account's stored credential. NO provider fallback (a
+    // Gratisfy request stays on Gratisfy — PRD §17).
+    if (
+      typeof body.model === "string" &&
+      (body.model.startsWith("gratisfy:") || body.model.startsWith("g4f:"))
+    ) {
+      const { handleByokChatCompletion } = await import("@/lib/xyz/byok-route");
+      return handleByokChatCompletion(body, request);
+    }
+
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {
