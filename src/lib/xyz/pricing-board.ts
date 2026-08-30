@@ -75,8 +75,21 @@ const SUPPLIED_PRICING: Record<string, SuppliedPrice> = {
   "l7/minimax-m3": { in: 0.3, out: 1.2, cache: 0.06 },
   "l7/deepseek-v4-flash": { in: 0.14, out: 0.28 },
   "l7/glm-5.3-flash": { in: 0.0, out: 0.0 },
+  // ─── SpicyWriter (sw prefix per the gateway's PROVIDER_SHORT_IDS) ────────
+  // FIX (2026-08-30): the previous entries used `sw/Nemo` and `sw/Lunaris`.
+  // `sw` is the gateway's shortId for SpicyWriter (NOT Swarm — that's `sm`).
+  // The gateway's spicywriter adapter (src/lib/providers/spicywriter.ts)
+  // accepts two upstream model names: "Ling 2.6 Flash" and "Nemo". The
+  // `Lunaris` upstream belongs to AuroraAI (sao10k/l3-lunaris-8b) — it was
+  // an error. Replaced `sw/Lunaris` with `sw/Ling 2.6 Flash` (the gateway
+  // catalog's canonical id for the spicywriter Ling model — the gateway
+  // uses `<shortId>/<upstream>` so spaces in the upstream name are fine).
+  //
+  // NOTE: `sw/Ling 2.6 Flash` is on the gateway's DELISTED_MODELS list
+  // (upstream returns empty response) — but it still surfaces in the
+  // catalog (just with a degraded status). `sw/Nemo` is fully available.
   "sw/Nemo": { in: 0.0, out: 0.0 },
-  "sw/Lunaris": { in: 0.0, out: 0.0 },
+  "sw/Ling 2.6 Flash": { in: 0.0, out: 0.0 },
   "oc/mimo-v2.5-free": { in: 0.0, out: 0.0 },
   "oc/nemotron-3-ultra-free": { in: 0.5, out: 2.2, cache: 0.1 },
   "oc/laguna-s-2.1-free": { in: 0.0, out: 0.0 },

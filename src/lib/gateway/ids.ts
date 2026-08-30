@@ -29,7 +29,7 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   { id: "surfsense", shortId: "ss", name: "SurfSense", baseUrl: "https://api.surfsense.com" },
   { id: "jollygen", shortId: "jg", name: "JollyGen", baseUrl: "https://api.jollygenapi.space" },
   { id: "unlimitedai", shortId: "ua", name: "UnlimitedAI", baseUrl: "https://unlimitedai.chat" },
-  { id: "pollinations", shortId: "po", name: "Pollinations", baseUrl: "https://text.pollinations.ai" },
+  { id: "pollinations", shortId: "po", name: "Pollinations", baseUrl: "https://gen.pollinations.ai" },
   { id: "kilocode", shortId: "kc", name: "Kilo Code", baseUrl: "https://api.kilo.ai" },
   { id: "llm7", shortId: "l7", name: "LLM7", baseUrl: "https://api.llm7.io" },
   { id: "spicywriter", shortId: "sw", name: "SpicyWriter", baseUrl: "https://spicywriter.com" },

@@ -101,18 +101,28 @@ const NATIVE_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   ua: "UnlimitedAI",
   kc: "Kilo Code",
   l7: "LLM7",
-  sw: "Swarm",
+  // FIX (2026-08-30): the gateway's PROVIDER_SHORT_IDS in
+  // src/lib/gateway/ids.ts maps `sw` → SpicyWriter and `sm` → Swarm.
+  // The previous mapping here had `sw: "Swarm"` and `sm: "Miklium"` —
+  // both wrong. The catalog displayed SpicyWriter models under the
+  // "Swarm" provider name and the playground's NATIVE_NAMES lookup
+  // fell through to `provider.toUpperCase()` ("SWARM") because the long
+  // name didn't match any short-code key. Now `sw` correctly maps to
+  // "SpicyWriter" so the catalog's `native:sw:*` entries surface as
+  // SpicyWriter in both the catalog UI and the playground dropdown.
+  sw: "SpicyWriter",
+  sm: "Swarm",
   oc: "OpenCode",
   fc: "FreeChat",
-  sm: "Miklium",
+  mk: "Miklium",
   fx: "FreeAIXYZ",
   po: "Pollinations",
-  sp: "SpicyWriter",
   ve: "Vexa",
   vx: "Vexa",
   go: "GPT-OSS",
   gp: "FreeGPT",
   un: "UnlimitedAI",
+  f2: "Free2GPT",
 };
 
 /** Resolve the full display name for a native provider prefix. */
@@ -341,19 +351,38 @@ export async function getGratisfyModelsForUser(
  * (`gratisfy:<upstreamProvider>:<upstreamId>`) so a duplicate listing in the
  * upstream /v1/models payload can never produce duplicate React keys in the
  * playground dropdown. First occurrence wins.
+ *
+ * PROVIDER RESOLUTION (verified live 2026-08-30): the upstream payload now
+ * carries a dedicated `provider` field (always present, never "alias") which
+ * is the REAL routing slug (e.g. "unorouter", "crax-gpt", "gratisfy"). We
+ * read it from the rawMetadata here — it's far more reliable than slicing
+ * the upstreamId on "/" because:
+ *   (a) ~228 of 486 entries are bare aliases with no "/" in their id;
+ *       the previous slicing code fell back to "gratisfy" for all of them,
+ *       producing a fake "gratisfy" bucket full of GLM/Qwen/Llama models.
+ *   (b) The new normalizeRawModel in the adapter drops bare aliases
+ *       entirely, so this function only receives real `<provider>/<id>`
+ *       entries — but we still use the `provider` field for correctness.
+ *   (c) The platform key only surfaces 3 providers today ({gratisfy: 1,
+ *       unorouter: 456, crax-gpt: 29}); the user's BYOK key unlocks the
+ *       other ~34 providers documented in the original R1 research.
  */
 function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedModel[] {
   const now = new Date().toISOString();
   const seen = new Set<string>();
   const out: UnifiedModel[] = [];
   for (const m of discovered) {
-    // Extract the real upstream provider from the upstreamId (the segment
-    // before the first "/"). E.g. "google-ai-studio/gemini-2.5-flash" →
-    // provider="google-ai-studio", model="gemini-2.5-flash". This makes
-    // the catalog group Gratisfy models by their REAL provider.
+    // Read the dedicated `provider` field from rawMetadata; fall back to
+    // the upstreamId prefix (segment before "/") when the field is absent.
+    const raw = (m.rawMetadata ?? {}) as Record<string, unknown>;
+    const providerFromField =
+      typeof raw.provider === "string" && raw.provider.length > 0
+        ? raw.provider
+        : "";
     const slashIdx = m.upstreamId.indexOf("/");
     const upstreamProvider =
-      slashIdx > 0 ? m.upstreamId.slice(0, slashIdx) : "gratisfy";
+      providerFromField ||
+      (slashIdx > 0 ? m.upstreamId.slice(0, slashIdx) : "gratisfy");
     const publicId = `gratisfy:${upstreamProvider}:${m.upstreamId}`;
     if (seen.has(publicId)) continue; // drop upstream-listed duplicate
     seen.add(publicId);
@@ -418,27 +447,36 @@ export async function getPollinationsModelsForCatalog(): Promise<UnifiedModel[]>
 /** Build normalized UnifiedModel[] directly from discovered Pollinations
  *  models.
  *
- * DEDUP (parity with buildG4fModels + buildGratisfyModels): collapse by
- * the resulting publicId (`pollinations:<upstreamId>`) so a duplicate
- * listing in the upstream `/models` payload can never produce duplicate
- * React keys in the playground dropdown. First occurrence wins.
+ * PROVIDER RESOLUTION (new gen.pollinations.ai host, 2026-08-30): every
+ * model carries a `brand` field (e.g. "OpenAI", "Qwen", "Anthropic",
+ * "Google", "ElevenLabs", "Alibaba") — Pollinations already classifies
+ * by provider natively (the user's observation: "tons of models in
+ * gratisfy on basis of providers" — same is true on Pollinations).
+ *
+ * We use `brand` as the provider segment in the unified id
+ * (`pollinations:<brand>:<name>`) so the catalog groups Pollinations
+ * models by their real brand, not a flat "pollinations" bucket. When
+ * `brand` is absent, fall back to "pollinations".
+ *
+ * DEDUP: collapse by the resulting publicId so the upstream listing the
+ * same model twice (e.g. an "openai" canonical + a "gpt-5.4-nano" alias
+ * pointing at the same model) can never produce duplicate React keys in
+ * the playground dropdown. First occurrence wins.
  */
 function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): UnifiedModel[] {
   const now = new Date().toISOString();
   const seen = new Set<string>();
   const out: UnifiedModel[] = [];
   for (const m of discovered) {
-    // Pollinations' `/models` payload uses `name` as the unique id
-    // (e.g. "openai-fast"). The upstream provider is "pollinations"
-    // itself (Pollinations hosts these models on its own OVH infra).
-    const publicId = `pollinations:pollinations:${m.upstreamId}`;
+    const brand = m.brand && m.brand.length > 0 ? m.brand : "pollinations";
+    const publicId = `pollinations:${brand}:${m.upstreamId}`;
     if (seen.has(publicId)) continue; // drop upstream-listed duplicate
     seen.add(publicId);
     out.push({
       id: publicId,
       displayName: m.name || m.upstreamId,
       source: "pollinations" as Source,
-      provider: "pollinations",
+      provider: brand,
       originalModelId: m.upstreamId,
       capabilities: buildCapabilities(m.capabilities),
       streaming: true,

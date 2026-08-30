@@ -3,21 +3,29 @@
  *
  * A free, no-auth, OpenAI-compatible text generation API.
  *
- * Endpoint: POST https://text.pollinations.ai/v1/chat/completions
- * Models:   GET  https://text.pollinations.ai/models
+ * SWITCHED (2026-08-30) to the new gen.pollinations.ai host. The old
+ * text.pollinations.ai endpoint only returned the 1 anonymous-tier
+ * `openai-fast` model — the new host returns 320 models with rich
+ * metadata (brand, category, paid_only, pollen-token pricing). Verified
+ * live: POST https://gen.pollinations.ai/v1/chat/completions anonymous
+ * with `{"model":"openai","messages":[...]}` returns 200 + real reply
+ * + full usage + moderation content_filter_results.
+ *
+ * Endpoint: POST https://gen.pollinations.ai/v1/chat/completions
+ * Models:   GET  https://gen.pollinations.ai/models
  *
  * Returns standard OpenAI SSE chunks:
  *   data: {"choices":[{"delta":{"content":"token"}}]}
  *   data: [DONE]
  *
- * The `openai-fast` model (GPT-OSS 20B) is available anonymously with real
+ * The `openai` model (GPT-5.4 Nano) is available anonymously with real
  * token streaming and reasoning support. Rate-limited to ~1 concurrent
  * request per IP (queue), so the provider includes retry logic.
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
 
-const ENDPOINT = "https://text.pollinations.ai/v1/chat/completions";
+const ENDPOINT = "https://gen.pollinations.ai/v1/chat/completions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

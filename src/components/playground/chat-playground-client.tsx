@@ -250,8 +250,18 @@ function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Group models by (source, provider) preserving source order: native → gratisfy → g4f → pollinations. */
-function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provider: string; items: PlaygroundModel[] }> {
+/**
+ * Maximum items per provider group rendered in the chat playground's model
+ * dropdown. The unified catalog has 5000+ models (g4f alone has 5042) and
+ * Radix Select doesn't virtualize — rendering every SelectItem at once
+ * freezes the dropdown for tens of seconds. Capping each group to 30
+ * keeps the dropdown usable; the full catalog lives at /models (with
+ * pagination). Free models are prioritized so the user always sees the
+ * most useful subset.
+ */
+const MAX_ITEMS_PER_GROUP = 30;
+
+function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provider: string; items: PlaygroundModel[]; hidden: number }> {
   const order: Source[] = ["native", "gratisfy", "g4f", "pollinations"];
   const buckets = new Map<string, { source: Source; provider: string; items: PlaygroundModel[] }>();
   for (const m of models) {
@@ -263,7 +273,25 @@ function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provide
       buckets.set(key, { source: m.source, provider: m.provider, items: [m] });
     }
   }
-  return Array.from(buckets.values()).sort((a, b) => {
+  return Array.from(buckets.values()).map((b) => {
+    // Sort: free models first, then by displayName. Cap per group to keep
+    // the dropdown DOM manageable. Track how many were hidden so the UI
+    // can show "+N more in this provider — see /models".
+    const sorted = [...b.items].sort((a, b2) => {
+      const aFree = a.pricing?.status === "free" || a.pricing?.inputPerMillion === 0;
+      const bFree = b2.pricing?.status === "free" || b2.pricing?.inputPerMillion === 0;
+      if (aFree && !bFree) return -1;
+      if (!aFree && bFree) return 1;
+      return (a.displayName || a.id).localeCompare(b2.displayName || b2.id);
+    });
+    const visible = sorted.slice(0, MAX_ITEMS_PER_GROUP);
+    return {
+      source: b.source,
+      provider: b.provider,
+      items: visible,
+      hidden: Math.max(0, sorted.length - visible.length),
+    };
+  }).sort((a, b) => {
     const ai = order.indexOf(a.source);
     const bi = order.indexOf(b.source);
     if (ai !== bi) return ai - bi;
@@ -290,35 +318,25 @@ function byokProviderFor(modelId: string): "gratisfy" | "g4f" | null {
   return null;
 }
 
-/** Friendly provider name for a (source, provider) tuple. */
+/** Friendly provider name for a (source, provider) tuple.
+ *
+ * The unified registry's getNativeModels() (src/lib/xyz/registry.ts) sets
+ * `m.provider = nativeProviderDisplayName(providerSeg)` — so `provider`
+ * here is ALREADY the long display name (e.g. "SpicyWriter", "Toolbaz",
+ * "LLM7"). The previous implementation tried to look up the long name in
+ * a shortCode-keyed map (which never matched) and fell through to
+ * `provider.toUpperCase()` → "SPICYWRITER" (uppercase). Returning
+ * `provider` directly preserves the registry's mixed-case display name.
+ */
 function providerLabel(source: Source, provider: string): string {
   if (source === "native") {
-    // Map short ids to friendlier names (mirrors the gateway's PROVIDER_SHORT_IDS).
-    const NATIVE_NAMES: Record<string, string> = {
-      tb: "Toolbaz",
-      au: "Aurora AI",
-      ss: "SurfSense",
-      jg: "JollyGen",
-      ua: "UnlimitedAI",
-      po: "Pollinations",
-      kc: "Kilo Code",
-      l7: "LLM7",
-      sw: "SpicyWriter",
-      fg: "FreeGPT",
-      oc: "OpenCode",
-      fc: "FreeChat",
-      mk: "Miklium",
-      sm: "Swarm",
-      fx: "FreeAIXYZ",
-      go: "GPT-OSS",
-      vx: "Vexa",
-      un: "UncloseAI",
-      f2: "Free2GPT",
-    };
-    return NATIVE_NAMES[provider] ?? provider.toUpperCase();
+    return provider || "Native";
   }
   if (source === "gratisfy") return "Gratisfy";
   if (source === "g4f") return provider === "g4f" ? "G4F" : `G4F — ${provider}`;
+  if (source === "pollinations") {
+    return provider === "pollinations" ? "Pollinations" : `Pollinations — ${provider}`;
+  }
   return provider;
 }
 
@@ -869,6 +887,11 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                         <span className="text-foreground/80">
                           {providerLabel(group.source, group.provider)}
                         </span>
+                        {group.hidden > 0 && (
+                          <span className="ml-auto text-[10px] text-muted-foreground/70 not-italic">
+                            +{group.hidden} more
+                          </span>
+                        )}
                       </SelectLabel>
                       {group.items.map((m) => (
                         <SelectItem

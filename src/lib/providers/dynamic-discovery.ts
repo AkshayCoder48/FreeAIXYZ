@@ -233,16 +233,21 @@ async function fetchModelsList(
 // ─── Per-provider discoverers ────────────────────────────────────────────────
 
 /**
- * Pollinations — `https://text.pollinations.ai/models?json=true` (no auth).
- * Returns a bare array of `{name, ...}` items (NOT the OpenAI shape). The
- * legacy `/v1/models` URL is intercepted by the LLM and returns a chat
- * response instead, so we must hit `?json=true`.
+ * Pollinations — SWITCHED (2026-08-30) to the new gen.pollinations.ai host.
+ * The old `https://text.pollinations.ai/models?json=true` endpoint returned
+ * a 1-model anonymous list. The new `https://gen.pollinations.ai/models`
+ * endpoint is public (security:[] in the OpenAPI spec) and returns 320
+ * models with full pricing + brand + category + classification (verified
+ * live anonymous 200). Each entry carries a `name` (unique id), `title`,
+ * `description`, `brand` (OpenAI/Qwen/Anthropic/Google/…), `category`
+ * (text|image|audio|video|realtime|embedding|3d), `paid_only`, `pricing`
+ * (pollen currency).
  *
- * Some items are image models (id contains "flux"/"turbo"/"sdxl"/"image").
- * For those, set image:true, text:false, streaming:false.
+ * Some items are image/video/audio models (category !== "text"). For those,
+ * set image:true / audio:true / video:true and text:false, streaming:false.
  */
 async function discoverPollinations(): Promise<DiscoveredModel[]> {
-  const url = "https://text.pollinations.ai/models?json=true";
+  const url = "https://gen.pollinations.ai/models";
   try {
     const models = await fetchModelsList(url, "pollinations", undefined, "name");
     if (models.length === 0) {

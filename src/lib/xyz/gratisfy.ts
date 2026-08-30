@@ -194,16 +194,44 @@ export class UnknownError extends Error {
 // Discovery (PRD §17) — AUTH-GATED, requires the raw apiKey
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Raw shape of one entry in Gratisfy's /v1/models `data` array. */
+/** Raw shape of one entry in Gratisfy's /v1/models `data` array.
+ *
+ * Verified live against `?modality=all` (2026-08-30) — every entry carries
+ * these fields. Always-present: id, object:"model", created, owned_by,
+ * type (modality), pricing_tier, name, displayName, provider (the real
+ * routing slug — never "alias"), input_modalities[], free_tier{is_free,
+ * note}. Often-present: output_modalities[], features[], context_window,
+ * context (dup of context_window), supported_parameters[],
+ * max_output_tokens/maxOutput (camelCase dup).
+ *
+ * The bare-alias entries (228 of 486 in `?modality=all`) carry
+ * `owned_by === "alias"` and are byte-for-byte duplicates of their
+ * `<provider>/<id>` twin — they must be dropped here so the catalog
+ * doesn't render duplicate React keys (PRD §19 / playground dedup).
+ */
 interface GratisfyRawModel {
   id?: string;
   name?: string;
+  displayName?: string;
   description?: string;
   context_length?: number;
   max_context_length?: number;
+  context_window?: number;
+  context?: number;
   modality?: string;
+  type?: string; // modality: language|image|audio|embedding|video
   capabilities?: string[] | Record<string, boolean>;
+  features?: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
+  supported_parameters?: string[];
+  max_output_tokens?: number;
+  maxOutput?: number;
   pricing?: Record<string, string | number>;
+  pricing_tier?: string;
+  provider?: string; // the REAL upstream routing slug — never "alias"
+  owned_by?: string; // upstream owner; "alias" for bare-alias dupes
+  free_tier?: { is_free?: boolean; note?: string };
   metadata?: Record<string, unknown>;
   [k: string]: unknown;
 }
@@ -228,17 +256,27 @@ export async function discoverGratisfyModels(
 
   let res: Response;
   try {
-    // NOTE: the `?modality=language` filter was REMOVED per the user's
-    // "make all models show on catalog" directive. The filter was
-    // restricting discovery to only 26 of Gratisfy's ~378 published
-    // models (the rest are vision / image / audio / embedding modalities
-    // that the filter excluded). Now ALL Gratisfy models appear in the
-    // catalog so users can see the full breadth of what Gratisfy routes.
-    res = await fetch(`${GRATISFY_BASE_URL}/models`, {
+    // CRITICAL: `?modality=all` is REQUIRED to surface ALL of Gratisfy's
+    // 486 model entries (~258 distinct after dropping 228 bare-alias
+    // duplicates). Without it the upstream serves either 26 entries
+    // (Cloudflare cache hit on the platform-key catalog minimum) or 366
+    // entries (cache miss = language modality only) — both paths EXCLUDE
+    // image / audio / video / embedding models. Verified live 2026-08-30.
+    //
+    // Cache-bust headers + a `?_=<nonce>` query param are also required
+    // because Cloudflare otherwise serves a stale 26-30 entry
+    // "platform-key catalog minimum" snapshot even when ?modality=all is
+    // present (the edge cache keys on URL + Authorization header and
+    // doesn't know the modality query changes the response shape).
+    const nonce = Date.now().toString(36);
+    res = await fetch(`${GRATISFY_BASE_URL}/models?modality=all&_=${nonce}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${key}`,
         Accept: "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        "X-Request-Id": `freeaixyz-discovery-${nonce}`,
       },
       signal,
     });
@@ -285,38 +323,131 @@ export async function discoverGratisfyModels(
   return out;
 }
 
-/** Convert one raw upstream model into the normalized shape. */
+/** Convert one raw upstream model into the normalized shape.
+ *
+ * Drops bare-alias entries (owned_by === "alias") because they are
+ * byte-for-byte duplicates of their `<provider>/<id>` twin — same fields,
+ * only id + owned_by differ. Including them produces duplicate React keys
+ * in the playground dropdown (the upstream lists the same model twice).
+ * Verified live 2026-08-30: 228 of 486 entries in `?modality=all` are
+ * bare aliases; dropping them is the dedup the user asked for.
+ *
+ * Capabilities derive from `features` + `input_modalities` +
+ * `output_modalities` + `type` — the upstream no longer carries a
+ * standalone `capabilities` field (the previous implementation read a
+ * non-existent field and always defaulted to `["text"]`). Verified live:
+ * `features` carries tags like `["tool_calling","vision"]` and the
+ * modality arrays carry the input/output modality strings.
+ */
 function normalizeRawModel(m: GratisfyRawModel): DiscoveredGratisfyModel | null {
   const upstreamId = (m.id ?? "").trim();
   if (!upstreamId) return null;
-  const name = (m.name ?? lastSegment(upstreamId)).trim();
+
+  // Drop bare-alias duplicates — their `<provider>/<id>` twin is already
+  // in the list and will surface as a separate entry.
+  const ownedBy = typeof m.owned_by === "string" ? m.owned_by.toLowerCase() : "";
+  const isAlias = ownedBy === "alias";
+  // Only drop a bare alias when an equivalent `<provider>/<id>` form is
+  // also in the list. We approximate this by checking the id has no "/"
+  // (bare aliases never have a slash; the real entries always do).
+  if (isAlias && !upstreamId.includes("/")) {
+    return null;
+  }
+
+  const name = (m.name ?? m.displayName ?? lastSegment(upstreamId)).trim();
   return {
     upstreamId,
     name,
     description: typeof m.description === "string" ? m.description : undefined,
-    capabilities: capabilitiesToList(m.capabilities),
+    capabilities: capabilitiesToList(m),
     contextLength:
       typeof m.context_length === "number"
         ? m.context_length
-        : typeof m.max_context_length === "number"
-          ? m.max_context_length
+        : typeof m.context_window === "number"
+          ? m.context_window
+          : typeof m.context === "number"
+            ? m.context
+            : typeof m.max_context_length === "number"
+              ? m.max_context_length
+              : undefined,
+    modality:
+      typeof m.type === "string"
+        ? m.type
+        : typeof m.modality === "string"
+          ? m.modality
           : undefined,
-    modality: typeof m.modality === "string" ? m.modality : undefined,
     rawMetadata: m as unknown as Record<string, unknown>,
   };
 }
 
-function capabilitiesToList(
-  caps: GratisfyRawModel["capabilities"],
-): string[] {
-  if (!caps) return ["text"];
-  if (Array.isArray(caps)) return caps.map(String);
-  if (typeof caps === "object") {
-    return Object.entries(caps)
-      .filter(([, v]) => v === true)
-      .map(([k]) => k);
+/**
+ * Build a normalized capability list from the new upstream payload shape.
+ *
+ * The new shape carries:
+ *   - `features`        — array of capability tags (e.g. "tool_calling",
+ *                          "vision", "reasoning", "web_search")
+ *   - `input_modalities`  — array of strings like "text", "image", "audio"
+ *   - `output_modalities` — array of strings like "text", "image", "audio"
+ *   - `type`            — modality ("language" | "image" | "audio" |
+ *                          "embedding" | "video")
+ *
+ * We combine all of these into a flat list of capability strings used by
+ * the registry's buildCapabilities() to populate the UnifiedModel's
+ * capabilities field.
+ */
+function capabilitiesToList(m: GratisfyRawModel): string[] {
+  const caps = new Set<string>();
+  caps.add("text"); // every Gratisfy model supports text chat
+
+  // Features → direct capability tags.
+  if (Array.isArray(m.features)) {
+    for (const f of m.features) {
+      if (typeof f === "string") caps.add(f);
+    }
   }
-  return ["text"];
+
+  // Legacy capabilities field (some entries may still carry it).
+  if (Array.isArray(m.capabilities)) {
+    for (const c of m.capabilities) {
+      if (typeof c === "string") caps.add(c);
+    }
+  } else if (m.capabilities && typeof m.capabilities === "object") {
+    for (const [k, v] of Object.entries(m.capabilities)) {
+      if (v === true) caps.add(k);
+    }
+  }
+
+  // Input modalities → vision/audio capabilities.
+  if (Array.isArray(m.input_modalities)) {
+    for (const mod of m.input_modalities) {
+      if (typeof mod !== "string") continue;
+      const lower = mod.toLowerCase();
+      if (lower === "image") caps.add("vision");
+      else if (lower === "audio") caps.add("audio_input");
+      else if (lower === "video") caps.add("video_input");
+    }
+  }
+
+  // Output modalities → image/audio/video generation.
+  if (Array.isArray(m.output_modalities)) {
+    for (const mod of m.output_modalities) {
+      if (typeof mod !== "string") continue;
+      const lower = mod.toLowerCase();
+      if (lower === "image") caps.add("image");
+      else if (lower === "audio") caps.add("audio");
+      else if (lower === "video") caps.add("video");
+    }
+  }
+
+  // Modality (type field) → capability flag.
+  if (typeof m.type === "string") {
+    const t = m.type.toLowerCase();
+    if (t === "image") caps.add("image");
+    else if (t === "audio") caps.add("audio");
+    else if (t === "video") caps.add("video");
+  }
+
+  return Array.from(caps);
 }
 
 function lastSegment(id: string): string {
