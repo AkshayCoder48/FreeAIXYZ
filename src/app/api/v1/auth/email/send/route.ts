@@ -24,12 +24,11 @@ export async function POST(request: Request) {
     const result = await sendVerificationCode(email, clientIp(request));
     return Response.json(result, { status: result.ok ? 200 : 400 });
   } catch (err) {
-    // Surface the actual error message so debugging is possible. Mask nothing
-    // sensitive (we never log secrets — only the error class + message).
-    const message = err instanceof Error ? err.message : "Invalid request.";
-    console.error("[auth/email/send] error:", message, err);
+    // Log the actual error for diagnostics; return a generic message to the
+    // client (no internal details leaked).
+    console.error("[auth/email/send] error:", err);
     return Response.json(
-      { ok: false, message: `Server error: ${message.slice(0, 200)}` },
+      { ok: false, message: "Could not send verification code. Please try again." },
       { status: 500 },
     );
   }
