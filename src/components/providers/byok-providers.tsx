@@ -163,6 +163,7 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   // Sync local state when the parent refetches meta (e.g. after refresh).
   useEffect(() => {
@@ -260,6 +261,71 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
     }
   }
 
+  /**
+   * PKCE OAuth connect flow for the "Connect wallet" button (Pollinations
+   * only). Generates a code_verifier + code_challenge (S256) pair in the
+   * browser, persists them in two SameSite=Lax cookies so the
+   * /api/v1/byok/pollinations/callback handler can replay the verifier
+   * against the token endpoint, then navigates (same tab — top-level
+   * navigation, so the cookies ride along on the redirect back from
+   * enter.pollinations.ai) to the authorize URL with code_challenge +
+   * code_challenge_method=S256.
+   *
+   * Why same-tab instead of target=_blank: an async handler (await
+   * crypto.subtle.digest) before window.open risks popup-blocker false
+   * positives, and the OAuth round-trip is cleaner in a single tab.
+   */
+  async function handlePollinationsConnect() {
+    if (typeof window === "undefined") return;
+    const appKey = process.env.NEXT_PUBLIC_POLLINATIONS_APP_KEY;
+    if (!appKey) {
+      toast.error("Pollinations app key not configured");
+      return;
+    }
+    setConnecting(true);
+    try {
+      const origin = window.location.origin.replace(/\/$/, "");
+      const redirectUri = `${origin}/api/v1/byok/pollinations/callback`;
+
+      // PKCE pair — S256 method (base64url(SHA-256(verifier))).
+      const verifierBytes = new Uint8Array(32);
+      window.crypto.getRandomValues(verifierBytes);
+      const codeVerifier = base64UrlEncode(verifierBytes);
+      const hashBuf = await window.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(codeVerifier),
+      );
+      const codeChallenge = base64UrlEncode(new Uint8Array(hashBuf));
+
+      // CSRF state — 16 random bytes hex.
+      const stateBytes = new Uint8Array(16);
+      window.crypto.getRandomValues(stateBytes);
+      const state = Array.from(stateBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+      // Persist verifier + state in cookies (SameSite=Lax → sent on the
+      // top-level redirect back from enter.pollinations.ai). Max-Age=600s
+      // is plenty for a sign-in round-trip.
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `pollinations_pkce_verifier=${codeVerifier}; Path=/; SameSite=Lax${secure}; Max-Age=600`;
+      document.cookie = `pollinations_oauth_state=${state}; Path=/; SameSite=Lax${secure}; Max-Age=600`;
+
+      const params = new URLSearchParams({
+        client_id: appKey,
+        response_type: "code",
+        redirect_uri: redirectUri,
+        state,
+        scope: "openid profile",
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
+      });
+      window.location.href = `https://enter.pollinations.ai/authorize?${params.toString()}`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Could not start Pollinations connect: ${msg}`);
+      setConnecting(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -287,29 +353,29 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
             <span className="font-mono text-foreground">{masked}</span>
           </div>
         )}
-        {/* "Connect wallet" button — only for Pollinations. Opens the OAuth
-            authorize URL in a new tab so the user can sign in with their
-            Pollinations account and we get a Bearer token back via the
-            /api/v1/byok/pollinations/callback redirect. The publishable
-            app key is exposed to the browser via NEXT_PUBLIC_POLLINATIONS_APP_KEY. */}
+        {/* "Connect wallet" button — only for Pollinations. Generates a PKCE
+            (S256) pair, stores the code_verifier + state in two SameSite=Lax
+            cookies so the /api/v1/byok/pollinations/callback handler can
+            replay the verifier against the token endpoint, then navigates
+            to enter.pollinations.ai/authorize. The publishable app key is
+            exposed to the browser via NEXT_PUBLIC_POLLINATIONS_APP_KEY.
+            PKCE is MANDATORY since 2026-08-30 — the authorize server returns
+            "PKCE code_challenge is required for the authorization code flow"
+            without it. */}
         {source === "pollinations" &&
-          (() => {
-            const href = pollinationsConnectHref();
-            if (!href) return null;
-            return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="self-start"
-              >
-                <Button type="button" size="sm" variant="outline">
-                  <Wallet className="h-4 w-4" />
-                  Connect wallet
-                </Button>
-              </a>
-            );
-          })()}
+          process.env.NEXT_PUBLIC_POLLINATIONS_APP_KEY && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void handlePollinationsConnect()}
+              disabled={connecting}
+              className="self-start"
+            >
+              <Wallet className="h-4 w-4" />
+              {connecting ? "Connecting…" : "Connect wallet"}
+            </Button>
+          )}
         <form onSubmit={handleSave} className="flex flex-col gap-2">
           <Label htmlFor={`byok-${source}-key`} className="text-xs">
             {label} API key
@@ -355,37 +421,16 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
 }
 
 /**
- * Build the OAuth authorize URL for the "Connect wallet" button on the
- * Pollinations BYOK card. Returns null if POLLINATIONS_APP_KEY is not
- * configured (in that case the button is hidden).
- *
- * The button opens the URL in a new tab; Pollinations redirects back to
- * /api/v1/byok/pollinations/callback which exchanges the code for a
- * token, persists it to OnyxBase, and bounces back to /providers with a
- * ?connect=ok|error query that ByokProviders surfaces as a toast.
+ * Base64url encoder (RFC 4648 §5) — used for PKCE code_verifier and
+ * code_challenge per RFC 7636. Trims `=` padding, swaps `+`→`-` and
+ * `/`→`_` so the output is URL-safe without further encoding.
  */
-function pollinationsConnectHref(): string | null {
-  const appKey = process.env.NEXT_PUBLIC_POLLINATIONS_APP_KEY;
-  if (!appKey) return null;
-  if (typeof window === "undefined") {
-    // Server render — we'll still produce a URL so the link is in the DOM;
-    // the actual origin will be filled in by the client after hydration.
-    // (We re-render this on the client because ByokProviders is gated
-    // behind sign-in, which is a client-only state.)
-    return `https://enter.pollinations.ai/authorize?client_id=${encodeURIComponent(appKey)}&response_type=code&redirect_uri=https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/callback&scope=openid+profile`;
-  }
-  const origin = window.location.origin.replace(/\/$/, "");
-  const redirectUri = `${origin}/api/v1/byok/pollinations/callback`;
-  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const params = new URLSearchParams({
-    client_id: appKey,
-    response_type: "code",
-    redirect_uri: redirectUri,
-    state,
-    scope: "openid profile",
-  });
-  return `https://enter.pollinations.ai/authorize?${params.toString()}`;
+function base64UrlEncode(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+
 
 export function ByokProviders() {
   const { user, loading: authLoading } = useAuth();

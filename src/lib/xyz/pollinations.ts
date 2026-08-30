@@ -107,20 +107,36 @@ export function getPollinationsAppKey(): string {
  * Build the OAuth authorize URL for the "Connect your Pollinations Wallet"
  * button. The user is sent to enter.pollinations.ai/authorize with our app
  * key as client_id and our /api/v1/byok/pollinations/callback as the
- * redirect_uri. The state is a random hex string that we re-check in the
- * callback (basic CSRF guard; PKCE would be even better but Pollinations'
- * PKCE support is undocumented).
+ * redirect_uri.
  *
- * The function is callable from both server and client (it only reads the
- * publishable env var, never the secret). On the server, the absolute
- * origin is computed from the request Host header; on the client, we fall
- * back to window.location.origin.
+ * PKCE (Proof Key for Code Exchange, RFC 7636) is MANDATORY as of 2026-08-30:
+ * the Pollinations authorization server returns
+ *   "PKCE code_challenge is required for the authorization code flow"
+ * if the authorize request omits code_challenge. We use the S256 method:
+ *   code_verifier   = base64url(random(32 bytes))                      (~43 chars)
+ *   code_challenge  = base64url(SHA-256(code_verifier))
+ *   code_challenge_method = "S256"
+ *
+ * The caller MUST persist `codeVerifier` (and `state`) in a same-origin
+ * cookie so the /api/v1/byok/pollinations/callback handler can replay the
+ * verifier against the token endpoint. SameSite=Lax is required so the
+ * cookie is sent on the top-level redirect back from enter.pollinations.ai.
+ *
+ * This function is callable from both server and client (it only reads the
+ * publishable env var, never the secret). `codeChallenge` is passed in by
+ * the caller because computing SHA-256 is async (crypto.subtle.digest) and
+ * the caller chooses where to compute it.
  */
 export function buildPollinationsAuthorizeUrl(opts: {
   /** Absolute origin for the callback redirect, e.g. https://freeaixyz4all.vercel.app */
   origin: string;
-  /** Optional opaque state — defaults to a fresh 16-byte hex string. */
+  /** Optional opaque state — defaults to a fresh hex string. */
   state?: string;
+  /** PKCE code_challenge (base64url(SHA-256(code_verifier))). REQUIRED — the
+   *  Pollinations authorize endpoint rejects requests without it. */
+  codeChallenge: string;
+  /** Always "S256" — exposed for completeness. */
+  codeChallengeMethod?: "S256";
 }): { url: string; state: string } | null {
   const appKey = getPollinationsAppKey();
   if (!appKey) return null;
@@ -135,15 +151,66 @@ export function buildPollinationsAuthorizeUrl(opts: {
     redirect_uri: redirectUri,
     state,
     scope: "openid profile",
+    code_challenge: opts.codeChallenge,
+    code_challenge_method: opts.codeChallengeMethod ?? "S256",
   });
   return { url: `${AUTHORIZE_URL}?${params.toString()}`, state };
+}
+
+/**
+ * Generate a PKCE pair (S256) for the Pollinations OAuth flow.
+ *   code_verifier  = base64url(32 random bytes)  → 43 chars, [A-Za-z0-9-_]
+ *   code_challenge = base64url(SHA-256(verifier))
+ *
+ * Async because SHA-256 uses crypto.subtle.digest. Falls back to a
+ * synchronous plain-method challenge only if crypto.subtle is unavailable
+ * (very old runtimes); in that case the challenge equals the verifier and
+ * the caller must send code_challenge_method=plain instead.
+ */
+export async function generatePollinationsPkcePair(): Promise<{
+  verifier: string;
+  challenge: string;
+  method: "S256" | "plain";
+}> {
+  const bytes = new Uint8Array(32);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  const verifier = base64UrlEncode(bytes);
+  // crypto.subtle is available in all modern browsers (https/localhost) and
+  // in Node 18+ (Web Crypto API). Compute S256 challenge.
+  if (typeof globalThis.crypto?.subtle?.digest === "function") {
+    const hashBuf = await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(verifier),
+    );
+    return {
+      verifier,
+      challenge: base64UrlEncode(new Uint8Array(hashBuf)),
+      method: "S256" as const,
+    };
+  }
+  // Fallback (shouldn't happen on Vercel/modern browsers): plain method.
+  return { verifier, challenge: verifier, method: "plain" as const };
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const b64 = typeof btoa === "function" ? btoa(bin) : Buffer.from(bytes).toString("base64");
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /**
  * Exchange an OAuth authorization code for a Pollinations Bearer token.
  * POSTs to https://enter.pollinations.ai/api/token with the standard
  * OAuth2 `authorization_code` grant shape:
- *   { grant_type: "authorization_code", code, redirect_uri, client_id }
+ *   { grant_type: "authorization_code", code, redirect_uri, client_id,
+ *     code_verifier }   ← code_verifier is REQUIRED when the authorize
+ *   request used PKCE (which we always do now — see
+ *   buildPollinationsAuthorizeUrl).
  *
  * Returns the token string on success, throws on failure. The caller
  * (the callback route handler) is responsible for persisting the token
@@ -158,6 +225,10 @@ export async function exchangePollinationsCodeForToken(opts: {
   code: string;
   /** Must match the redirect_uri passed to buildPollinationsAuthorizeUrl. */
   redirectUri: string;
+  /** PKCE code_verifier — REQUIRED (we always send code_challenge in the
+   *  authorize request). The token endpoint re-hashes this and compares
+   *  to the code_challenge we sent. */
+  codeVerifier: string;
 }): Promise<string> {
   const appKey = getPollinationsAppKey();
   if (!appKey) {
@@ -171,6 +242,7 @@ export async function exchangePollinationsCodeForToken(opts: {
       code: opts.code,
       redirect_uri: opts.redirectUri,
       client_id: appKey,
+      code_verifier: opts.codeVerifier,
     });
     const res = await fetch(TOKEN_URL, {
       method: "POST",
