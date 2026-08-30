@@ -23,10 +23,14 @@ export async function POST(request: Request) {
     }
     const result = await sendVerificationCode(email, clientIp(request));
     return Response.json(result, { status: result.ok ? 200 : 400 });
-  } catch {
+  } catch (err) {
+    // Surface the actual error message so debugging is possible. Mask nothing
+    // sensitive (we never log secrets — only the error class + message).
+    const message = err instanceof Error ? err.message : "Invalid request.";
+    console.error("[auth/email/send] error:", message, err);
     return Response.json(
-      { ok: false, message: "Invalid request." },
-      { status: 400 },
+      { ok: false, message: `Server error: ${message.slice(0, 200)}` },
+      { status: 500 },
     );
   }
 }
