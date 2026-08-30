@@ -484,6 +484,28 @@ export async function POST(request: Request) {
       return handleByokChatCompletion(body, request);
     }
 
+    // ─── POLLINATIONS SOURCE-AWARE TRANSLATION ───────────────────────────────
+    // The unified registry emits Pollinations model ids as
+    // `pollinations:pollinations:<name>` (the source-prefixed form used by
+    // the catalog + playground dropdown). The gateway's native Pollinations
+    // adapter (registered in src/providers/pollinations/ + the legacy
+    // adapter shim in src/lib/gateway/adapters/legacy.ts) consumes the
+    // canonical short-id form `po/<name>` — so translate here and let the
+    // canonical-path resolver + legacy fallback take over. NO BYOK key is
+    // required for Pollinations anonymous-tier chat (the gateway adapter
+    // calls text.pollinations.ai directly with no Authorization header).
+    if (typeof body.model === "string" && body.model.startsWith("pollinations:")) {
+      const parts = body.model.split(":");
+      // pollinations:<provider>:<model...> → po/<model...>
+      // (provider segment is dropped — the gateway only cares about the
+      // upstream model name; "pollinations" is the only Pollinations
+      // provider today anyway.)
+      if (parts.length >= 3) {
+        const modelRest = parts.slice(2).join(":");
+        body.model = `po/${modelRest}`;
+      }
+    }
+
     // ─── SOURCE-AWARE NATIVE ID TRANSLATION ────────────────────────────────────
     // The catalog uses source-aware ids like `native:tb:gpt-5`. The legacy
     // gateway expects `<provider>/<model>` (e.g. `tb/gpt-5`). Translate.

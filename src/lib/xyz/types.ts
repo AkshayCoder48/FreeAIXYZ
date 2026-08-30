@@ -12,7 +12,7 @@
  *   g4f:<provider>:<model>
  */
 
-export type Source = "native" | "gratisfy" | "g4f";
+export type Source = "native" | "gratisfy" | "g4f" | "pollinations";
 
 /** Pricing status — never confuse "$0" with "not documented" (PRD §26). */
 export type PricingStatus =

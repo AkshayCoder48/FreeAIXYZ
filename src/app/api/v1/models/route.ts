@@ -1,9 +1,15 @@
 /**
  * GET /api/v1/models — OpenAI-compatible model listing (PRD §49, §54, §166, R-6, R-9).
  *
- * Now served dynamically from the gateway catalog instead of the hard-coded
- * MODELS[] array. Lists every DiscoveredModel that has a registered adapter
- * and is not in "offline" status.
+ * Lists every DiscoveredModel that has a registered adapter and is not in
+ * "offline" status, MERGED with the unified BYOK catalog (native +
+ * gratisfy + g4f + pollinations sources — fetched fresh from upstream on
+ * every call per the user's "remove caching of catalog" directive). This
+ * means a single GET /api/v1/models now returns the full set of models
+ * the playground's dropdown offers — including Gratisfy's 168+
+ * BYOK-gated models, G4F's 5000+ community models, and the Pollinations
+ * anonymous-tier model. OpenAI-API consumers see the same catalog the
+ * website renders.
  *
  * Query params:
  *   - ?health=true   — include capabilities + status + contextWindow +
@@ -13,7 +19,9 @@
  * Backward-compat: legacy clients that request an old-style id like
  * `fgpt-gpt-5-5` won't find it here (the chat route handles resolution
  * via the legacy fallback). The /v1/models listing now exposes the
- * canonical `<shortId>/<upstreamId>` ids (PRD §166).
+ * canonical `<shortId>/<upstreamId>` ids (PRD §166) AND the unified
+ * source-prefixed ids (`gratisfy:<provider>:<model>`,
+ * `g4f:<provider>:<model>`, `pollinations:pollinations:<model>`).
  *
  * R-3: delisted providers (currently FreeGPT — confirmed dead upstream)
  * are filtered out of the default listing. They reappear with ?all=true.
@@ -28,6 +36,7 @@ import {
 import { isDelistedModel } from "@/lib/gateway/delisted";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
+import { getUnifiedModels, getSessionUserId } from "@/lib/xyz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,58 +118,93 @@ export async function GET(request: Request) {
   }
   const showAll = url.searchParams.get("all") === "true";
   const showHealth = url.searchParams.get("health") === "true";
+  // Optional ?unified=true — when set, ONLY the unified-registry models
+  // are returned (no gateway legacy catalog). Defaults to false so the
+  // endpoint returns the merged set, which is what the user wants: "make
+  // all models show on catalog" + "fix app v1/models not showing gratisfy
+  // g4f and pollinations models".
+  const unifiedOnly = url.searchParams.get("unified") === "true";
 
-  let models: DiscoveredModel[];
+  let gatewayModels: DiscoveredModel[];
   try {
     const catalog = catalogStore.getCatalog();
-    models = catalog.models.filter((m) => shouldInclude(m, showAll));
+    gatewayModels = catalog.models.filter((m) => shouldInclude(m, showAll));
   } catch (err) {
     console.error("[/v1/models] catalog read failed:", err);
-    // Best-effort empty listing rather than a 500 — clients can retry.
-    models = [];
+    gatewayModels = [];
   }
 
   // Only list models whose provider has a registered adapter.
-  const visible = models.filter((m) => providerRegistry.get(m.providerId));
+  const visible = unifiedOnly ? [] : gatewayModels.filter((m) => providerRegistry.get(m.providerId));
+
+  // Fetch the unified-registry catalog (native + g4f + gratisfy + pollinations)
+  // fresh from upstream on every call. No caching (per user request). If the
+  // fetch fails (network/upstream down), we serve whatever we got — never
+  // crash the listing. The session is OPTIONAL — anonymous users still see
+  // the catalog (the default-key Gratisfy discovery + anonymous Pollinations
+  // + native pricing-board models + G4F public discovery all work without
+  // a session).
+  const userId = await getSessionUserId(request).catch(() => null);
+  const unified = await getUnifiedModels(userId ?? undefined).catch(() => ({
+    models: [],
+    providers: [],
+    stale: false,
+  }));
+  const unifiedEntries = unified.models.map((m) => ({
+    id: m.id,
+    object: "model" as const,
+    created: CREATED_EPOCH,
+    owned_by: m.provider,
+    // Light-weight extensions so OpenAI-API consumers can still see the
+    // source / pricing / capabilities without needing /api/v1/models/unified.
+    source: m.source,
+    provider: m.provider,
+    display_name: m.displayName,
+    pricing: m.pricing,
+    capabilities: m.capabilities,
+  }));
 
   const payload: OAIModelList = {
     object: "list",
-    data: visible.map((m) => {
-      const base = {
-        id: m.id,
-        object: "model" as const,
-        created: CREATED_EPOCH,
-        owned_by: ownedBy(m),
-      };
-      if (!showHealth) return base;
-      // ?health=true → include capabilities + status + context window +
-      // last_checked + requires_auth (R-6, R-9).
-      const entry: Record<string, unknown> = { ...base };
-      entry.capabilities = m.capabilities;
-      // R-6: surface the PRD-facing healthy|degraded|down status.
-      entry.status = healthStatus(m);
-      entry.internal_status = m.status;
-      entry.context_window = m.metadata?.contextWindow ?? null;
-      // R-6: last_checked — fall back to discoveredAt when no probe yet.
-      entry.last_checked = m.lastVerifiedAt ?? m.discoveredAt;
-      entry.discovery_mode = m.discoveryMode;
-      entry.discovered_from = m.discoveredFrom ?? null;
-      entry.discovered_at = m.discoveredAt;
-      // PRD §42 — expose the free classification so clients can verify.
-      entry.free = m.free !== false;
-      entry.free_confidence = m.freeConfidence ?? "unknown";
-      entry.free_reason = m.freeReason ?? null;
-      // R-9: requires_auth flag for auth-gated models.
-      entry.requires_auth = requiresAuth(m);
-      const healthEntry = catalogStore.getModelHealth(m.id);
-      if (healthEntry) entry.health = healthEntry;
-      return entry as unknown as {
-        id: string;
-        object: "model";
-        created: number;
-        owned_by: string;
-      };
-    }),
+    data: [
+      ...visible.map((m) => {
+        const base = {
+          id: m.id,
+          object: "model" as const,
+          created: CREATED_EPOCH,
+          owned_by: ownedBy(m),
+        };
+        if (!showHealth) return base;
+        // ?health=true → include capabilities + status + context window +
+        // last_checked + requires_auth (R-6, R-9).
+        const entry: Record<string, unknown> = { ...base };
+        entry.capabilities = m.capabilities;
+        // R-6: surface the PRD-facing healthy|degraded|down status.
+        entry.status = healthStatus(m);
+        entry.internal_status = m.status;
+        entry.context_window = m.metadata?.contextWindow ?? null;
+        // R-6: last_checked — fall back to discoveredAt when no probe yet.
+        entry.last_checked = m.lastVerifiedAt ?? m.discoveredAt;
+        entry.discovery_mode = m.discoveryMode;
+        entry.discovered_from = m.discoveredFrom ?? null;
+        entry.discovered_at = m.discoveredAt;
+        // PRD §42 — expose the free classification so clients can verify.
+        entry.free = m.free !== false;
+        entry.free_confidence = m.freeConfidence ?? "unknown";
+        entry.free_reason = m.freeReason ?? null;
+        // R-9: requires_auth flag for auth-gated models.
+        entry.requires_auth = requiresAuth(m);
+        const healthEntry = catalogStore.getModelHealth(m.id);
+        if (healthEntry) entry.health = healthEntry;
+        return entry as unknown as {
+          id: string;
+          object: "model";
+          created: number;
+          owned_by: string;
+        };
+      }),
+      ...unifiedEntries,
+    ],
   };
   return NextResponse.json(payload);
 }

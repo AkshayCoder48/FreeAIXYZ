@@ -280,3 +280,59 @@ export async function discoverPollinationsModels(
     clearTimeout(timer);
   }
 }
+
+/**
+ * Resolve pricing for a discovered Pollinations model.
+ *
+ * The Pollinations `/models` payload does NOT carry explicit per-million
+ * pricing fields. However, every model carries a `tier` field whose value
+ * is one of `anonymous` / `seed` / `flavor` / `nova` (per the
+ * `text.pollinations.ai/models` response we verified on 2026-08-30):
+ *
+ *   - `tier: "anonymous"` → free anonymous usage, no token required. The
+ *     catalog surfaces these as `status: "free"` with $0 in + $0 out so
+ *     the green "free" badge lights up and the playground's `isFree`
+ *     check passes.
+ *   - `tier: "seed"` / `tier: "flavor"` / `tier: "nova"` → paid Pollinations
+ *     Seed tier. We surface these as `status: "not_documented"` (catalog
+ *     shows "—") rather than fabricating a price — Pollinations does not
+ *     publish a per-million USD rate, and the previous "fake pricing"
+ *     bug taught us not to invent numbers.
+ *
+ * Values are USD per 1M tokens. null means "we could not establish a
+ * price" (PRD §26 — never confuse $0 with "not documented").
+ */
+export function resolvePollinationsPricing(model: DiscoveredPollinationsModel): {
+  inputPerMillion: number | null;
+  outputPerMillion: number | null;
+  cachePerMillion?: number | null;
+  currency: "USD";
+  status: "documented" | "supplied" | "estimated" | "free" | "not_documented";
+  source: "provider" | "pricing-board" | "manual" | "unknown";
+  verifiedAt?: string;
+} {
+  const raw = model.rawMetadata as Record<string, unknown> | undefined;
+  const tier = typeof raw?.tier === "string" ? (raw.tier as string).toLowerCase() : "";
+  if (tier === "anonymous" || tier === "free" || tier === "seed") {
+    // The Pollinations free tier is genuinely free (no per-token cost);
+    // seed tier also doesn't bill per-token (it's a subscription). Mark
+    // both as `status: "free"` so the catalog shows $0 + the green badge.
+    return {
+      inputPerMillion: 0,
+      outputPerMillion: 0,
+      cachePerMillion: 0,
+      currency: "USD",
+      status: "free",
+      source: "provider",
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+  return {
+    inputPerMillion: null,
+    outputPerMillion: null,
+    cachePerMillion: null,
+    currency: "USD",
+    status: "not_documented",
+    source: "unknown",
+  };
+}

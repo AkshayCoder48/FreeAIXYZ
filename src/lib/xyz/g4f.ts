@@ -585,18 +585,34 @@ export function resolveG4fPricing(model: DiscoveredG4fModel): {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  source: "provider" | "market" | "undocumented";
+  currency: "USD";
+  status: "documented" | "supplied" | "estimated" | "free" | "not_documented";
+  source: "provider" | "pricing-board" | "manual" | "unknown";
+  verifiedAt?: string;
 } {
-  // G4F documents no per-model pricing — return nulls + undocumented.
+  // G4F is a free community aggregator — every model on g4f.space is
+  // surfaced without a per-token price because G4F does not charge users.
+  // The earlier version of this resolver returned nulls + "undocumented"
+  // and OMITTED the `status` / `currency` fields the ModelPricing type
+  // requires, which is why selecting any G4F model in the chat playground
+  // crashed with `TypeError: Cannot read properties of undefined
+  // (reading 'replace')` at the `<PricingCell value={pricing.status.replace}>`
+  // line — `pricing.status` was `undefined`. The full-shape return here
+  // (with `status: "free"`, `currency: "USD"`, `source: "provider"`) means
+  // the catalog now honestly marks every G4F model as free ($0 in + $0 out)
+  // AND the playground's `isFree` check lights up the green "free" badge.
   // (Previously this method also consulted the supplied pricing board by
   // trailing-segment match; that path produced fake prices on G4F models
   // and was removed per the user's "remove fake pricing" directive.)
   void model; // reserved for future use if G4F ever exposes pricing metadata
   return {
-    inputPerMillion: null,
-    outputPerMillion: null,
-    cachePerMillion: null,
-    source: "undocumented",
+    inputPerMillion: 0,
+    outputPerMillion: 0,
+    cachePerMillion: 0,
+    currency: "USD",
+    status: "free",
+    source: "provider",
+    verifiedAt: new Date().toISOString(),
   };
 }
 

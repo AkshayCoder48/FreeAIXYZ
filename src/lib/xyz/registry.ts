@@ -2,18 +2,22 @@
  * Unified model + provider registry.
  *
  * Three sources merged into one normalized view:
- *   - native:   derived from the central pricing board (in-memory, no fetch).
- *   - g4f:      live discovery from g4f.space/backend-api/v2/* (PUBLIC).
- *   - gratisfy: live discovery from api.gratisfy.xyz/v1/models (AUTH-gated,
- *               per-user BYOK key; default key for catalog when no user key).
+ *   - native:     derived from the central pricing board (in-memory, no fetch).
+ *   - g4f:         live discovery from g4f.space/backend-api/v2/* (PUBLIC).
+ *   - gratisfy:    live discovery from api.gratisfy.xyz/v1/models (AUTH-gated,
+ *                  per-user BYOK key; default key for catalog when no user key).
+ *   - pollinations: live discovery from text.pollinations.ai/models (PUBLIC,
+ *                  anonymous — no key required; only the anonymous-tier model
+ *                  list is returned, currently just `openai-fast`).
  *
- * NO PRISMA PERSISTENCE (per user request — "load on every app open"):
- *   Discovery results are NOT written to or read from a database. Each
- *   `getUnifiedModels` call fetches fresh from upstream and returns the
- *   normalized list directly. A short 30-second in-memory cache prevents
- *   hammering upstream within a single burst of requests; on Vercel
- *   serverless this cache is per-instance and ephemeral anyway, so the
- *   effective behaviour is "fresh on every app open".
+ * NO PRISMA PERSISTENCE + NO IN-MEMORY CACHING (per user request — "remove
+ * caching of catalog make it fetch all time on all app open"):
+ *   Discovery results are NOT written to or read from a database OR a
+ *   cache. Each `getUnifiedModels` call fetches fresh from upstream and
+ *   returns the normalized list directly. `CACHE_TTL_MS = 0` means the
+ *   cache-check is always falsy, so every call hits the live upstream.
+ *   On Vercel serverless this is moot (each cold instance re-fetches
+ *   anyway); in `next dev` it means a fresh fetch per request.
  *
  * Same model from different sources stays independent (PRD §2): a Gemini
  * entry exists once per source, never merged.
@@ -31,6 +35,11 @@ import {
   type DiscoveredGratisfyModel,
 } from "./gratisfy";
 import {
+  discoverPollinationsModels,
+  resolvePollinationsPricing,
+  type DiscoveredPollinationsModel,
+} from "./pollinations";
+import {
   getSuppliedPricingBoard,
   resolveSuppliedPricing,
 } from "./pricing-board";
@@ -43,11 +52,25 @@ import type {
   UnifiedProvider,
 } from "./types";
 
-// Short cache (30s) — prevents hammering upstream on a burst of requests,
-// but always re-fetches on the next app open / page load.
-const CACHE_TTL_MS = 30 * 1000;
+// ─────────────────────────────────────────────────────────────────────────────
+// CACHING — DISABLED per user request ("remove caching of catalog make it
+// fetch all time on all app open").
+//
+// The user wants the model catalog to be re-fetched from upstream on EVERY
+// app open / page load, never served from a stale in-memory cache. Setting
+// CACHE_TTL_MS = 0 means the cache-check `Date.now() - cached.at < 0` is
+// never true (a non-negative delta is never < 0), so every call goes
+// straight to the upstream fetch. On Vercel serverless this is moot (each
+// cold instance re-fetches anyway); in `next dev` it means a fresh fetch
+// per request which is exactly what the user asked for.
+//
+// The cache slots are kept so refreshDiscovery() can still clear them
+// (defensive — the slots will always be null/empty in practice).
+// ─────────────────────────────────────────────────────────────────────────────
+const CACHE_TTL_MS = 0;
 let g4fCache: { at: number; models: UnifiedModel[]; providers: UnifiedProvider[]; stale: boolean } | null = null;
 const gratisfyCache = new Map<string, { at: number; models: UnifiedModel[] }>();
+let pollinationsCache: { at: number; models: UnifiedModel[] } | null = null;
 
 // ─── ID parsing ──────────────────────────────────────────────────────────────
 
@@ -56,7 +79,7 @@ export function parseUnifiedModelId(id: string): ParsedModelId | null {
   const parts = id.split(":");
   if (parts.length < 3) return null;
   const [source, provider, ...rest] = parts;
-  if (source !== "native" && source !== "gratisfy" && source !== "g4f") {
+  if (source !== "native" && source !== "gratisfy" && source !== "g4f" && source !== "pollinations") {
     return null;
   }
   return { source, provider, model: rest.join(":"), raw: id };
@@ -356,14 +379,102 @@ function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedMode
   return out;
 }
 
+// ─── Pollinations anonymous discovery (fresh, no persistence) ───────────────
+
+/**
+ * Discover Pollinations models WITHOUT a token. The
+ * `https://text.pollinations.ai/models` endpoint is PUBLIC — it returns
+ * the anonymous-tier model list (today just `openai-fast`, the GPT-OSS
+ * 20B reasoning model on OVH) with no Authorization header.
+ *
+ * The user explicitly asked: "add pollinations model fetching api it can
+ * too work anonymously so get it too". So this function ALWAYS fetches
+ * anonymously — no key, no auth header. (A saved BYOK token is still
+ * used for CHAT through the Pollinations native provider; it is not
+ * required for catalog discovery.)
+ *
+ * The returned `UnifiedModel[]` is source="pollinations" so the catalog
+ * UI's Pollinations section appears in the playground dropdown (the new
+ * rose-coloured palette entry) AND in `/api/v1/models/unified` AND in
+ * `/api/v1/models` (the OpenAI-compatible endpoint merges the unified
+ * catalog — see /api/v1/models/route.ts).
+ */
+export async function getPollinationsModelsForCatalog(): Promise<UnifiedModel[]> {
+  const cached = pollinationsCache;
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
+  try {
+    const discovered = await discoverPollinationsModels();
+    const models = buildPollinationsModels(discovered);
+    pollinationsCache = { at: Date.now(), models };
+    return models;
+  } catch {
+    // Discovery failed (upstream down / network) — serve empty (no
+    // persisted fallback by design — fresh fetch on every app open).
+    pollinationsCache = { at: Date.now(), models: [] };
+    return [];
+  }
+}
+
+/** Build normalized UnifiedModel[] directly from discovered Pollinations
+ *  models.
+ *
+ * DEDUP (parity with buildG4fModels + buildGratisfyModels): collapse by
+ * the resulting publicId (`pollinations:<upstreamId>`) so a duplicate
+ * listing in the upstream `/models` payload can never produce duplicate
+ * React keys in the playground dropdown. First occurrence wins.
+ */
+function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): UnifiedModel[] {
+  const now = new Date().toISOString();
+  const seen = new Set<string>();
+  const out: UnifiedModel[] = [];
+  for (const m of discovered) {
+    // Pollinations' `/models` payload uses `name` as the unique id
+    // (e.g. "openai-fast"). The upstream provider is "pollinations"
+    // itself (Pollinations hosts these models on its own OVH infra).
+    const publicId = `pollinations:pollinations:${m.upstreamId}`;
+    if (seen.has(publicId)) continue; // drop upstream-listed duplicate
+    seen.add(publicId);
+    out.push({
+      id: publicId,
+      displayName: m.name || m.upstreamId,
+      source: "pollinations" as Source,
+      provider: "pollinations",
+      originalModelId: m.upstreamId,
+      capabilities: buildCapabilities(m.capabilities),
+      streaming: true,
+      pricing: resolvePollinationsPricing(m),
+      available: true,
+      discoveredAt: now,
+      metadata: {
+        upstreamId: m.upstreamId,
+        name: m.name,
+        contextLength: m.contextLength,
+        modality: m.modality,
+      },
+    });
+  }
+  return out;
+}
+
 // ─── Unified view ────────────────────────────────────────────────────────────
 
 /**
- * The full unified model list. Native + G4F + Gratisfy are always listed.
+ * The full unified model list. Native + G4F + Gratisfy + Pollinations are
+ * always listed (no caching — fresh fetch on every call per the user's
+ * explicit "remove caching of catalog" directive).
+ *
  * Gratisfy models are discovered using the platform default key (visible to
  * everyone); when a signed-in user has their own BYOK key, their key is
  * used instead. The default key is for DISCOVERY ONLY — chat still requires
  * the user's own BYOK key.
+ *
+ * Pollinations models are fetched anonymously (no key required — the
+ * `text.pollinations.ai/models` endpoint is public for the anonymous tier).
+ * Chat for a Pollinations model goes through the gateway's native
+ * Pollinations adapter (`po/<upstreamId>` canonical id) — the playground's
+ * chat-completions request carries `pollinations:pollinations:<model>`
+ * which the chat route translates to `po/<model>` before delegating to the
+ * gateway path.
  */
 export async function getUnifiedModels(
   userId?: string,
@@ -375,9 +486,11 @@ export async function getUnifiedModels(
     ? await getGratisfyModelsForUser(userId)
     : await getGratisfyModelsDefault();
   const gratisfyProviders = buildProvidersFromModels(gratisfy, "gratisfy", true);
+  const pollinations = await getPollinationsModelsForCatalog();
+  const pollinationsProviders = buildProvidersFromModels(pollinations, "pollinations", false);
   return {
-    models: [...native, ...g4f.models, ...gratisfy],
-    providers: [...nativeProviders, ...g4f.providers, ...gratisfyProviders],
+    models: [...native, ...g4f.models, ...gratisfy, ...pollinations],
+    providers: [...nativeProviders, ...g4f.providers, ...gratisfyProviders, ...pollinationsProviders],
     // Stale when G4F live discovery was blocked.
     stale: g4f.stale,
   };
@@ -456,11 +569,13 @@ export async function resolveUnifiedModel(
 export async function refreshDiscovery(userId?: string): Promise<void> {
   g4fCache = null;
   gratisfyDefaultCache = null;
+  pollinationsCache = null;
   if (userId) gratisfyCache.delete(userId);
   await getG4fModels();
   if (userId) await getGratisfyModelsForUser(userId);
   else await getGratisfyModelsDefault();
+  await getPollinationsModelsForCatalog();
 }
 
 // Re-export the per-source pricing resolvers for the registry consumers.
-export { resolveG4fPricing, resolveGratisfyPricing };
+export { resolveG4fPricing, resolveGratisfyPricing, resolvePollinationsPricing };

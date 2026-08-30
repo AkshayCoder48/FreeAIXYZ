@@ -10,8 +10,9 @@
  *     userId (NOT a browser-local UUID). Saved keys persist across refresh
  *     / tab changes / devices because they live with the account,
  *     server-side.
- *   - Model discovery: NO persistence — fetched fresh from upstream on
- *     every app open (30s in-memory cache only).
+ *   - Model discovery: NO persistence AND NO in-memory caching (per user
+ *     request — "remove caching of catalog make it fetch all time on all
+ *     app open"). Every `getUnifiedModels` call hits the live upstream.
  */
 
 export * from "./types";

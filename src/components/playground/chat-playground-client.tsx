@@ -82,7 +82,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Source = "native" | "gratisfy" | "g4f";
+type Source = "native" | "gratisfy" | "g4f" | "pollinations";
 
 interface ModelPricing {
   inputPerMillion: number | null;
@@ -220,6 +220,13 @@ const SOURCE_COLORS: Record<Source, { text: string; bg: string; border: string; 
     dot: "bg-orange-500",
     label: "G4F",
   },
+  pollinations: {
+    text: "text-rose-700 dark:text-rose-300",
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+    border: "border-rose-300 dark:border-rose-800",
+    dot: "bg-rose-500",
+    label: "Pollinations",
+  },
 };
 
 // Phase palette — emerald/amber/rose/slate, no indigo/blue.
@@ -243,9 +250,9 @@ function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Group models by (source, provider) preserving source order: native → gratisfy → g4f. */
+/** Group models by (source, provider) preserving source order: native → gratisfy → g4f → pollinations. */
 function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provider: string; items: PlaygroundModel[] }> {
-  const order: Source[] = ["native", "gratisfy", "g4f"];
+  const order: Source[] = ["native", "gratisfy", "g4f", "pollinations"];
   const buckets = new Map<string, { source: Source; provider: string; items: PlaygroundModel[] }>();
   for (const m of models) {
     const key = `${m.source}::${m.provider}`;
@@ -1611,7 +1618,7 @@ function ModelCard({
               : "—"
           }
         />
-        <PricingCell label="Status" value={pricing.status.replace("_", " ")} />
+        <PricingCell label="Status" value={(pricing?.status ?? "not_documented").replace(/_/g, " ")} />
       </div>
 
       {/* Estimated XYZ for the reference request (PRD §33) */}

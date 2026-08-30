@@ -228,7 +228,13 @@ export async function discoverGratisfyModels(
 
   let res: Response;
   try {
-    res = await fetch(`${GRATISFY_BASE_URL}/models?modality=language`, {
+    // NOTE: the `?modality=language` filter was REMOVED per the user's
+    // "make all models show on catalog" directive. The filter was
+    // restricting discovery to only 26 of Gratisfy's ~378 published
+    // models (the rest are vision / image / audio / embedding modalities
+    // that the filter excluded). Now ALL Gratisfy models appear in the
+    // catalog so users can see the full breadth of what Gratisfy routes.
+    res = await fetch(`${GRATISFY_BASE_URL}/models`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -578,7 +584,10 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  source: "provider" | "market" | "undocumented";
+  currency: "USD";
+  status: "documented" | "supplied" | "estimated" | "free" | "not_documented";
+  source: "provider" | "pricing-board" | "manual" | "unknown";
+  verifiedAt?: string;
 } {
   // 1. Provider-supplied pricing metadata embedded in the discovery payload.
   //    This is the ONLY legitimate source for Gratisfy pricing — if
@@ -589,11 +598,37 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
       inputPerMillion: providerPricing.inputPerMillion,
       outputPerMillion: providerPricing.outputPerMillion,
       cachePerMillion: providerPricing.cachePerMillion ?? null,
+      currency: "USD",
+      status: "documented",
       source: "provider",
+      verifiedAt: new Date().toISOString(),
     };
   }
 
-  // 2. Undocumented — return nulls, NEVER $0.
+  // 2. Gratisfy publishes every model as `pricing_tier: "free"` + a
+  //    `free_tier.is_free: true` flag in /v1/models — the catalog was
+  //    showing "—" before because the old resolver ignored that signal
+  //    (it only consulted a hard-coded pricing-board tail-segment match,
+  //    which is now removed for the fake-pricing fix). Surfacing the
+  //    upstream `free_tier` flag here lets Gratisfy models be honestly
+  //    marked as `status: "free"` with $0 in + $0 out — the catalog UI's
+  //    `isFree` check now lights up the green "free" badge on every
+  //    Gratisfy model and the playground's "free" pill appears next to
+  //    the BYOK ready state.
+  const freeTierFlag = readFreeTierFlag(model);
+  if (freeTierFlag) {
+    return {
+      inputPerMillion: 0,
+      outputPerMillion: 0,
+      cachePerMillion: 0,
+      currency: "USD",
+      status: "free",
+      source: "provider",
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  // 3. Undocumented — return nulls, NEVER $0.
   // (Previously this method also consulted the supplied pricing board by
   // trailing-segment match; that path produced fake prices on Gratisfy
   // models and was removed per the user's "remove fake pricing" directive.)
@@ -601,8 +636,47 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
     inputPerMillion: null,
     outputPerMillion: null,
     cachePerMillion: null,
-    source: "undocumented",
+    currency: "USD",
+    status: "not_documented",
+    source: "unknown",
   };
+}
+
+/**
+ * Read Gratisfy's `free_tier` / `pricing_tier` / `tier` flags from the raw
+ * upstream model payload. Gratisfy's /v1/models response advertises every
+ * model with one of:
+ *   - `pricing_tier: "free"` (top-level string)
+ *   - `free_tier: { is_free: true, note: "…" }` (object)
+ *   - `tier: "anonymous"` or `tier: "seed"` (lower-cased tier name)
+ *
+ * Returns true when ANY of those flags indicates a free model. The resolver
+ * uses this to honour the upstream `free_tier` signal — previously the
+ * catalog ignored it entirely (it only consulted a hand-curated pricing
+ * board that didn't carry Gratisfy entries), so every Gratisfy model
+ * appeared as "—" in the catalog with no honest free classification.
+ */
+function readFreeTierFlag(model: DiscoveredGratisfyModel): boolean {
+  const raw = model.rawMetadata as Record<string, unknown> | undefined;
+  if (!raw) return false;
+  // pricing_tier: "free"
+  if (typeof raw.pricing_tier === "string" && raw.pricing_tier.toLowerCase() === "free") {
+    return true;
+  }
+  // free_tier: { is_free: true, note?: string }
+  const ft = raw.free_tier;
+  if (ft && typeof ft === "object") {
+    const isFree = (ft as Record<string, unknown>).is_free;
+    if (isFree === true) return true;
+  }
+  // tier: "anonymous" | "seed" | "free" — Pollinations-style anonymous tier
+  if (typeof raw.tier === "string") {
+    const t = raw.tier.toLowerCase();
+    if (t === "anonymous" || t === "free" || t === "seed") {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
