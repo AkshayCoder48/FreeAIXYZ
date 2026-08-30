@@ -205,13 +205,28 @@ export async function getG4fModels(): Promise<{
   return g4fCache;
 }
 
-/** Build normalized UnifiedModel[] directly from discovered G4F models. */
+/** Build normalized UnifiedModel[] directly from discovered G4F models.
+ *
+ * DEDUP (PRD §19 / playground React-key fix): the G4F /backend-api/v2/models
+ * endpoint occasionally lists the same modelId more than once under the same
+ * provider (verified live: LMArena lists "Max" × 2 and "botbot2" × 2;
+ * PerplexityApi lists "llama-3-sonar-large-32k-online" × 2). Without dedup,
+ * the chat playground's `<SelectItem key={m.id}>` rendered duplicate React
+ * keys and threw "Encountered two children with the same key" console errors
+ * on every catalog open, lagging the dropdown to a halt. We collapse by the
+ * resulting publicId (`g4f:<providerId>:<upstreamId>`) — first occurrence
+ * wins, identical duplicates are silently dropped.
+ */
 function buildG4fModels(discovered: DiscoveredG4fModel[]): UnifiedModel[] {
   const now = new Date().toISOString();
-  return discovered.map((m) => {
+  const seen = new Set<string>();
+  const out: UnifiedModel[] = [];
+  for (const m of discovered) {
     // providerId is the REAL G4F upstream provider (Gemini, OpenAI, …).
     const publicId = `g4f:${m.providerId}:${m.upstreamId}`;
-    return {
+    if (seen.has(publicId)) continue; // drop upstream-listed duplicate
+    seen.add(publicId);
+    out.push({
       id: publicId,
       displayName: m.name || m.upstreamId,
       source: "g4f" as Source,
@@ -228,8 +243,9 @@ function buildG4fModels(discovered: DiscoveredG4fModel[]): UnifiedModel[] {
         contextLength: m.contextLength,
         modality: m.modality,
       },
-    };
-  });
+    });
+  }
+  return out;
 }
 
 // ─── Gratisfy dynamic discovery (fresh, no persistence) ─────────────────────
@@ -296,10 +312,18 @@ export async function getGratisfyModelsForUser(
   }
 }
 
-/** Build normalized UnifiedModel[] directly from discovered Gratisfy models. */
+/** Build normalized UnifiedModel[] directly from discovered Gratisfy models.
+ *
+ * DEDUP (parity with buildG4fModels): collapse by the resulting publicId
+ * (`gratisfy:<upstreamProvider>:<upstreamId>`) so a duplicate listing in the
+ * upstream /v1/models payload can never produce duplicate React keys in the
+ * playground dropdown. First occurrence wins.
+ */
 function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedModel[] {
   const now = new Date().toISOString();
-  return discovered.map((m) => {
+  const seen = new Set<string>();
+  const out: UnifiedModel[] = [];
+  for (const m of discovered) {
     // Extract the real upstream provider from the upstreamId (the segment
     // before the first "/"). E.g. "google-ai-studio/gemini-2.5-flash" →
     // provider="google-ai-studio", model="gemini-2.5-flash". This makes
@@ -308,7 +332,9 @@ function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedMode
     const upstreamProvider =
       slashIdx > 0 ? m.upstreamId.slice(0, slashIdx) : "gratisfy";
     const publicId = `gratisfy:${upstreamProvider}:${m.upstreamId}`;
-    return {
+    if (seen.has(publicId)) continue; // drop upstream-listed duplicate
+    seen.add(publicId);
+    out.push({
       id: publicId,
       displayName: m.name || m.upstreamId,
       source: "gratisfy" as Source,
@@ -325,8 +351,9 @@ function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedMode
         contextLength: m.contextLength,
         modality: m.modality,
       },
-    };
-  });
+    });
+  }
+  return out;
 }
 
 // ─── Unified view ────────────────────────────────────────────────────────────

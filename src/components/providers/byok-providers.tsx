@@ -32,6 +32,7 @@ import {
   CheckCircle2,
   XCircle,
   LogIn,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,7 @@ const PROVIDER_DESC: Record<ByokSource, string> = {
   gratisfy: "Bring your own gxyz-… key from Gratisfy. Stored encrypted in OnyxBase.",
   g4f: "Bring your own g4f_… key from g4f.dev. Stored encrypted in OnyxBase.",
   pollinations:
-    "Bring your own Pollinations token. Stored encrypted in OnyxBase.",
+    "Bring your own Pollinations token, or click Connect wallet to sign in with Pollinations and we'll fetch one for you. Stored encrypted in OnyxBase.",
 };
 
 function SourceBadge({ source }: { source: ProviderEntry["source"] }) {
@@ -281,6 +282,29 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
             <span className="font-mono text-foreground">{masked}</span>
           </div>
         )}
+        {/* "Connect wallet" button — only for Pollinations. Opens the OAuth
+            authorize URL in a new tab so the user can sign in with their
+            Pollinations account and we get a Bearer token back via the
+            /api/v1/byok/pollinations/callback redirect. The publishable
+            app key is exposed to the browser via NEXT_PUBLIC_POLLINATIONS_APP_KEY. */}
+        {source === "pollinations" &&
+          (() => {
+            const href = pollinationsConnectHref();
+            if (!href) return null;
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="self-start"
+              >
+                <Button type="button" size="sm" variant="outline">
+                  <Wallet className="h-4 w-4" />
+                  Connect wallet
+                </Button>
+              </a>
+            );
+          })()}
         <form onSubmit={handleSave} className="flex flex-col gap-2">
           <Label htmlFor={`byok-${source}-key`} className="text-xs">
             {label} API key
@@ -325,6 +349,39 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
   );
 }
 
+/**
+ * Build the OAuth authorize URL for the "Connect wallet" button on the
+ * Pollinations BYOK card. Returns null if POLLINATIONS_APP_KEY is not
+ * configured (in that case the button is hidden).
+ *
+ * The button opens the URL in a new tab; Pollinations redirects back to
+ * /api/v1/byok/pollinations/callback which exchanges the code for a
+ * token, persists it to OnyxBase, and bounces back to /providers with a
+ * ?connect=ok|error query that ByokProviders surfaces as a toast.
+ */
+function pollinationsConnectHref(): string | null {
+  const appKey = process.env.NEXT_PUBLIC_POLLINATIONS_APP_KEY;
+  if (!appKey) return null;
+  if (typeof window === "undefined") {
+    // Server render — we'll still produce a URL so the link is in the DOM;
+    // the actual origin will be filled in by the client after hydration.
+    // (We re-render this on the client because ByokProviders is gated
+    // behind sign-in, which is a client-only state.)
+    return `https://enter.pollinations.ai/authorize?client_id=${encodeURIComponent(appKey)}&response_type=code&redirect_uri=https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/callback&scope=openid+profile`;
+  }
+  const origin = window.location.origin.replace(/\/$/, "");
+  const redirectUri = `${origin}/api/v1/byok/pollinations/callback`;
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const params = new URLSearchParams({
+    client_id: appKey,
+    response_type: "code",
+    redirect_uri: redirectUri,
+    state,
+    scope: "openid profile",
+  });
+  return `https://enter.pollinations.ai/authorize?${params.toString()}`;
+}
+
 export function ByokProviders() {
   const { user, loading: authLoading } = useAuth();
   const [meta, setMeta] = useState<ByokMetaMap | null>(null);
@@ -356,6 +413,43 @@ export function ByokProviders() {
 
   useEffect(() => {
     void loadMeta();
+  }, [loadMeta]);
+
+  // OAuth callback redirect toast — when the user returns from Pollinations'
+  // authorize page, the callback bounces them back to /providers with
+  // ?connect=ok|error&provider=pollinations&reason=… . We surface the
+  // outcome as a toast, refresh the masked-key meta so the "Connected"
+  // badge updates, then strip the query so a later refresh doesn't re-fire
+  // the toast. We also listen for the browser focus event so a returning
+  // tab (from the OAuth round-trip) re-fetches meta.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("connect");
+    const provider = url.searchParams.get("provider");
+    const reason = url.searchParams.get("reason");
+    if (status && provider) {
+      if (status === "ok") {
+        toast.success(`${provider[0].toUpperCase()}${provider.slice(1)} connected`);
+        void loadMeta();
+      } else if (status === "error") {
+        toast.error(
+          reason
+            ? `${provider[0].toUpperCase()}${provider.slice(1)} connect failed: ${reason}`
+            : `${provider[0].toUpperCase()}${provider.slice(1)} connect failed`,
+        );
+      }
+      // Clean the query so a later refresh doesn't re-fire the toast.
+      url.searchParams.delete("connect");
+      url.searchParams.delete("provider");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // Re-fetch meta when the window regains focus (e.g. user came back
+    // from the OAuth tab without us seeing a redirect query — defensive).
+    const onFocus = () => void loadMeta();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [loadMeta]);
 
   const refresh = useCallback(async () => {

@@ -40,7 +40,10 @@ import {
 // parseSseLine is consumed internally by streamByokChat; we delegate to
 // streamByokChat instead of re-implementing the SSE loop, per the reuse rule
 // in the work order (PRD §39 — single SSE accumulator).
-import { getSuppliedPricingBoard, resolveSuppliedPricing } from "./pricing-board";
+// Pricing (PRD §37): only provider-sourced pricing is honoured for Gratisfy.
+// resolveGratisfyPricing returns nulls + source="undocumented" unless
+// Gratisfy itself published a price in /v1/models — see its comment for
+// why the supplied-pricing-board fallback was removed.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -556,12 +559,20 @@ export async function validateGratisfyKey(
 
 /**
  * Resolve pricing for a discovered Gratisfy model (PRD §37). Resolution:
- *   1. Pricing metadata in the upstream /v1/models payload → source="provider"
- *   2. The supplied pricing board (matched by model id segment) → source="market"
- *   3. None of the above → nulls + source="undocumented"
+ *   1. Pricing metadata embedded in the upstream /v1/models response → "provider"
+ *   2. Otherwise nulls + source="undocumented"
  *
- * Values are USD per 1M tokens. null means "we could not establish a price"
- * (PRD §26 — never confuse $0 with "not documented").
+ * Per the user's explicit request ("remove fake pricing from gratisfy
+ * models"), we NO LONGER fall back to the supplied pricing board by
+ * tail-segment match — that path was stamping foreign market prices
+ * (e.g. `tb/gemini-2.5-flash` → $0.30/$2.50) onto Gratisfy models
+ * whose `upstreamId` happened to share the trailing segment (e.g.
+ * `google-ai-studio/gemini-2.5-flash`), even though Gratisfy doesn't
+ * charge those rates. The catalog now shows "—" for Gratisfy models
+ * unless Gratisfy itself publishes a price in the model payload.
+ *
+ * Values are USD per 1M tokens. null means "we could not establish a
+ * price" (PRD §26 — never confuse $0 with "not documented").
  */
 export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
   inputPerMillion: number | null;
@@ -570,6 +581,8 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
   source: "provider" | "market" | "undocumented";
 } {
   // 1. Provider-supplied pricing metadata embedded in the discovery payload.
+  //    This is the ONLY legitimate source for Gratisfy pricing — if
+  //    Gratisfy itself didn't publish a price in /v1/models, we show "—".
   const providerPricing = extractProviderPricing(model);
   if (providerPricing) {
     return {
@@ -580,24 +593,10 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
     };
   }
 
-  // 2. Fall back to the supplied pricing board (match by trailing model segment).
-  const boardIds = suppliedBoardIds();
-  for (const boardId of boardIds) {
-    const tail = boardId.split("/").pop() ?? boardId;
-    if (tail && (model.name.includes(tail) || model.upstreamId.includes(tail))) {
-      const boardPricing = resolveSuppliedPricing(boardId);
-      if (boardPricing.status !== "not_documented") {
-        return {
-          inputPerMillion: boardPricing.inputPerMillion,
-          outputPerMillion: boardPricing.outputPerMillion,
-          cachePerMillion: boardPricing.cachePerMillion ?? null,
-          source: "market",
-        };
-      }
-    }
-  }
-
-  // 3. Undocumented — return nulls, NEVER $0.
+  // 2. Undocumented — return nulls, NEVER $0.
+  // (Previously this method also consulted the supplied pricing board by
+  // trailing-segment match; that path produced fake prices on Gratisfy
+  // models and was removed per the user's "remove fake pricing" directive.)
   return {
     inputPerMillion: null,
     outputPerMillion: null,
@@ -773,9 +772,9 @@ async function safeReadBody(res: Response): Promise<string> {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-let SUPPLIED_BOARD_IDS: string[] | null = null;
-function suppliedBoardIds(): string[] {
-  if (SUPPLIED_BOARD_IDS) return SUPPLIED_BOARD_IDS;
-  SUPPLIED_BOARD_IDS = Object.keys(getSuppliedPricingBoard());
-  return SUPPLIED_BOARD_IDS;
-}
+// NOTE: the supplied-pricing-board helpers (`suppliedBoardIds`,
+// `SUPPLIED_BOARD_IDS`) were removed when `resolveGratisfyPricing` stopped
+// falling back to the supplied board by tail-segment match — that path
+// produced fake prices on Gratisfy models. If Gratisfy ever starts
+// publishing real per-model pricing metadata, the `extractProviderPricing`
+// path above already handles it.

@@ -48,7 +48,9 @@ import {
   completeByokChat,
   streamByokChat,
 } from "./openai-chat";
-import { getSuppliedPricingBoard, resolveSuppliedPricing } from "./pricing-board";
+// Pricing (PRD §38): G4F documents no per-model pricing. resolveG4fPricing
+// returns nulls + source="undocumented" — see its comment for why the
+// supplied-pricing-board fallback was removed.
 // Shared chat types (PRD §39 — single StreamEvent shape across adapters).
 import type { ChatMessage, ChatUsage, StreamEvent } from "./gratisfy";
 // Shared HTTP-shaped error classes (PRD §62). Defined in ./gratisfy as
@@ -562,13 +564,22 @@ export async function validateG4fKey(
 /**
  * Resolve pricing for a discovered G4F model (PRD §38). G4F documents NO
  * per-model pricing per the OpenAPI spec + research — the discovery
- * payload contains no pricing metadata, so we skip the "provider" source
- * path entirely. Resolution is:
- *   1. Match the model id against the supplied pricing board (./pricing-board)
- *      by trailing segment → source="market"
- *   2. Otherwise nulls + source="undocumented" (never $0, PRD §26)
+ * payload contains no pricing metadata. Per the user's explicit request
+ * ("remove fake pricing from g4f models"), we NO LONGER fall back to the
+ * supplied pricing board by tail-segment match — that path was stamping
+ * foreign market prices (e.g. `tb/gpt-5` → $1.25/$10) onto G4F models
+ * whose `upstreamId` happened to share the trailing segment ("gpt-5"),
+ * even though G4F does not actually charge those rates. The prices shown
+ * for G4F models in the catalog were therefore fabricated.
  *
- * Values are USD per 1M tokens. null means "we could not establish a price".
+ * Resolution is now unambiguous:
+ *   - G4F exposes no pricing → return nulls + source="undocumented".
+ *   - The catalog UI renders "—" for null prices (formatUsd in the
+ *     playground client), so G4F models now show "Input — · Output —"
+ *     instead of fake dollar amounts.
+ *
+ * Values are USD per 1M tokens. null means "we could not establish a
+ * price" (PRD §26 — never confuse $0 with "not documented").
  */
 export function resolveG4fPricing(model: DiscoveredG4fModel): {
   inputPerMillion: number | null;
@@ -576,27 +587,11 @@ export function resolveG4fPricing(model: DiscoveredG4fModel): {
   cachePerMillion?: number | null;
   source: "provider" | "market" | "undocumented";
 } {
-  // G4F documents no per-model pricing — skip the provider-supplied path
-  // (PRD §38). Only the supplied pricing board is consulted as a fallback
-  // so a verified market price can still be charged when one is known.
-  const boardIds = suppliedBoardIds();
-  for (const boardId of boardIds) {
-    const tail = boardId.split("/").pop() ?? boardId;
-    if (!tail) continue;
-    if (model.name.includes(tail) || model.upstreamId.includes(tail)) {
-      const boardPricing = resolveSuppliedPricing(boardId);
-      if (boardPricing.status !== "not_documented") {
-        return {
-          inputPerMillion: boardPricing.inputPerMillion,
-          outputPerMillion: boardPricing.outputPerMillion,
-          cachePerMillion: boardPricing.cachePerMillion ?? null,
-          source: "market",
-        };
-      }
-    }
-  }
-
-  // G4F documents no pricing → nulls + undocumented (never $0, PRD §26).
+  // G4F documents no per-model pricing — return nulls + undocumented.
+  // (Previously this method also consulted the supplied pricing board by
+  // trailing-segment match; that path produced fake prices on G4F models
+  // and was removed per the user's "remove fake pricing" directive.)
+  void model; // reserved for future use if G4F ever exposes pricing metadata
   return {
     inputPerMillion: null,
     outputPerMillion: null,
@@ -773,9 +768,8 @@ async function safeReadBody(res: Response): Promise<string> {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-let SUPPLIED_BOARD_IDS: string[] | null = null;
-function suppliedBoardIds(): string[] {
-  if (SUPPLIED_BOARD_IDS) return SUPPLIED_BOARD_IDS;
-  SUPPLIED_BOARD_IDS = Object.keys(getSuppliedPricingBoard());
-  return SUPPLIED_BOARD_IDS;
-}
+// NOTE: the supplied-pricing-board helpers (`suppliedBoardIds`,
+// `SUPPLIED_BOARD_IDS`) were removed when `resolveG4fPricing` stopped
+// falling back to the supplied board by tail-segment match — that path
+// produced fake prices on G4F models. If G4F ever exposes real per-model
+// pricing metadata, reintroduce a *provider-sourced* resolver here.
