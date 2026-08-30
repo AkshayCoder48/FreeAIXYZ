@@ -155,3 +155,125 @@ export async function setBYOKValidation(
     },
   });
 }
+
+// ─── OnyxBase-backed BYOK (anonymous browser mode) ───────────────────────────
+//
+// These functions store BYOK credentials in OnyxBase (Telegram-backed KV)
+// keyed by an anonymous browser ID instead of a signed-in userId. This lets
+// users save/test/remove BYOK keys WITHOUT signing in. The browser
+// generates a random UUID stored in localStorage and sends it as the
+// `X-Browser-Id` header.
+//
+// The raw key is still encrypted-at-rest (AES-256-GCM) before being written
+// to OnyxBase, so OnyxBase never sees plaintext. We store the encrypted
+// blob + masked display string.
+
+import {
+  saveByokToOnyx,
+  loadByokFromOnyx,
+  removeByokFromOnyx,
+} from "./onyxbase";
+
+interface OnyxBrowserByokBlob {
+  encryptedKey: string;
+  masked: string;
+  addedAt: string;
+  validatedAt?: string | null;
+  validationError?: string | null;
+}
+
+/** Save a BYOK key for an anonymous browser session (OnyxBase-backed). */
+export async function saveBrowserByok(
+  browserId: string,
+  provider: BYOKProvider,
+  rawKey: string,
+): Promise<BYOKCredentialMeta> {
+  const trimmed = rawKey.trim();
+  if (!trimmed) throw new Error("Empty key");
+  if (browserId === "anonymous") {
+    throw new Error("Browser ID is required to save a key.");
+  }
+  const enc = await encryptString(trimmed);
+  const blob: OnyxBrowserByokBlob = {
+    encryptedKey: JSON.stringify(enc),
+    masked: maskKey(trimmed),
+    addedAt: new Date().toISOString(),
+    validatedAt: null,
+    validationError: null,
+  };
+  await saveByokToOnyx(browserId, provider, blob);
+  return {
+    provider,
+    connected: true,
+    masked: blob.masked,
+    addedAt: blob.addedAt,
+  };
+}
+
+/** Remove a BYOK key for an anonymous browser session (OnyxBase-backed). */
+export async function removeBrowserByok(
+  browserId: string,
+  provider: BYOKProvider,
+): Promise<boolean> {
+  return removeByokFromOnyx(browserId, provider);
+}
+
+/** Load the raw key for an anonymous browser session (server-side only). */
+export async function loadBrowserByokKey(
+  browserId: string,
+  provider: BYOKProvider,
+): Promise<string | null> {
+  const blob = await loadByokFromOnyx(browserId, provider);
+  if (!blob) return null;
+  try {
+    const enc = JSON.parse(blob.encryptedKey) as {
+      ct: string;
+      iv: string;
+      tag: string;
+    };
+    return await decryptString(enc);
+  } catch {
+    return null;
+  }
+}
+
+/** Get masked metadata for all BYOK keys for a browser session. */
+export async function getBrowserByokMeta(
+  browserId: string,
+): Promise<Record<BYOKProvider, BYOKCredentialMeta>> {
+  const result = {} as Record<BYOKProvider, BYOKCredentialMeta>;
+  for (const p of PROVIDERS) {
+    if (browserId === "anonymous") {
+      result[p] = { provider: p, connected: false, masked: "", addedAt: "" };
+      continue;
+    }
+    const blob = await loadByokFromOnyx(browserId, p);
+    if (blob) {
+      result[p] = {
+        provider: p,
+        connected: true,
+        masked: blob.masked,
+        addedAt: blob.addedAt,
+        lastValidatedAt: blob.validatedAt ?? undefined,
+        lastValidationOk: blob.validatedAt ? !blob.validationError : undefined,
+      };
+    } else {
+      result[p] = { provider: p, connected: false, masked: "", addedAt: "" };
+    }
+  }
+  return result;
+}
+
+/** Update validation state for a browser BYOK key (OnyxBase-backed). */
+export async function setBrowserByokValidation(
+  browserId: string,
+  provider: BYOKProvider,
+  ok: boolean,
+  errorMessage?: string,
+): Promise<void> {
+  const blob = await loadByokFromOnyx(browserId, provider);
+  if (!blob) return;
+  blob.validatedAt = new Date().toISOString();
+  blob.validationError = ok ? null : (errorMessage ?? "Validation failed");
+  await saveByokToOnyx(browserId, provider, blob);
+}

@@ -2,27 +2,44 @@
  * POST   /api/v1/byok/gratisfy — save (masked) BYOK key, validate, and trigger
  *         dynamic model discovery (PRD §16, §17, §24, §54, §82).
  * DELETE /api/v1/byok/gratisfy — remove the key.
- * AUTH REQUIRED. Never returns the raw key.
  *
- * PRD §82 — never show "Connected" unless the provider credential was actually
- * validated against the upstream.
+ * ANONYMOUS BROWSER MODE (no sign-in required):
+ *   The browser sends an `X-Browser-Id` header (a random UUID stored in
+ *   localStorage). We use it as the key for OnyxBase-backed credential
+ *   storage. If the header is missing, we return 400 asking the caller to
+ *   generate one.
+ *
+ * Never returns the raw key. Marks validation state on the stored
+ * credential (PRD §82 — never show "Connected" unless the provider
+ * credential was actually validated against the upstream).
  */
 
 import {
-  saveBYOK,
-  removeBYOK,
-  getGratisfyModelsForUser,
+  saveBrowserByok,
+  removeBrowserByok,
 } from "@/lib/xyz";
 import { validateGratisfyKey } from "@/lib/xyz/gratisfy";
-import { setBYOKValidation } from "@/lib/xyz/byok";
-import { requireAuth } from "@/lib/xyz/route-auth";
+import { setBrowserByokValidation } from "@/lib/xyz/byok";
+import { getBrowserId } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const auth = await requireAuth(request);
-  if ("response" in auth) return auth.response;
+  const browserId = getBrowserId(request);
+  if (browserId === "anonymous") {
+    return Response.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          code: "MISSING_BROWSER_ID",
+          message:
+            "Browser ID is required. Generate one client-side and send it as the X-Browser-Id header.",
+        },
+      },
+      { status: 400 },
+    );
+  }
   try {
     const body = (await request.json()) as { key?: string };
     const key = (body.key ?? "").trim();
@@ -34,19 +51,19 @@ export async function POST(request: Request) {
     }
 
     // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBYOK(auth.userId, "gratisfy", key);
+    const meta = await saveBrowserByok(browserId, "gratisfy", key);
 
     // Validate against the upstream (PRD §82 — no fake "Connected").
     const validation = await validateGratisfyKey(key);
-    await setBYOKValidation(
-      auth.userId,
+    await setBrowserByokValidation(
+      browserId,
       "gratisfy",
       validation.ok,
       validation.ok ? undefined : validation.error,
     );
 
     if (!validation.ok) {
-      // Key saved but invalid — return early without triggering discovery.
+      // Key saved but invalid — return early.
       return Response.json(
         {
           ok: false,
@@ -57,15 +74,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Trigger dynamic discovery (PRD §24, §48). This persists models to
-    // Prisma so the catalog shows them.
-    const models = await getGratisfyModelsForUser(auth.userId);
-
     return Response.json({
       ok: true,
       meta,
-      validation: { ok: true, modelCount: validation.modelCount ?? models.length },
-      modelsDiscovered: models.length,
+      validation: { ok: true, modelCount: validation.modelCount ?? 0 },
+      modelsDiscovered: validation.modelCount ?? 0,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid request.";
@@ -77,12 +90,19 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(request);
-  if ("response" in auth) return auth.response;
-  await removeBYOK(auth.userId, "gratisfy");
-  // Deactivate all Gratisfy models in DB for this user (PRD §26).
-  // (Actually they're per-provider, not per-user, but we still mark them
-  //  unavailable since no key is configured.)
-  // The discovery will reactivate them when a new key is saved.
+  const browserId = getBrowserId(request);
+  if (browserId === "anonymous") {
+    return Response.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          code: "MISSING_BROWSER_ID",
+          message: "Browser ID is required.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  await removeBrowserByok(browserId, "gratisfy");
   return Response.json({ ok: true });
 }

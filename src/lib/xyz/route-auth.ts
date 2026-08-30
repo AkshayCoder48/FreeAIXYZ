@@ -8,6 +8,12 @@
  *   Layer 1 — FreeAIXYZ authenticates the application user (this file).
  *   Layer 2 — Provider BYOK authenticates FreeAIXYZ against the upstream
  *             provider using the user's stored credential (see byok.ts).
+ *
+ * ANONYMOUS BROWSER MODE (added this iteration):
+ *   BYOK endpoints no longer require a signed-in user. Instead, the
+ *   browser generates a random UUID stored in localStorage and sends it
+ *   as the `X-Browser-Id` header. BYOK credentials are stored in OnyxBase
+ *   keyed by this browser ID — no user accounts needed.
  */
 
 import { getSessionUserId } from "./auth";
@@ -95,6 +101,34 @@ export async function requireAuthScoped(
     };
   }
   return result;
+}
+
+// ─── Anonymous browser ID (BYOK without user accounts) ────────────────────────
+
+/**
+ * Resolve the anonymous browser ID from a request. The browser generates a
+ * random UUID stored in localStorage and sends it as the `X-Browser-Id`
+ * header. We fall back to a session cookie value or "anonymous" if absent.
+ *
+ * No auth required — this is purely for keying BYOK credentials in OnyxBase.
+ */
+export function getBrowserId(request: Request): string {
+  const header = request.headers.get("x-browser-id")?.trim();
+  if (header && header.length >= 8 && header.length <= 128) {
+    return header;
+  }
+  // Fall back to session cookie value (if signed in) — keeps existing keys.
+  const raw = request.headers.get("cookie") ?? "";
+  for (const part of raw.split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === "fxz_session" && v.length) return `sess:${v.join("=")}`;
+  }
+  return "anonymous";
+}
+
+/** Returns true if the browser ID is a real per-browser identifier. */
+export function isAnonymousBrowserId(browserId: string): boolean {
+  return browserId !== "anonymous";
 }
 
 export function isSecure(request: Request): boolean {

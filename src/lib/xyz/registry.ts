@@ -60,17 +60,49 @@ export function parseUnifiedModelId(id: string): ParsedModelId | null {
 
 // ─── Native models (from pricing board) ──────────────────────────────────────
 
+/**
+ * Short-prefix → full display name mapping for the native pricing board.
+ * The supplied pricing board uses short codes (tb, l7, kc, …) as the
+ * provider segment of each model id. The UI must NEVER show these short
+ * codes — always resolve to the full display name here.
+ */
+const NATIVE_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  tb: "Toolbaz",
+  au: "AuroraAI",
+  ss: "SurfSense",
+  jg: "JollyGen",
+  ua: "UnlimitedAI",
+  kc: "Kilo Code",
+  l7: "LLM7",
+  sw: "Swarm",
+  oc: "OpenCode",
+  fc: "FreeChat",
+  sm: "Miklium",
+  fx: "FreeAIXYZ",
+  po: "Pollinations",
+  sp: "SpicyWriter",
+  ve: "Vexa",
+  go: "GPT-OSS",
+  gp: "FreeGPT",
+};
+
+/** Resolve the full display name for a native provider prefix. */
+function nativeProviderDisplayName(prefix: string): string {
+  return NATIVE_PROVIDER_DISPLAY_NAMES[prefix] || prefix;
+}
+
 /** Native models derived from the central pricing board. */
 export function getNativeModels(): UnifiedModel[] {
   const board = getSuppliedPricingBoard();
   const now = new Date().toISOString();
   return Object.entries(board).map(([id, pricing]) => {
     const [providerSeg, ...rest] = id.split("/");
+    const displayName = nativeProviderDisplayName(providerSeg);
     return {
       id: `native:${providerSeg}:${rest.join("/")}`,
       displayName: rest.join("/") || id,
       source: "native" as Source,
-      provider: providerSeg,
+      provider: displayName,
       originalModelId: id,
       capabilities: {
         text: true,
@@ -86,7 +118,7 @@ export function getNativeModels(): UnifiedModel[] {
       pricing,
       available: true,
       discoveredAt: now,
-      metadata: { boardId: id },
+      metadata: { boardId: id, shortPrefix: providerSeg },
     };
   });
 }
@@ -290,28 +322,35 @@ async function loadG4fFromDb(): Promise<{ models: UnifiedModel[]; providers: Uni
   );
   if (!rows) return { models: [], providers: [] };
   const now = new Date().toISOString();
-  const models: UnifiedModel[] = rows.map((r) => ({
-    id: r.publicId,
-    displayName: r.name,
-    source: "g4f" as Source,
-    provider: r.upstreamId.includes("/") ? r.upstreamId.split("/")[0] : "g4f",
-    originalModelId: r.upstreamId,
-    capabilities: {
-      text: true,
-      vision: false,
-      audio: false,
-      video: false,
-      image: false,
-      reasoning: false,
-      webSearch: false,
+  const models: UnifiedModel[] = rows.map((r) => {
+    // The G4F upstream provider (e.g. "Gemini", "OpenAI") is encoded in the
+    // publicId as `g4f:<providerId>:<upstreamId>`. Parse it out so models
+    // are grouped by their REAL provider, not lumped under "g4f".
+    const parts = r.publicId.split(":");
+    const g4fProvider = parts.length >= 3 && parts[0] === "g4f" ? parts[1] : "g4f";
+    return {
+      id: r.publicId,
+      displayName: r.name,
+      source: "g4f" as Source,
+      provider: g4fProvider,
+      originalModelId: r.upstreamId,
+      capabilities: {
+        text: true,
+        vision: false,
+        audio: false,
+        video: false,
+        image: false,
+        reasoning: false,
+        webSearch: false,
+        streaming: true,
+      },
       streaming: true,
-    },
-    streaming: true,
-    pricing: resolveSuppliedPricing(r.publicId),
-    available: r.active,
-    discoveredAt: r.firstSeenAt.toISOString(),
-    metadata: { upstreamId: r.upstreamId, name: r.name },
-  }));
+      pricing: resolveSuppliedPricing(r.publicId),
+      available: r.active,
+      discoveredAt: r.firstSeenAt.toISOString(),
+      metadata: { upstreamId: r.upstreamId, name: r.name, g4fProvider },
+    };
+  });
   const byProvider = new Map<string, UnifiedModel[]>();
   for (const m of models) {
     const arr = byProvider.get(m.provider) ?? [];
@@ -332,15 +371,49 @@ async function loadG4fFromDb(): Promise<{ models: UnifiedModel[]; providers: Uni
   return { models, providers };
 }
 
-// ─── Gratisfy dynamic discovery (per-user, auth-gated) ─────────────────────
+// ─── Gratisfy dynamic discovery (default key for catalog; user key for chat) ─
+
+/**
+ * The platform default Gratisfy key — used ONLY for model discovery
+ * (GET /v1/models). NEVER used for chat completions; users must supply
+ * their own BYOK key for chat. Set via env `GRATISFY_DEFAULT_KEY`, with
+ * a hardcoded fallback so discovery works out-of-the-box.
+ */
+const GRATISFY_DEFAULT_KEY =
+  process.env.GRATISFY_DEFAULT_KEY ||
+  "gxyz-329005304903695821409818809449641242523612625933";
+
+/** Cache for default-key discovery (shared across all users). */
+let gratisfyDefaultCache: { at: number; models: UnifiedModel[] } | null = null;
+
+/**
+ * Discover Gratisfy models using the platform default key. Visible to all
+ * users in the catalog. When a user wants to actually CHAT with a model,
+ * they must save their own BYOK key (the default key is NOT used for chat).
+ */
+export async function getGratisfyModelsDefault(): Promise<UnifiedModel[]> {
+  const cached = gratisfyDefaultCache;
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
+  try {
+    const discovered = await discoverGratisfyModels(GRATISFY_DEFAULT_KEY);
+    await persistGratisfyDiscovery("default", discovered);
+    const models = await loadGratisfyFromDb("default");
+    gratisfyDefaultCache = { at: Date.now(), models };
+    return models;
+  } catch {
+    // Discovery failed — serve last-known-good from Prisma.
+    const models = await loadGratisfyFromDb("default");
+    gratisfyDefaultCache = { at: Date.now(), models };
+    return models;
+  }
+}
 
 /**
  * Gratisfy models for a specific user (needs their BYOK key; per-user cache).
  *
- * PRD §17 — if no key is saved, return [] without ever calling the protected
- * endpoint. Never throws on missing key — just returns [].
- *
- * When a key IS present, discover + persist to Prisma + cache for 15 min.
+ * PRD §17 — if no key is saved, fall back to the default-key discovery so
+ * the catalog still shows models. The user's BYOK key is only required for
+ * CHAT, not for discovery.
  */
 export async function getGratisfyModelsForUser(
   userId: string,
@@ -349,7 +422,10 @@ export async function getGratisfyModelsForUser(
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
 
   const key = await loadBYOKKey(userId, "gratisfy");
-  if (!key) return []; // PRD §17 — no key, no call.
+  if (!key) {
+    // No user key — use the default-key discovery (catalog still works).
+    return getGratisfyModelsDefault();
+  }
 
   try {
     const discovered = await discoverGratisfyModels(key);
@@ -394,7 +470,15 @@ async function persistGratisfyDiscovery(
 
   const seenIds = new Set<string>();
   for (const m of discovered) {
-    const publicId = `gratisfy:gratisfy:${m.upstreamId}`; // single-provider
+    // Extract the real upstream provider from the upstreamId (the segment
+    // before the first "/"). E.g. "google-ai-studio/gemini-2.5-flash" →
+    // provider="google-ai-studio", model="gemini-2.5-flash". This makes
+    // the catalog group Gratisfy models by their REAL provider, not lump
+    // everything under "gratisfy".
+    const slashIdx = m.upstreamId.indexOf("/");
+    const upstreamProvider =
+      slashIdx > 0 ? m.upstreamId.slice(0, slashIdx) : "gratisfy";
+    const publicId = `gratisfy:${upstreamProvider}:${m.upstreamId}`;
     seenIds.add(publicId);
     const pricing = resolveGratisfyPricing(m);
     await db.providerModel.upsert({
@@ -480,8 +564,9 @@ async function persistGratisfyDiscovery(
 
 /** Load Gratisfy models from Prisma for display. */
 async function loadGratisfyFromDb(userId: string): Promise<UnifiedModel[]> {
-  // userId unused for now — the catalog is per-provider, not per-user at the
-  // DB level. The route handler enforces user-key presence before showing.
+  // userId is only consulted by the chat path to resolve the user's BYOK key.
+  // For catalog display, Gratisfy models are global (the default-key
+  // discovery populates them for everyone — PRD §17 amended).
   void userId;
   const rows = await withDb((tx) =>
     tx.providerModel.findMany({
@@ -489,12 +574,18 @@ async function loadGratisfyFromDb(userId: string): Promise<UnifiedModel[]> {
     }),
   );
   if (!rows) return [];
-  return rows.map((r) => ({
-    id: r.publicId,
-    displayName: r.name,
-    source: "gratisfy" as Source,
-    provider: "gratisfy",
-    originalModelId: r.upstreamId,
+  return rows.map((r) => {
+    // Parse the real upstream provider from the publicId
+    // (`gratisfy:<provider>:<upstreamId>`).
+    const parts = r.publicId.split(":");
+    const gratisfyProvider =
+      parts.length >= 3 && parts[0] === "gratisfy" ? parts[1] : "gratisfy";
+    return {
+      id: r.publicId,
+      displayName: r.name,
+      source: "gratisfy" as Source,
+      provider: gratisfyProvider,
+      originalModelId: r.upstreamId,
     capabilities: {
       text: true,
       vision: false,
@@ -509,16 +600,19 @@ async function loadGratisfyFromDb(userId: string): Promise<UnifiedModel[]> {
     pricing: resolveSuppliedPricing(r.publicId),
     available: r.active,
     discoveredAt: r.firstSeenAt.toISOString(),
-    metadata: { upstreamId: r.upstreamId, name: r.name },
-  }));
+      metadata: { upstreamId: r.upstreamId, name: r.name, gratisfyProvider },
+    };
+  });
 }
 
 // ─── Unified view ────────────────────────────────────────────────────────────
 
 /**
- * The full unified model list (PRD §57). Native + G4F are always listed;
- * Gratisfy models are only included when an authenticated userId with a
- * connected key is provided (PRD §17).
+ * The full unified model list (PRD §57). Native + G4F + Gratisfy are always
+ * listed. Gratisfy models are discovered using the platform default key
+ * (visible to everyone); when a user with their own BYOK key is signed in,
+ * their key is used instead. The default key is for DISCOVERY ONLY — chat
+ * still requires the user's own BYOK key (PRD §17 amended).
  */
 export async function getUnifiedModels(
   userId?: string,
@@ -526,7 +620,10 @@ export async function getUnifiedModels(
   const native = getNativeModels();
   const nativeProviders = getNativeProviders();
   const g4f = await getG4fModels();
-  const gratisfy = userId ? await getGratisfyModelsForUser(userId) : [];
+  // Use the user's key if present (per-user cache), else the default key.
+  const gratisfy = userId
+    ? await getGratisfyModelsForUser(userId)
+    : await getGratisfyModelsDefault();
   const gratisfyProviders = buildProvidersFromModels(gratisfy, "gratisfy", true);
   return {
     models: [...native, ...g4f.models, ...gratisfy],
@@ -576,7 +673,7 @@ export async function resolveUnifiedModel(
         id: `native:${provider}:${rest.join("/")}`,
         displayName: rest.join("/") || id,
         source: "native",
-        provider,
+        provider: nativeProviderDisplayName(provider),
         originalModelId: id,
         capabilities: {
           text: true,

@@ -1,28 +1,39 @@
 /**
- * POST   /api/v1/byok/g4f — save (masked) BYOK key, validate, and trigger
- *         dynamic model discovery (PRD §18, §24, §54, §82).
+ * POST   /api/v1/byok/g4f — save (masked) BYOK key, validate (PRD §18, §54, §82).
  * DELETE /api/v1/byok/g4f — remove the key.
- * AUTH REQUIRED. Never returns the raw key.
  *
- * PRD §82 — never show "Connected" unless the provider credential was actually
- * validated against the upstream.
+ * ANONYMOUS BROWSER MODE: uses `X-Browser-Id` header + OnyxBase storage.
+ * No sign-in required. Never returns the raw key.
+ *
+ * PRD §82 — never show "Connected" unless the provider credential was
+ * actually validated against the upstream.
  */
 
 import {
-  saveBYOK,
-  removeBYOK,
-  getG4fModels,
+  saveBrowserByok,
+  removeBrowserByok,
 } from "@/lib/xyz";
 import { validateG4fKey } from "@/lib/xyz/g4f";
-import { setBYOKValidation } from "@/lib/xyz/byok";
-import { requireAuth } from "@/lib/xyz/route-auth";
+import { setBrowserByokValidation } from "@/lib/xyz/byok";
+import { getBrowserId } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const auth = await requireAuth(request);
-  if ("response" in auth) return auth.response;
+  const browserId = getBrowserId(request);
+  if (browserId === "anonymous") {
+    return Response.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          code: "MISSING_BROWSER_ID",
+          message: "Browser ID is required. Send it as the X-Browser-Id header.",
+        },
+      },
+      { status: 400 },
+    );
+  }
   try {
     const body = (await request.json()) as { key?: string };
     const key = (body.key ?? "").trim();
@@ -34,12 +45,12 @@ export async function POST(request: Request) {
     }
 
     // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBYOK(auth.userId, "g4f", key);
+    const meta = await saveBrowserByok(browserId, "g4f", key);
 
     // Validate against the upstream (PRD §82 — no fake "Connected").
     const validation = await validateG4fKey(key);
-    await setBYOKValidation(
-      auth.userId,
+    await setBrowserByokValidation(
+      browserId,
       "g4f",
       validation.ok,
       validation.ok ? undefined : validation.error,
@@ -56,17 +67,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // G4F discovery endpoints are PUBLIC — trigger the discovery + persist
-    // to Prisma so the catalog shows them (PRD §24, §48). The user's API key
-    // is only needed for chat generation, not for discovery.
-    const g4f = await getG4fModels();
-
     return Response.json({
       ok: true,
       meta,
-      validation: { ok: true, modelCount: validation.modelCount ?? g4f.models.length },
-      modelsDiscovered: g4f.models.length,
-      stale: g4f.stale,
+      validation: { ok: true, modelCount: validation.modelCount ?? 0 },
+      modelsDiscovered: validation.modelCount ?? 0,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid request.";
@@ -78,8 +83,19 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(request);
-  if ("response" in auth) return auth.response;
-  await removeBYOK(auth.userId, "g4f");
+  const browserId = getBrowserId(request);
+  if (browserId === "anonymous") {
+    return Response.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          code: "MISSING_BROWSER_ID",
+          message: "Browser ID is required.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  await removeBrowserByok(browserId, "g4f");
   return Response.json({ ok: true });
 }

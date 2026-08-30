@@ -58,7 +58,6 @@ function useOrigin() {
 
 // ─── Section registry ───────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: "auth", label: "Authentication", icon: KeyRound, color: "text-emerald-600" },
   { id: "api-keys", label: "API Keys", icon: KeyRound, color: "text-violet-600" },
   { id: "byok", label: "BYOK Providers", icon: Plug, color: "text-amber-600" },
   { id: "routing", label: "Provider Routing", icon: Shuffle, color: "text-slate-700 dark:text-slate-300" },
@@ -298,20 +297,6 @@ export default function DocsPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // cURL templates use ${origin} so the user can copy and run them directly.
-  const authSendCurl = `curl -X POST ${origin}/api/v1/auth/email/send \\
-  -H "Content-Type: application/json" \\
-  -d '{ "email": "you@example.com" }'`;
-
-  const authVerifyCurl = `curl -X POST ${origin}/api/v1/auth/email/verify \\
-  -H "Content-Type: application/json" \\
-  -d '{ "email": "you@example.com", "code": "123456" }'`;
-
-  const authMeCurl = `curl ${origin}/api/v1/auth/me \\
-  -H "Cookie: fxz_session=\${SESSION_COOKIE}"`;
-
-  const authLogoutCurl = `curl -X POST ${origin}/api/v1/auth/logout \\
-  -H "Cookie: fxz_session=\${SESSION_COOKIE}"`;
-
   const listKeysCurl = `curl ${origin}/api/v1/api-keys \\
   -H "Authorization: Bearer fx_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"`;
 
@@ -490,147 +475,10 @@ for await (const chunk of stream) {
 
           {/* Main content */}
           <main className="min-w-0 space-y-16">
-            {/* 1. Authentication */}
-            <Section
-              id="auth"
-              index={1}
-              title="Authentication"
-              icon={KeyRound}
-              intro={
-                <>
-                  Email-only passwordless flow. Request a 6-digit code → verify →
-                  receive an <code className="font-mono text-foreground">HttpOnly</code> +{" "}
-                  <code className="font-mono text-foreground">SameSite=Lax</code> session
-                  cookie named <code className="font-mono text-foreground">fxz_session</code>{" "}
-                  (7-day TTL). Generic responses prevent account enumeration.
-                </>
-              }
-            >
-              <EndpointCard
-                method="POST"
-                path="/api/v1/auth/email/send"
-                title="Send verification code"
-                description="Public. Sends a 6-digit code to the email. In dev (no email provider), the code is returned as `devCode` for local testing."
-                curl={authSendCurl}
-              >
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      Request body
-                    </div>
-                    <CodeBlock
-                      code={`{
-  "email": "you@example.com"
-}`}
-                      filename="request.json"
-                      language="json"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      200 response
-                    </div>
-                    <CodeBlock
-                      code={`{
-  "ok": true,
-  "message": "Code sent."
-}`}
-                      filename="response.json"
-                      language="json"
-                    />
-                  </div>
-                </div>
-              </EndpointCard>
-
-              <EndpointCard
-                method="POST"
-                path="/api/v1/auth/email/verify"
-                title="Verify code → create session"
-                description="Public. Validates the code (single-use, server-side expiry). On success sets the `fxz_session` cookie."
-                curl={authVerifyCurl}
-              >
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      Request body
-                    </div>
-                    <CodeBlock
-                      code={`{
-  "email": "you@example.com",
-  "code": "123456"
-}`}
-                      filename="request.json"
-                      language="json"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                      200 response
-                    </div>
-                    <CodeBlock
-                      code={`{
-  "ok": true,
-  "userId": "clxxx...",
-  "message": "Signed in."
-}`}
-                      filename="response.json"
-                      language="json"
-                    />
-                  </div>
-                </div>
-              </EndpointCard>
-
-              <EndpointCard
-                method="GET"
-                path="/api/v1/auth/me"
-                title="Current user"
-                description="Public. Returns `{user: null}` when unauthenticated (no 401 — lets clients render the unauth state cleanly)."
-                curl={authMeCurl}
-              >
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    200 response (authed)
-                  </div>
-                  <CodeBlock
-                    code={`{
-  "user": {
-    "id": "clxxx...",
-    "email": "you@example.com",
-    "displayName": null,
-    "status": "active",
-    "createdAt": "2024-01-01T00:00:00.000Z"
-  }
-}`}
-                    filename="response.json"
-                    language="json"
-                  />
-                </div>
-              </EndpointCard>
-
-              <EndpointCard
-                method="POST"
-                path="/api/v1/auth/logout"
-                title="Sign out"
-                description="Public. Invalidates the session server-side + clears the `fxz_session` cookie. Does NOT delete account data (XYZ, usage, BYOK, API keys all preserved)."
-                curl={authLogoutCurl}
-              >
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    200 response
-                  </div>
-                  <CodeBlock
-                    code={`{ "ok": true }`}
-                    filename="response.json"
-                    language="json"
-                  />
-                </div>
-              </EndpointCard>
-            </Section>
-
-            {/* 2. API Keys */}
+            {/* 1. API Keys */}
             <Section
               id="api-keys"
-              index={2}
+              index={1}
               title="FreeAIXYZ API Keys"
               icon={KeyRound}
               intro={

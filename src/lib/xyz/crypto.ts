@@ -28,12 +28,18 @@ export function randomToken(byteLen = 32): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-/** Generate a 6-digit verification code. */
+/** Generate a 6-digit verification code (uniform on [0, 1_000_000)). */
 export function numericCode(): string {
-  const buf = new Uint8Array(4);
+  // Use 6 random bytes (48 bits) and reduce modulo 1_000_000. The bias
+  // is negligible (< 0.00002%). `>>> 0` forces unsigned 32-bit so we never
+  // produce a negative number (which previously could leak a stray digit).
+  const buf = new Uint8Array(6);
   (globalThis.crypto ?? webcrypto).getRandomValues(buf);
-  const num = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-  return (Math.abs(num) % 900_000 + 100_000).toString().padStart(6, "0");
+  let acc = 0;
+  for (let i = 0; i < 6; i++) {
+    acc = (acc * 256 + buf[i]) % 1_000_000;
+  }
+  return acc.toString().padStart(6, "0");
 }
 
 /** Generate a short random salt for code hashing. */

@@ -3,6 +3,12 @@
 /**
  * ByokProviders — BYOK management surface (PRD §4, §5, §54, §63).
  *
+ * ANONYMOUS BROWSER MODE:
+ *   The component generates a random UUID on first load (stored in
+ *   localStorage) and sends it as the `X-Browser-Id` header on every
+ *   BYOK request. No sign-in required — keys are stored in OnyxBase
+ *   keyed by this browser ID.
+ *
  * Two side-by-side cards (Gratisfy + G4F). Each card manages its own key:
  *   - Input (password) + Save (POST /api/v1/byok/<src>)
  *   - Test  (POST /api/v1/byok/<src>/test)   — shows "{count} models visible"
@@ -14,6 +20,11 @@
  * DISPLAY RULES:
  *   - Source badges: NATIVE=slate, GRATISFY=violet, G4F=orange.
  *   - Append "BYOK" where requiresApiKey.
+ *
+ * ERROR HANDLING (React #31 fix):
+ *   Server returns `{ error: { type, code, message } }` on failure. We
+ *   always extract `.message` (or stringify) before passing to toast —
+ *   never render the error object directly as a React child.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -52,11 +63,12 @@ interface SaveMeta {
 interface SaveResponse {
   ok: boolean;
   meta?: SaveMeta;
+  error?: string | { type?: string; code?: string; message?: string };
 }
 
 interface TestResponse {
   ok: boolean;
-  error?: string;
+  error?: string | { type?: string; code?: string; message?: string };
   count?: number;
 }
 
@@ -75,6 +87,37 @@ interface ProviderEntry {
 interface ProvidersResponse {
   providers: ProviderEntry[];
   stale: boolean;
+}
+
+const BROWSER_ID_KEY = "freeaixyz_browser_id";
+
+/** Read or create a persistent browser ID (UUID v4). Client-only. */
+function getBrowserId(): string {
+  if (typeof window === "undefined") return "anonymous";
+  try {
+    let id = window.localStorage.getItem(BROWSER_ID_KEY);
+    if (!id) {
+      // Generate a UUID v4 (crypto.randomUUID is widely supported).
+      id =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `b_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      window.localStorage.setItem(BROWSER_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "anonymous";
+  }
+}
+
+/** Extract a string message from an error response (React #31 fix). */
+function errorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "string") return err || fallback;
+  if (err && typeof err === "object") {
+    const e = err as { message?: string; code?: string; type?: string };
+    return e.message || e.code || e.type || fallback;
+  }
+  return fallback;
 }
 
 function SourceBadge({ source }: { source: ProviderEntry["source"] }) {
@@ -113,7 +156,10 @@ function ByokCard({ source }: { source: ByokSource }) {
       const res = await fetch(base, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Browser-Id": getBrowserId(),
+        },
         body: JSON.stringify({ key: trimmed }),
       });
       const data: SaveResponse = await res.json();
@@ -123,7 +169,7 @@ function ByokCard({ source }: { source: ByokSource }) {
         setKeyInput("");
         toast.success(`${label} key saved (masked: ${data.meta.masked})`);
       } else {
-        toast.error(`Failed to save ${label} key`);
+        toast.error(errorMessage(data.error, `Failed to save ${label} key`));
       }
     } catch {
       toast.error("Network error — try again");
@@ -138,7 +184,10 @@ function ByokCard({ source }: { source: ByokSource }) {
       const res = await fetch(testEndpoint, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Browser-Id": getBrowserId(),
+        },
         body: JSON.stringify(keyInput.trim() ? { key: keyInput.trim() } : {}),
       });
       const data: TestResponse = await res.json();
@@ -151,7 +200,7 @@ function ByokCard({ source }: { source: ByokSource }) {
         }
       } else {
         setConnected(false);
-        toast.error(data.error ?? `${label} key invalid`);
+        toast.error(errorMessage(data.error, `${label} key invalid`));
       }
     } catch {
       toast.error("Network error — try again");
@@ -166,6 +215,7 @@ function ByokCard({ source }: { source: ByokSource }) {
       const res = await fetch(base, {
         method: "DELETE",
         credentials: "include",
+        headers: { "X-Browser-Id": getBrowserId() },
       });
       if (res.ok) {
         setMasked(null);
@@ -208,8 +258,8 @@ function ByokCard({ source }: { source: ByokSource }) {
         </div>
         <CardDescription>
           {isGratisfy
-            ? "Bring your own gxyz-… key from Gratisfy. We store it masked at rest."
-            : "Bring your own g4f_… key from g4f.dev."}
+            ? "Bring your own gxyz-… key from Gratisfy. Stored masked at rest in OnyxBase."
+            : "Bring your own g4f_… key from g4f.dev. Stored masked at rest in OnyxBase."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -274,6 +324,7 @@ export function ByokProviders() {
     try {
       const res = await fetch("/api/v1/providers", {
         credentials: "include",
+        headers: { "X-Browser-Id": getBrowserId() },
         cache: "no-store",
       });
       if (!res.ok) {
@@ -302,8 +353,8 @@ export function ByokProviders() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Providers</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Connect your own BYOK keys (Gratisfy, G4F) and browse the unified
-            provider catalog.
+            Connect your own BYOK keys (Gratisfy, G4F) — no sign-in required.
+            Keys are stored in OnyxBase keyed to your browser.
           </p>
         </div>
         <Button onClick={refresh} disabled={refreshing} variant="outline">

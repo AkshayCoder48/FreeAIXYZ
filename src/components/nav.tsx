@@ -8,7 +8,6 @@ import {
   Sun,
   Cpu,
   BookOpen,
-  Settings,
   MessageSquare,
   DollarSign,
   Boxes,
@@ -37,7 +36,6 @@ const NAV_LINKS = [
   { href: "/providers", label: "Providers", icon: Boxes },
   { href: "/account", label: "Account", icon: User },
   { href: "/docs", label: "Docs", icon: BookOpen },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Nav() {
