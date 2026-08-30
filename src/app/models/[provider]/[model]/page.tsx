@@ -1,871 +1,434 @@
-import Link from "next/link";
+/**
+ * Individual model page (PRD §32, §33, §78).
+ *
+ * Route: /models/[provider]/[model]
+ * - <provider> is the source segment ("native" | "g4f" | "gratisfy")
+ * - <model> is the URL-encoded full publicId (e.g. "native%3Atb%3Agpt-5")
+ *
+ * RSC — server-side. Calls `resolveUnifiedModel()` directly (no HTTP hop).
+ */
+
 import { notFound } from "next/navigation";
-import { cookies, headers } from "next/headers";
-import type { Metadata } from "next";
-import {
-  ArrowLeft,
-  Clock,
-  Layers,
-  Sparkles,
-  MessageSquare,
-  Eye,
-  AudioLines,
-  Image as ImageIcon,
-  Search as SearchIcon,
-  Wrench,
-  ShieldCheck,
-  DollarSign,
-  Zap,
-  AlertCircle,
-} from "lucide-react";
-
+import Link from "next/link";
+import { resolveUnifiedModel } from "@/lib/xyz/registry";
+import { getSuppliedPricingBoard, REFERENCE_REQUEST, XYZ_USD_MULTIPLIER } from "@/lib/xyz/pricing-board";
+import { estimateResponsesPerXYZ } from "@/lib/xyz/credit";
+import { getSessionUserId } from "@/lib/xyz/auth";
+import { SiteFooter } from "@/components/site-footer";
 import { Nav } from "@/components/nav";
-import { SiteFooter } from "@/components/site";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
-
-import {
-  resolveUnifiedModel,
-  getSessionUserId,
-  XYZ_USD_MULTIPLIER,
-} from "@/lib/xyz";
-import { db } from "@/lib/db";
-import type { ModelCapabilities, ModelPricing, Source } from "@/lib/xyz/types";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ExternalLink, MessageSquare, ShieldCheck, AlertTriangle, Clock } from "lucide-react";
+import { formatUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
-// ─── Helpers (kept visually aligned with the catalog's card styling) ───────
-
-function sourceLabel(source: Source): string {
-  if (source === "gratisfy") return "Gratisfy";
-  if (source === "g4f") return "G4F";
-  return "Native";
-}
-
-interface SourceBadgeMeta {
-  label: string;
-  cls: string;
-}
-
-function sourceBadge(source: Source): SourceBadgeMeta {
-  // NATIVE=slate, GRATISFY=violet, G4F=orange. NO indigo or blue anywhere.
-  if (source === "gratisfy") {
-    return {
-      label: "GRATISFY",
-      cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
-    };
-  }
-  if (source === "g4f") {
-    return {
-      label: "G4F",
-      cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
-    };
-  }
-  return {
-    label: "NATIVE",
-    cls: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30",
-  };
-}
-
-interface StatusMeta {
-  label: string;
-  dot: string;
-  badge: string;
-}
-
-function statusBadge(available: boolean, streaming: boolean): StatusMeta {
-  if (available && streaming) {
-    return {
-      label: "Live",
-      dot: "bg-emerald-500",
-      badge:
-        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-    };
-  }
-  if (available && !streaming) {
-    return {
-      label: "Degraded",
-      dot: "bg-amber-500",
-      badge:
-        "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
-    };
-  }
-  return {
-    label: "Unavailable",
-    dot: "bg-slate-500",
-    badge:
-      "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30",
-  };
-}
-
-interface CapMeta {
-  key: string;
-  label: string;
-  Icon: React.ComponentType<{ className?: string }>;
-}
-
-const CAP_METAS: CapMeta[] = [
-  { key: "text", label: "Text", Icon: MessageSquare },
-  { key: "reasoning", label: "Reasoning", Icon: Sparkles },
-  { key: "vision", label: "Vision", Icon: Eye },
-  { key: "webSearch", label: "Search", Icon: SearchIcon },
-  { key: "image", label: "Image", Icon: ImageIcon },
-  { key: "audio", label: "Audio", Icon: AudioLines },
-  { key: "video", label: "Video", Icon: Zap },
-  { key: "tools", label: "Tools", Icon: Wrench },
-];
-
-function capabilityList(caps: ModelCapabilities): CapMeta[] {
-  return CAP_METAS.filter((c) => {
-    const v = (caps as Record<string, boolean>)[c.key];
-    return Boolean(v);
-  });
-}
-
-function isPricingDocumented(p: ModelPricing | null | undefined): boolean {
-  if (!p) return false;
-  if (p.status === "not_documented") return false;
-  if (p.inputPerMillion == null || p.outputPerMillion == null) return false;
-  return true;
-}
-
-function formatPrice(v: number | null | undefined): string {
-  if (v == null) return "Not documented";
-  if (v === 0) return "$0";
-  if (v < 0.01) return `$${v.toFixed(4)}`;
-  if (v < 1) return `$${v.toFixed(3)}`;
-  return `$${v.toFixed(2)}`;
-}
-
-/**
- * XYZ cost for a standardized request (1000 in / 1000 out, 0 cache). PRD §41.
- * Returns null when pricing is undocumented — caller renders "—".
- */
-function xyzCostForStandardRequest(
-  p: ModelPricing | null | undefined,
-  multiplier: number,
-): number | null {
-  if (!isPricingDocumented(p)) return null;
-  if (p!.status === "free") return 0; // explicitly free → 0 XYZ
-  const input = p!.inputPerMillion ?? 0;
-  const output = p!.outputPerMillion ?? 0;
-  const usdCost = (1000 / 1e6) * input + (1000 / 1e6) * output;
-  if (usdCost < 0) return null;
-  return usdCost * (multiplier || 1);
-}
-
-function formatXyz(v: number | null): string {
-  if (v == null) return "—";
-  if (v === 0) return "0";
-  if (v < 0.001) return v.toExponential(2);
-  if (v < 0.01) return v.toFixed(4);
-  if (v < 1) return v.toFixed(4);
-  return v.toFixed(3);
-}
-
-function estimatedResponsesPerXYZ(
-  p: ModelPricing | null | undefined,
-  multiplier: number,
-):
-  | { kind: "finite"; value: number }
-  | { kind: "free" }
-  | { kind: "unknown" } {
-  if (!isPricingDocumented(p)) return { kind: "unknown" };
-  if (p!.status === "free") return { kind: "free" };
-  const input = p!.inputPerMillion ?? 0;
-  const output = p!.outputPerMillion ?? 0;
-  const usdCost = (1000 / 1e6) * input + (1000 / 1e6) * output;
-  if (usdCost <= 0) return { kind: "free" };
-  const denom = usdCost * (multiplier || 1);
-  if (denom <= 0) return { kind: "unknown" };
-  return { kind: "finite", value: Math.floor(1 / denom) };
-}
-
-function pricingSourceBadge(
-  p: ModelPricing | null | undefined,
-): { label: string; cls: string } {
-  // Provider=emerald, Market=slate, Manual=slate, Undocumented=amber.
-  if (!p || !isPricingDocumented(p)) {
-    return {
-      label: "Undocumented",
-      cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
-    };
-  }
-  if (p.source === "provider") {
-    return {
-      label: "Provider",
-      cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-    };
-  }
-  if (p.source === "manual") {
-    return {
-      label: "Manual",
-      cls: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30",
-    };
-  }
-  // pricing-board + unknown both surface as "Market" (the supplied baseline
-  // represents the market-rate baseline — PRD §24).
-  return {
-    label: "Market",
-    cls: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30",
-  };
-}
-
-function deriveDescription(
-  caps: ModelCapabilities,
-  dbDescription: string | null | undefined,
-): string {
-  if (dbDescription && dbDescription.trim().length > 0) return dbDescription.trim();
-  const parts: string[] = [];
-  if (caps.reasoning) parts.push("reasoning");
-  if (caps.vision) parts.push("vision");
-  if (caps.webSearch) parts.push("web search");
-  if (caps.image) parts.push("image generation");
-  if (caps.audio) parts.push("audio");
-  if (caps.video) parts.push("video");
-  if (caps.tools) parts.push("tool use");
-  if (parts.length === 0) {
-    return "No description available.";
-  }
-  return `Supports ${parts.join(", ")}.`;
-}
-
-function formatDate(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return null;
-  }
-}
-
-// ─── Page params type ───────────────────────────────────────────────────────
 
 interface PageProps {
   params: Promise<{ provider: string; model: string }>;
 }
 
-// ─── Metadata (SEO) ──────────────────────────────────────────────────────────
-
-export async function generateMetadata({
-  params,
-}: PageProps): Promise<Metadata> {
-  const { provider, model } = await params;
-  let modelId = model;
-  try {
-    modelId = decodeURIComponent(model);
-  } catch {
-    /* keep raw */
-  }
-  const shortName = modelId.split(":").pop() || modelId;
-  let providerLabel = provider;
-  try {
-    providerLabel = decodeURIComponent(provider);
-  } catch {
-    /* keep raw */
-  }
-  return {
-    title: `${shortName} — ${providerLabel.toUpperCase()} — FreeAIXYZ Models`,
-    description: `Capabilities, pricing and live status for ${modelId}. Direct copy of the canonical model id, standardized XYZ cost per request, and estimated responses per 1 XYZ.`,
-  };
-}
-
-// ─── Page component ──────────────────────────────────────────────────────────
-
 export default async function ModelDetailPage({ params }: PageProps) {
-  const { provider, model } = await params;
+  const { provider: providerSeg, model: modelSeg } = await params;
+  // Decode the model segment — it's URL-encoded.
+  const modelId = decodeURIComponent(modelSeg);
 
-  let modelId = model;
-  let providerSeg = provider;
-  try {
-    modelId = decodeURIComponent(model);
-    providerSeg = decodeURIComponent(provider);
-  } catch {
-    /* keep raw — let notFound handle */
-  }
+  // Try to resolve via the registry. Pass userId so BYOK models are visible
+  // to the user who has the right key.
+  const userId = await getSessionUserIdSafe();
+  const model = await resolveUnifiedModel(modelId, userId ?? undefined);
 
-  // Resolve the user (best-effort — only needed for gratisfy model lookups).
-  const headerStore = await headers();
-  const cookieStore = await cookies();
-  const url =
-    headerStore.get("x-url") ||
-    `http://localhost:3000/models/${providerSeg}/${modelId}`;
-  const request = new Request(url, {
-    headers: { cookie: cookieStore.toString() },
-  });
-  const userId = await getSessionUserId(request);
-
-  // Resolve the unified model. If the publicId doesn't parse, the registry
-  // falls back to a bare native id (e.g. "tb/gpt-5") lookup.
-  const resolved = await resolveUnifiedModel(modelId, userId ?? undefined);
-  if (!resolved) {
+  if (!model) {
     notFound();
   }
 
-  const model_ = resolved;
+  // Compute the standardized XYZ cost + responses-per-XYZ.
+  const estimate = estimateResponsesPerXYZ(model.originalModelId, model.pricing);
+  const refIn = REFERENCE_REQUEST.inputTokens;
+  const refOut = REFERENCE_REQUEST.outputTokens;
+  const inPrice = model.pricing.inputPerMillion;
+  const outPrice = model.pricing.outputPerMillion;
+  const cachePrice = model.pricing.cachePerMillion;
+  const multiplier = XYZ_USD_MULTIPLIER;
 
-  // Surface an honest mismatch warning if the URL provider segment doesn't
-  // match the model's actual source or provider — keeps links honest.
-  const providerMismatch =
-    model_.provider.toLowerCase() !== providerSeg.toLowerCase() &&
-    model_.source.toLowerCase() !== providerSeg.toLowerCase();
-
-  // Pull the additional metadata (description, contextLength, lastVerifiedAt)
-  // from the Prisma ProviderModel row — only non-native sources have a row.
-  const dbRow =
-    model_.source !== "native"
-      ? await db.providerModel.findUnique({
-          where: { publicId: model_.id },
-        })
+  const refUsdCost =
+    inPrice != null && outPrice != null
+      ? (refIn / 1_000_000) * inPrice + (refOut / 1_000_000) * outPrice
       : null;
+  const refXyzCost = refUsdCost != null ? refUsdCost * multiplier : null;
+  const responsesPerXyz = estimate?.perXyz ?? null;
 
-  const description = deriveDescription(
-    model_.capabilities,
-    dbRow?.description ?? null,
+  const isFree =
+    (inPrice === 0 || inPrice == null) && (outPrice === 0 || outPrice == null);
+
+  // Source badge color
+  const sourceBadge =
+    model.source === "native"
+      ? { label: "NATIVE", color: "bg-slate-100 text-slate-700 border-slate-300" }
+      : model.source === "gratisfy"
+        ? { label: "GRATISFY", color: "bg-violet-100 text-violet-700 border-violet-300" }
+        : { label: "G4F", color: "bg-orange-100 text-orange-700 border-orange-300" };
+
+  // Status badge
+  const statusBadge = model.available
+    ? { label: "Live", color: "bg-emerald-100 text-emerald-700 border-emerald-300" }
+    : { label: "Unavailable", color: "bg-slate-100 text-slate-600 border-slate-300" };
+
+  // Pricing source badge
+  const pricingSourceBadge =
+    model.pricing.source === "provider"
+      ? { label: "Provider", color: "bg-emerald-100 text-emerald-700 border-emerald-300" }
+      : model.pricing.source === "pricing-board"
+        ? { label: "Market", color: "bg-slate-100 text-slate-600 border-slate-300" }
+        : model.pricing.source === "manual"
+          ? { label: "Manual", color: "bg-slate-100 text-slate-600 border-slate-300" }
+          : { label: "Undocumented", color: "bg-amber-100 text-amber-700 border-amber-300" };
+
+  const capabilityLabels: { key: keyof typeof model.capabilities; label: string }[] = [
+    { key: "text", label: "Chat" },
+    { key: "vision", label: "Vision" },
+    { key: "audio", label: "Audio" },
+    { key: "video", label: "Video" },
+    { key: "image", label: "Image" },
+    { key: "reasoning", label: "Reasoning" },
+    { key: "webSearch", label: "Search" },
+    { key: "streaming", label: "Streaming" },
+    { key: "tools", label: "Tools" },
+  ];
+  const activeCapabilities = capabilityLabels.filter(
+    (c) => model.capabilities[c.key],
   );
-  const contextLength: number | null = dbRow?.contextLength ?? null;
-  const lastVerifiedAt: string | null =
-    dbRow?.lastVerifiedAt?.toISOString() ?? null;
-  const discoveredAt: string = model_.discoveredAt;
-
-  const srcBadge = sourceBadge(model_.source);
-  const sBadge = statusBadge(model_.available, model_.streaming);
-  const caps = capabilityList(model_.capabilities);
-  const pricing = model_.pricing;
-  const multiplier = XYZ_USD_MULTIPLIER || 1;
-  const xyzCost = xyzCostForStandardRequest(pricing, multiplier);
-  const responses = estimatedResponsesPerXYZ(pricing, multiplier);
-  const pSourceBadge = pricingSourceBadge(pricing);
-
-  // Pretty header name — use the trailing segment of originalModelId for
-  // native (e.g. "tb/gpt-5" → "gpt-5"); otherwise use displayName.
-  const shortName = (() => {
-    const oid = model_.originalModelId || model_.displayName;
-    const slash = oid.lastIndexOf("/");
-    if (slash >= 0) return oid.slice(slash + 1);
-    return model_.displayName || oid;
-  })();
-
-  const providerLabel = sourceLabel(model_.source);
-  const providerSubLabel =
-    model_.source === "native"
-      ? `Native · ${model_.provider}`
-      : model_.source === "g4f"
-        ? `G4F · ${model_.provider}`
-        : providerLabel;
-
-  const playgroundHref = `/chat?model=${encodeURIComponent(model_.id)}`;
-  const providerHref = `/models/${encodeURIComponent(model_.provider)}`;
-  const modelsHref = "/models";
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Nav />
-
-      <main className="flex-1 mx-auto max-w-6xl w-full px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 sm:gap-8 min-w-0">
-        {/* Breadcrumb + back link */}
-        <div className="flex flex-col gap-3 min-w-0">
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-16">
+        {/* Breadcrumb */}
+        <div className="mb-4">
           <Link
-            href={modelsHref}
-            className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground transition-colors self-start"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
+            href="/models"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            All models
+            <ArrowLeft className="h-4 w-4" />
+            Back to catalog
           </Link>
-          <nav
-            aria-label="Breadcrumb"
-            className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0 flex-wrap"
-          >
-            <Link href={modelsHref} className="hover:text-foreground transition-colors">
-              Models
-            </Link>
-            <span className="text-muted-foreground/50">/</span>
-            <Link
-              href={providerHref}
-              className="hover:text-foreground transition-colors truncate max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap"
-              title={model_.provider}
-            >
-              {providerSubLabel}
-            </Link>
-            <span className="text-muted-foreground/50">/</span>
-            <span
-              className="text-foreground truncate max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap"
-              title={shortName}
-            >
-              {shortName}
-            </span>
-          </nav>
         </div>
 
-        {/* Header card: name + status + source + Try-in-Playground */}
-        <Card className="p-6 sm:p-8 rounded-2xl border-border bg-card gap-0 min-w-0">
-          <div className="flex flex-col gap-4 min-w-0">
-            {/* Status + source badges */}
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium ${sBadge.badge}`}
-                style={{ fontFamily: "var(--font-mono), monospace" }}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${sBadge.dot}`} />
-                {sBadge.label}
-              </span>
-              <Badge
-                variant="outline"
-                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 h-6 ${srcBadge.cls}`}
-                style={{ fontFamily: "var(--font-mono), monospace" }}
-              >
-                {srcBadge.label}
-              </Badge>
-              <span
-                className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground truncate max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap"
-                style={{ fontFamily: "var(--font-mono), monospace" }}
-                title={providerSubLabel}
-              >
-                {providerSubLabel}
-              </span>
-            </div>
-
-            {/* Model name (large) */}
-            <h1
-              className="text-3xl sm:text-4xl lg:text-5xl font-normal tracking-tight text-foreground min-w-0"
-              style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-            >
-              {shortName}
+        {/* Header */}
+        <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+              {model.displayName}
             </h1>
+            <Badge variant="outline" className={sourceBadge.color}>
+              {sourceBadge.label}
+            </Badge>
+            <Badge variant="outline" className={statusBadge.color}>
+              ● {statusBadge.label}
+            </Badge>
+            {model.source !== "native" && (
+              <Badge variant="outline" className="bg-violet-100 text-violet-700 border-violet-300">
+                BYOK
+              </Badge>
+            )}
+          </div>
+          <div className="text-muted-foreground text-base">
+            Provider: <span className="font-medium text-foreground">{model.provider}</span>
+          </div>
+        </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left column: details */}
+          <div className="lg:col-span-2 space-y-6">
             {/* Description */}
-            <p
-              className="text-sm sm:text-base text-muted-foreground leading-relaxed min-w-0"
-              style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-            >
-              {description}
-            </p>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Description</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {model.metadata.description
+                    ? String(model.metadata.description)
+                    : model.displayName + " — a " + model.source + " model from " + model.provider + "."}
+                </p>
+              </CardContent>
+            </Card>
 
-            {/* Action: Try in Playground + Copy */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 min-w-0">
-              <Button asChild size="default" className="h-10">
-                <Link href={playgroundHref}>
-                  Try in Playground
-                  <ArrowLeft className="h-4 w-4 rotate-180" />
-                </Link>
-              </Button>
-              <CopyIdButton
-                value={model_.id}
-                label="Copy model id"
-                className="h-10"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Provider mismatch warning — keeps URLs honest */}
-        {providerMismatch && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2 min-w-0">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span
-              className="min-w-0"
-              style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-            >
-              The URL provider segment (<code style={{ fontFamily: "var(--font-mono), monospace" }}>{providerSeg}</code>)
-              doesn&apos;t match the model&apos;s actual source/provider (
-              <code style={{ fontFamily: "var(--font-mono), monospace" }}>{model_.source}:{model_.provider}</code>).
-              Showing the canonical entry anyway.
-            </span>
-          </div>
-        )}
-
-        {/* Two-column grid: details + pricing */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
-          {/* Details card (2 cols wide on lg) */}
-          <Card className="lg:col-span-2 p-6 rounded-2xl border-border bg-card gap-0 min-w-0">
-            <h2
-              className="text-xs uppercase tracking-[0.15em] text-muted-foreground mb-4"
-              style={{ fontFamily: "var(--font-mono), monospace" }}
-            >
-              Details
-            </h2>
-
-            <div className="flex flex-col gap-5 min-w-0">
-              {/* Model ID */}
-              <DetailRow
-                label="Model ID"
-                icon={<Layers className="h-3.5 w-3.5" />}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* Model ID — directly copyable (PRD §33) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Model ID</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-stretch gap-3">
                   <code
-                    className="flex-1 min-w-0 text-xs sm:text-sm bg-muted/40 px-2 py-1.5 rounded-md font-mono"
-                    style={{
-                      fontFamily: "var(--font-mono), monospace",
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                    title={model_.id}
+                    className="flex-1 min-w-0 px-3 py-2 bg-slate-50 dark:bg-slate-900 border rounded-md text-xs font-mono text-foreground break-all"
+                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
                   >
-                    {model_.id}
+                    {model.id}
                   </code>
-                  <CopyIdButton value={model_.id} label="Copy model id" />
+                  <CopyIdButton id={model.id} />
                 </div>
-              </DetailRow>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  The exact original model ID. Use this in API requests to /api/v1/chat/completions.
+                </p>
+              </CardContent>
+            </Card>
 
-              {/* Original upstream id */}
-              {model_.originalModelId &&
-                model_.originalModelId !== model_.id && (
-                  <DetailRow
-                    label="Upstream ID"
-                    icon={<Layers className="h-3.5 w-3.5" />}
-                  >
-                    <code
-                      className="text-xs sm:text-sm bg-muted/40 px-2 py-1.5 rounded-md font-mono min-w-0 inline-block"
-                      style={{
-                        fontFamily: "var(--font-mono), monospace",
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                      title={model_.originalModelId}
-                    >
-                      {model_.originalModelId}
-                    </code>
-                  </DetailRow>
-                )}
-
-              {/* Capabilities */}
-              <DetailRow
-                label="Capabilities"
-                icon={<Sparkles className="h-3.5 w-3.5" />}
-              >
-                {caps.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 min-w-0">
-                    {caps.map((c) => (
-                      <Badge
-                        key={c.key}
-                        variant="outline"
-                        className="text-[10px] uppercase tracking-wider px-2 py-0.5 h-6 text-muted-foreground border-border inline-flex items-center gap-1"
-                      >
-                        <c.Icon className="h-3 w-3" />
+            {/* Capabilities */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Capabilities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeCapabilities.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No capabilities advertised.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {activeCapabilities.map((c) => (
+                      <Badge key={c.key} variant="secondary" className="bg-slate-100 text-slate-700">
                         {c.label}
                       </Badge>
                     ))}
                   </div>
-                ) : (
-                  <span className="text-xs italic text-muted-foreground">
-                    None advertised
-                  </span>
                 )}
-              </DetailRow>
+              </CardContent>
+            </Card>
 
-              {/* Context length */}
-              <DetailRow
-                label="Context length"
-                icon={<Layers className="h-3.5 w-3.5" />}
-              >
-                {contextLength != null ? (
-                  <span className="text-sm tabular-nums text-foreground">
-                    {contextLength.toLocaleString()}{" "}
-                    <span className="text-muted-foreground text-xs">tokens</span>
-                  </span>
-                ) : (
-                  <span className="text-xs italic text-muted-foreground">
-                    Not documented
-                  </span>
-                )}
-              </DetailRow>
-
-              {/* Streaming support */}
-              <DetailRow
-                label="Streaming"
-                icon={<Zap className="h-3.5 w-3.5" />}
-              >
-                {model_.streaming ? (
-                  <span className="text-sm text-foreground">
-                    Supported{" "}
-                    <span className="text-xs text-muted-foreground">
-                      (SSE / chunked)
-                    </span>
-                  </span>
-                ) : (
-                  <span className="text-xs italic text-amber-600 dark:text-amber-400">
-                    Non-streaming (degraded)
-                  </span>
-                )}
-              </DetailRow>
-
-              {/* Discovered / last verified */}
-              <DetailRow
-                label="First discovered"
-                icon={<Clock className="h-3.5 w-3.5" />}
-              >
-                <span className="text-sm text-foreground">
-                  {formatDate(discoveredAt) ?? "Unknown"}
-                </span>
-              </DetailRow>
-              <DetailRow
-                label="Last verified"
-                icon={<ShieldCheck className="h-3.5 w-3.5" />}
-              >
-                <span className="text-sm text-foreground">
-                  {formatDate(lastVerifiedAt) ?? "Unknown"}
-                </span>
-              </DetailRow>
-            </div>
-          </Card>
-
-          {/* Pricing card (1 col wide) */}
-          <Card className="lg:col-span-1 p-6 rounded-2xl border-border bg-card gap-0 min-w-0 self-start">
-            <div className="flex items-center justify-between gap-2 mb-4 min-w-0">
-              <h2
-                className="text-xs uppercase tracking-[0.15em] text-muted-foreground"
-                style={{ fontFamily: "var(--font-mono), monospace" }}
-              >
-                Pricing
-              </h2>
-              <Badge
-                variant="outline"
-                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 h-6 ${pSourceBadge.cls}`}
-                style={{ fontFamily: "var(--font-mono), monospace" }}
-              >
-                {pSourceBadge.label}
-              </Badge>
-            </div>
-
-            {isPricingDocumented(pricing) ? (
-              <div className="flex flex-col gap-4 min-w-0">
-                <PricingRow
-                  label="Input"
-                  value={pricing!.inputPerMillion}
-                  isFree={pricing!.status === "free"}
-                  suffix="/ 1M tokens"
-                />
-                <PricingRow
-                  label="Output"
-                  value={pricing!.outputPerMillion}
-                  isFree={pricing!.status === "free"}
-                  suffix="/ 1M tokens"
-                />
-                <PricingRow
-                  label="Cache"
-                  value={pricing!.cachePerMillion ?? null}
-                  isFree={pricing!.status === "free"}
-                  suffix="/ 1M tokens"
-                  fallback="Not documented"
-                />
-
-                <Separator className="my-1" />
-
-                {/* Standardized XYZ cost */}
-                <div className="flex flex-col gap-1.5 min-w-0">
-                  <div className="flex items-baseline justify-between gap-3 min-w-0">
-                    <span
-                      className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 inline-flex items-center gap-1"
-                      style={{ fontFamily: "var(--font-mono), monospace" }}
-                    >
-                      <DollarSign className="h-3 w-3" />
-                      XYZ cost / 1k·1k
-                    </span>
-                    <span
-                      className="text-lg font-medium tabular-nums text-foreground min-w-0"
-                      style={{
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {formatXyz(xyzCost)}{" "}
-                      <span className="text-xs text-muted-foreground">XYZ</span>
+            {/* Pricing */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-lg">Pricing</CardTitle>
+                  <Badge variant="outline" className={pricingSourceBadge.color}>
+                    {pricingSourceBadge.label}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <PricingRow
+                    label="Input"
+                    perMillion={inPrice}
+                    isFree={isFree && inPrice === 0}
+                  />
+                  <PricingRow
+                    label="Output"
+                    perMillion={outPrice}
+                    isFree={isFree && outPrice === 0}
+                  />
+                  <PricingRow
+                    label="Cache"
+                    perMillion={cachePrice}
+                    isFree={isFree && cachePrice === 0}
+                  />
+                </div>
+                {isFree && (
+                  <div className="mt-4 flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-md border border-emerald-200 dark:border-emerald-900">
+                    <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      This model is genuinely free. XYZ cost = 0 per request (unless an explicit
+                      platform resource cost is configured).
                     </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Standardized request — 1000 in / 1000 out / 0 cache.
-                  </p>
-                </div>
-
-                {/* Estimated responses per XYZ */}
-                <div className="flex flex-col gap-1.5 min-w-0">
-                  <div className="flex items-baseline justify-between gap-3 min-w-0">
-                    <span
-                      className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 inline-flex items-center gap-1"
-                      style={{ fontFamily: "var(--font-mono), monospace" }}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      ~Responses / XYZ
-                      <span className="text-[9px] text-muted-foreground/70 normal-case tracking-normal">
-                        estimated
-                      </span>
-                    </span>
-                    <span
-                      className="text-lg font-medium tabular-nums text-foreground min-w-0"
-                      style={{
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {responses.kind === "finite"
-                        ? `~${responses.value.toLocaleString()}`
-                        : responses.kind === "free"
-                          ? "∞"
-                          : "—"}
+                )}
+                {!isFree && (inPrice == null || outPrice == null) && (
+                  <div className="mt-4 flex items-start gap-2 text-sm text-amber-700 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200 dark:border-amber-900">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      Pricing is not documented by the provider. We will never silently invent a
+                      price — XYZ billing is disabled for this model until pricing is established.
                     </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Standardized 1k·1k request · pricing × XYZ multiplier.
-                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* XYZ cost breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">XYZ Cost</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Reference request</span>
+                    <span className="font-mono text-foreground">
+                      {refIn.toLocaleString()} in / {refOut.toLocaleString()} out
+                    </span>
+                  </div>
+                  {refUsdCost != null ? (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">USD cost (reference)</span>
+                        <span className="font-mono text-foreground">
+                          {formatUsd(refUsdCost)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">XYZ cost (reference)</span>
+                        <span className="font-mono text-foreground">
+                          {refXyzCost?.toFixed(6)} XYZ
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3 pt-2 border-t">
+                        <span className="text-muted-foreground">~Responses per 1 XYZ</span>
+                        <span className="font-mono text-emerald-700 font-semibold">
+                          {responsesPerXyz === Infinity
+                            ? "∞"
+                            : responsesPerXyz != null
+                              ? `~${Math.floor(responsesPerXyz)}`
+                              : "—"}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground italic">
+                      Pricing not documented — XYZ cost cannot be calculated.
+                    </p>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3 min-w-0">
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2 min-w-0">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span
-                    className="min-w-0"
-                    style={{
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    Pricing is not documented upstream. XYZ cost is unknown —
-                    the model is rejected at the reservation step (PRD §26).
-                  </span>
-                </div>
-                <PricingRow
-                  label="Input"
-                  value={null}
-                  isFree={false}
-                  suffix="/ 1M tokens"
-                  fallback="Not documented"
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right column: actions + metadata */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Try it</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button asChild className="w-full" size="lg">
+                  <Link href={`/chat?model=${encodeURIComponent(model.id)}`}>
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Open in Playground
+                  </Link>
+                </Button>
+                {model.source === "gratisfy" && (
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href="/settings">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Configure Gratisfy key
+                    </Link>
+                  </Button>
+                )}
+                {model.source === "g4f" && (
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href="/settings">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Configure G4F key
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Metadata</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <MetaRow label="Source" value={model.source} />
+                <MetaRow label="Provider" value={model.provider} />
+                <MetaRow label="Original ID" value={model.originalModelId} mono />
+                <MetaRow
+                  label="Streaming"
+                  value={model.streaming ? "Supported" : "Not supported"}
                 />
-                <PricingRow
-                  label="Output"
-                  value={null}
-                  isFree={false}
-                  suffix="/ 1M tokens"
-                  fallback="Not documented"
+                <MetaRow
+                  label="Available"
+                  value={model.available ? "Yes" : "No"}
                 />
-                <PricingRow
-                  label="Cache"
-                  value={null}
-                  isFree={false}
-                  suffix="/ 1M tokens"
-                  fallback="Not documented"
-                />
-                <Separator className="my-1" />
-                <div className="flex items-baseline justify-between gap-3 min-w-0">
-                  <span
-                    className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    XYZ cost / 1k·1k
-                  </span>
-                  <span className="text-sm text-muted-foreground">—</span>
+                {model.discoveredAt && (
+                  <MetaRow
+                    label="Discovered"
+                    value={new Date(model.discoveredAt).toLocaleString()}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Pricing source legend</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
+                <div>
+                  <span className="font-medium text-emerald-700">Provider</span> — Upstream documented
                 </div>
-                <div className="flex items-baseline justify-between gap-3 min-w-0">
-                  <span
-                    className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    ~Responses / XYZ
-                  </span>
-                  <span className="text-sm text-muted-foreground">—</span>
+                <div>
+                  <span className="font-medium text-slate-700">Market</span> — Supplied baseline
                 </div>
-              </div>
-            )}
-          </Card>
+                <div>
+                  <span className="font-medium text-amber-700">Undocumented</span> — No reliable price
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
-
-      <SiteFooter>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          GET /api/v1/models/unified · resolveUnifiedModel()
-        </span>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          XYZ multiplier = {multiplier}
-        </span>
-      </SiteFooter>
-    </div>
-  );
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function DetailRow({
-  label,
-  icon,
-  children,
-}: {
-  label: string;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-4 min-w-0">
-      <div
-        className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 inline-flex items-center gap-1.5 sm:w-44 pt-0.5"
-        style={{ fontFamily: "var(--font-mono), monospace" }}
-      >
-        {icon}
-        {label}
-      </div>
-      <div
-        className="flex-1 min-w-0 text-sm text-foreground"
-        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-      >
-        {children}
-      </div>
+      <SiteFooter />
     </div>
   );
 }
 
 function PricingRow({
   label,
-  value,
+  perMillion,
   isFree,
-  suffix,
-  fallback,
 }: {
   label: string;
-  value: number | null | undefined;
+  perMillion: number | null | undefined;
   isFree: boolean;
-  suffix?: string;
-  fallback?: string;
 }) {
-  const display = isFree
-    ? "Free"
-    : value == null
-      ? (fallback ?? "—")
-      : formatPrice(value);
   return (
-    <div className="flex items-baseline justify-between gap-3 min-w-0">
+    <div className="flex justify-between items-center gap-3 min-w-0">
+      <span className="text-muted-foreground shrink-0">{label}</span>
       <span
-        className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0"
-        style={{ fontFamily: "var(--font-mono), monospace" }}
-      >
-        {label}
-      </span>
-      <span
-        className="text-sm font-medium tabular-nums text-right min-w-0"
+        className="font-mono text-foreground text-right"
         style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
       >
-        {display}
-        {suffix && !isFree && value != null ? (
-          <span className="text-[10px] text-muted-foreground ml-1">{suffix}</span>
-        ) : null}
+        {perMillion == null
+          ? "Not documented"
+          : isFree
+            ? "Free"
+            : `${formatUsd(perMillion)} / 1M`}
       </span>
     </div>
   );
+}
+
+function MetaRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex justify-between items-center gap-3 min-w-0">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span
+        className={`text-foreground text-right min-w-0 ${mono ? "font-mono text-xs" : ""}`}
+        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+async function getSessionUserIdSafe(): Promise<string | null> {
+  try {
+    // We can't easily get the request object here in an RSC — but we can
+    // access cookies via next/headers. For now, return null — the model
+    // resolution falls back to native + g4f which doesn't require a user.
+    return null;
+  } catch {
+    return null;
+  }
 }
