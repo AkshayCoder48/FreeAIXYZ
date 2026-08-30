@@ -82,8 +82,10 @@ const NATIVE_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   po: "Pollinations",
   sp: "SpicyWriter",
   ve: "Vexa",
+  vx: "Vexa",
   go: "GPT-OSS",
   gp: "FreeGPT",
+  un: "UnlimitedAI",
 };
 
 /** Resolve the full display name for a native provider prefix. */
