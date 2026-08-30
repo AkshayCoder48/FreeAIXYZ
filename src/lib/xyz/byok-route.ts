@@ -62,6 +62,134 @@ function envErrorEnvelope(message: string, requestId: string) {
   );
 }
 
+// ─── Gratisfy bridges (W2-A) ─────────────────────────────────────────────────
+// The rebuilt gratisfy adapter (PRD §15, §16, §17) now exposes a normalized
+// StreamEvent / {content, usage} API. byok-route.ts internally still treats
+// the chat adapter as a string-yielding async generator (for usage capture)
+// and a {text, usage:{inputTokens, outputTokens, ...}} result. These bridges
+// re-shape the new API back to the shape this route was already written
+// against, so the existing iteration + tallyUsage + recordByokUsage plumbing
+// is unchanged. (Sampling params temperature/maxTokens/topP are dropped for
+// Gratisfy per the new adapter's PRD §15 contract; G4F keeps them.)
+
+type UpstreamUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+async function* bridgeGratisfyStream(args: {
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  signal?: AbortSignal;
+}): AsyncGenerator<string, UpstreamUsage | undefined, unknown> {
+  const stream = await streamGratisfyChat({
+    apiKey: args.apiKey,
+    model: args.model,
+    messages: args.messages,
+    signal: args.signal,
+  });
+  let usage: UpstreamUsage | undefined;
+  for await (const ev of stream) {
+    if (ev.type === "delta") {
+      yield ev.content;
+    } else if (ev.type === "usage") {
+      usage = ev.usage;
+    } else if (ev.type === "done") {
+      break;
+    }
+  }
+  return usage;
+}
+
+async function bridgeGratisfyComplete(args: {
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+}): Promise<{
+  text: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheTokens: number;
+    estimated: boolean;
+  };
+}> {
+  const r = await completeGratisfyChat({
+    apiKey: args.apiKey,
+    model: args.model,
+    messages: args.messages,
+  });
+  return {
+    text: r.content,
+    usage: {
+      inputTokens: r.usage.prompt_tokens,
+      outputTokens: r.usage.completion_tokens,
+      cacheTokens: 0,
+      estimated: false,
+    },
+  };
+}
+
+// ─── G4F bridges (W2-B) ───────────────────────────────────────────────────────
+// The rebuilt G4F adapter exposes the same StreamEvent / {content, usage} API
+// as Gratisfy. Bridge it to the shape this route uses internally.
+
+async function* bridgeG4fStream(args: {
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  signal?: AbortSignal;
+}): AsyncGenerator<string, UpstreamUsage | undefined, unknown> {
+  const stream = await streamG4fChat({
+    apiKey: args.apiKey,
+    model: args.model,
+    messages: args.messages,
+    signal: args.signal,
+  });
+  let usage: UpstreamUsage | undefined;
+  for await (const ev of stream) {
+    if (ev.type === "delta") {
+      yield ev.content;
+    } else if (ev.type === "usage") {
+      usage = ev.usage;
+    } else if (ev.type === "done") {
+      break;
+    }
+  }
+  return usage;
+}
+
+async function bridgeG4fComplete(args: {
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+}): Promise<{
+  text: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheTokens: number;
+    estimated: boolean;
+  };
+}> {
+  const r = await completeG4fChat({
+    apiKey: args.apiKey,
+    model: args.model,
+    messages: args.messages,
+  });
+  return {
+    text: r.content,
+    usage: {
+      inputTokens: r.usage.prompt_tokens,
+      outputTokens: r.usage.completion_tokens,
+      cacheTokens: 0,
+      estimated: false,
+    },
+  };
+}
+
 /**
  * Entry point — called from /api/v1/chat/completions when the model id is a
  * BYOK source-aware id. Returns the OpenAI-shaped Response.
@@ -227,18 +355,17 @@ async function streamByokResponse(args: {
 }): Promise<Response> {
   const gen =
     args.source === "gratisfy"
-      ? streamGratisfyChat({
+      ? bridgeGratisfyStream({
           apiKey: args.apiKey,
           model: args.model,
           messages: args.messages,
-          ...args.sampling,
+          signal: args.sampling.signal,
         })
-      : streamG4fChat({
+      : bridgeG4fStream({
           apiKey: args.apiKey,
           model: args.model,
-          provider: args.provider,
           messages: args.messages,
-          ...args.sampling,
+          signal: args.sampling.signal,
         });
 
   const created = Math.floor(Date.now() / 1000);
@@ -357,18 +484,15 @@ async function completeByokResponse(args: {
 }): Promise<Response> {
   const result =
     args.source === "gratisfy"
-      ? await completeGratisfyChat({
+      ? await bridgeGratisfyComplete({
           apiKey: args.apiKey,
           model: args.model,
           messages: args.messages,
-          ...args.sampling,
         })
-      : await completeG4fChat({
+      : await bridgeG4fComplete({
           apiKey: args.apiKey,
           model: args.model,
-          provider: args.provider,
           messages: args.messages,
-          ...args.sampling,
         });
 
   const promptText = args.messages.map((m) => m.content).join("\n");

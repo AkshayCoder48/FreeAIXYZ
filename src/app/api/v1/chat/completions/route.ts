@@ -484,6 +484,22 @@ export async function POST(request: Request) {
       return handleByokChatCompletion(body, request);
     }
 
+    // ─── SOURCE-AWARE NATIVE ID TRANSLATION ────────────────────────────────────
+    // The catalog uses source-aware ids like `native:tb:gpt-5`. The legacy
+    // gateway expects `<provider>/<model>` (e.g. `tb/gpt-5`). Translate.
+    if (
+      typeof body.model === "string" &&
+      body.model.startsWith("native:")
+    ) {
+      const parts = body.model.split(":");
+      // native:<provider>:<model...> → <provider>/<model...>
+      if (parts.length >= 3) {
+        const provider = parts[1];
+        const modelRest = parts.slice(2).join(":");
+        body.model = `${provider}/${modelRest}`;
+      }
+    }
+
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {

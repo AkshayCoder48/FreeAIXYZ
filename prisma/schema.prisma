@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// FreeAIXYZ Prisma schema — production architecture (PRD §1–86)
+// Compatible with SQLite (dev) and Postgres (prod via Neon / Vercel Postgres).
 
 generator client {
   provider = "prisma-client-js"
@@ -10,135 +10,333 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Gateway model catalog (PRD §79-84) ──────────────────────────────────────
+// ─── 1. AUTH & USERS (PRD §5–7) ───────────────────────────────────────────────
 
-model Provider {
-  id                String   @id
-  shortId           String   @unique
-  name              String
-  baseUrl           String?
-  status            String   @default("unknown") // healthy|degraded|offline|unknown
-  discoveryMode     String   @default("manual") // dynamic|manual
-  lastDiscoveryAt   DateTime?
-  lastHealthCheckAt DateTime?
-  latencyMs        Int?
-  successRate       Float?
-  errorRate         Float?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique // normalized: trim + lowercase (PRD §83)
+  displayName     String?
+  status          String   @default("active") // active|suspended|deleted
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime?
 
-  models            ProviderModel[]
+  sessions        Session[]
+  emailCodes      EmailCode[]
+  apiKeys         ApiKey[]
+  byokCredentials ByokCredential[]
+  xyzAccount      XyzAccount?
+  usageRecords    UsageRecord[]
+  xyzTransactions XyzTransaction[]
+  xyzReservations XyzReservation[]
+  auditEvents     AuditEvent[]
+  playgroundSess  PlaygroundSession[]
 
   @@index([status])
+}
+
+model EmailCode {
+  id           String   @id @default(cuid())
+  userId       String
+  email        String                     // denormalized for fast lookup
+  codeHash     String                     // salt:sha256(salt:code) (PRD §7)
+  attempts     Int      @default(0)
+  consumed     Boolean  @default(false)   // single-use (PRD §7)
+  expiresAt    DateTime                    // SERVER-SIDE expiry (PRD §6)
+  createdAt    DateTime @default(now())
+  ip           String?
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique           // sha256(token) — never store raw
+  csrfHash     String?
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  expiresAt    DateTime                    // server-side expiry (PRD §6)
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ─── 2. FREEAIXYZ API KEY SYSTEM (PRD §12–14) ────────────────────────────────
+
+model ApiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  keyHash      String   @unique           // sha256 of full key (fx_live_*)
+  keyPrefix    String                     // first 12 chars for ID in UI
+  name         String   @default("default")
+  scopes       String   @default("chat,models") // comma-separated
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+}
+
+// ─── 3. BYOK CREDENTIALS (PRD §9, §10, §66–68) ───────────────────────────────
+
+model ByokCredential {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String                     // "gratisfy" | "g4f" | other byok id
+  encryptedKey String                     // AES-256-GCM ciphertext (PRD §66)
+  keyIv         String                     // initialization vector
+  keyTag        String                     // auth tag
+  keyPrefix     String                     // first 6 chars for UI display
+  keySuffix     String                     // last 4 chars for UI display
+  validatedAt  DateTime?
+  validationError String?
+  lastUsedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([provider])
+}
+
+// ─── 4. XYZ CREDIT SYSTEM (PRD §39–48) ───────────────────────────────────────
+
+model XyzAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  balanceMicro BigInt   @default(0)       // 1 XYZ = 1_000_000 micro (PRD §45)
+  lastDailyGrantAt DateTime?              // idempotency marker (PRD §39)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model XyzTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  type         String                     // DAILY_GRANT|RESERVATION|RESERVATION_RELEASE|GENERATION_CHARGE|REFUND|ADMIN_ADJUSTMENT (PRD §46)
+  amountMicro  BigInt                     // signed delta; +XYZ credit, -XYZ debit
+  balanceAfterMicro BigInt                // running balance snapshot
+  modelId      String?
+  providerId   String?
+  requestId    String?
+  usageRecordId String?
+  description  String?
+  metadata     String?                    // JSON blob — no secrets
+  createdAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+model XyzReservation {
+  id           String   @id @default(cuid())
+  userId       String
+  requestId    String                     // fxreq_… for correlation
+  modelId      String
+  reservedMicro BigInt                    // hold amount
+  status       String   @default("held") // held|settled|released
+  createdAt    DateTime @default(now())
+  settledAt    DateTime?
+  releasedAt   DateTime?
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── 5. USAGE RECORDS (PRD §42, §46) ──────────────────────────────────────────
+
+model UsageRecord {
+  id              String   @id @default(cuid())
+  userId          String
+  requestId       String   @unique         // fxreq_…
+  modelId         String
+  providerId      String
+  source          String                    // native|gratisfy|g4f
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  cacheTokens     Int      @default(0)
+  usdCost         Float    @default(0)
+  xyzCostMicro    BigInt   @default(0)
+  streamRequested Boolean  @default(false)
+  success         Boolean  @default(true)
+  errorCode       String?
+  errorMessage    String?
+  durationMs      Int?
+  createdAt       DateTime @default(now())
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([modelId])
+  @@index([providerId])
+  @@index([createdAt])
+}
+
+// ─── 6. PROVIDERS & MODEL DISCOVERY (PRD §20–28, §70–72) ─────────────────────
+
+model Provider {
+  id              String   @id
+  shortId         String   @unique
+  name            String
+  type            String   @default("native") // native|byok
+  baseUrl         String?
+  docsUrl         String?
+  status          String   @default("unknown")  // available|degraded|unavailable|needs_key (PRD §21)
+  requiresApiKey  Boolean  @default(false)
+  discoveryMode   String   @default("manual")   // dynamic|manual
+  lastFetchedAt   DateTime?
+  lastHealthAt    DateTime?
+  latencyMs       Int?
+  successRate     Float?
+  errorRate       Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  models          ProviderModel[]
+  fetchRuns       ProviderFetchRun[]
+  pricing         ModelPricing[]
+
+  @@index([status])
+  @@index([type])
 }
 
 model ProviderModel {
-  id               String   @id @default(cuid())
+  id                String   @id @default(cuid())
   providerId       String
-  upstreamId       String
-  publicId         String   @unique // <shortId>/<upstreamId> (PRD §25)
+  upstreamId       String                    // raw id from upstream (may repeat across providers — publicId is the unique key)
+  publicId         String   @unique         // <source>:<provider>:<upstreamId> (PRD §22, §33)
   name             String
-  discoveredFrom   String?
-  discoveryMode    String   @default("manual")
-  status           String   @default("active") // active|degraded|offline|unknown
-  firstDiscoveredAt DateTime @default(now())
-  lastDiscoveredAt DateTime @default(now())
+  description      String?                   // free-form
+  capabilities     String   @default("[]")  // JSON array of strings (PRD §22)
+  contextLength    Int?
+  modality         String?                   // language|vision|audio|image
+  status           String   @default("available") // available|degraded|unavailable|unknown (PRD §22)
+  active           Boolean  @default(true)   // soft-delete flag (PRD §26)
+  discoveryMode   String   @default("manual")
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
   lastVerifiedAt   DateTime?
-  rawMetadata      String?  // JSON blob — never secrets (PRD §82)
+  rawMetadata      String?                   // JSON blob — never secrets (PRD §82)
 
-  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  provider          Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
-  @@unique([providerId, upstreamId]) // dedup key (PRD §68, §169)
   @@index([providerId])
+  @@index([upstreamId])
   @@index([status])
+  @@index([active])
 }
 
-model ModelCapability {
-  id         String  @id @default(cuid())
-  modelId    String
-  text       Boolean @default(false)
-  image      Boolean @default(false)
-  imageEdit  Boolean @default(false)
-  audioInput Boolean @default(false)
-  audioOutput Boolean @default(false)
-  vision     Boolean @default(false)
-  tools      Boolean @default(false)
-  streaming  Boolean @default(false)
+model ProviderFetchRun {
+  id              String   @id @default(cuid())
+  providerId      String?
+  source          String                     // native|gratisfy|g4f
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  success         Boolean?
+  modelsFound     Int      @default(0)
+  modelsAdded     Int      @default(0)
+  modelsDeactivated Int    @default(0)
+  errorCode       String?
+  errorMessage    String?
+  durationMs      Int?
 
-  @@unique([modelId])
+  provider         Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@index([providerId])
+  @@index([startedAt])
 }
 
 model ModelHealth {
-  id           String   @id @default(cuid())
-  modelId      String
-  status       String   @default("unknown")
-  failureCount Int      @default(0)
-  lastFailure  DateTime?
-  lastSuccess  DateTime?
-  lastChecked  DateTime @default(now())
-  latencyMs    Int?
+  id            String   @id @default(cuid())
+  modelId       String   @unique           // = ProviderModel.id
+  status        String   @default("unknown") // discovered|healthy|degraded|unavailable
+  failureCount  Int      @default(0)
+  successCount  Int      @default(0)
+  lastFailure   DateTime?
+  lastSuccess   DateTime?
+  lastChecked   DateTime @default(now())
+  latencyMs     Int?
+  lastError     String?
 
-  @@unique([modelId])
+  @@index([status])
 }
 
-model DiscoveryRun {
-  id           String   @id @default(cuid())
-  providerId   String?
-  startedAt    DateTime @default(now())
-  finishedAt   DateTime?
-  modelsFound  Int      @default(0)
-  modelsAdded  Int      @default(0)
-  modelsRemoved Int     @default(0)
-  error        String?
-  mode         String   @default("manual")
-}
+// ─── 7. CENTRALIZED PRICING BOARD (PRD §34–38) ──────────────────────────────
 
-model VerificationRun {
-  id         String   @id @default(cuid())
-  modelId    String
-  startedAt  DateTime @default(now())
-  finishedAt DateTime?
-  text       String?  // PASS|FAIL|N/A
-  stream     String?
-  image      String?
-  status     String?
-  latencyMs  Int?
-  error      String?
-}
+model ModelPricing {
+  id              String   @id @default(cuid())
+  modelId         String                     // = ProviderModel.id (string link, no relation)
+  publicModelId   String                     // <providerId>/<upstreamId> for direct lookup
+  providerId      String                     // FK to Provider
+  inputPerMillion  Float?
+  outputPerMillion Float?
+  cachePerMillion  Float?
+  source          String   @default("undocumented") // provider|market|manual|undocumented
+  notes           String?
+  updatedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
 
-model ApiMetric {
-  id         String   @id @default(cuid())
-  requestId  String
-  providerId String?
-  modelId    String?
-  status     Int
-  type       String
-  message    String
-  streamRequested Boolean @default(false)
-  ttftMs     Int?
-  durationMs Int?
-  at         DateTime @default(now())
+  provider        Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
+  @@unique([publicModelId, providerId])
+  @@index([publicModelId])
+  @@index([source])
   @@index([providerId])
-  @@index([modelId])
-  @@index([at])
 }
 
-// Legacy scaffold models retained for compatibility.
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── 8. PLAYGROUND SESSIONS (PRD §53) ────────────────────────────────────────
+
+model PlaygroundSession {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String   @default("Untitled")
+  modelId         String?
+  messages        String   @default("[]")  // JSON array of chat messages
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([updatedAt])
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── 9. AUDIT EVENTS (PRD §66) ───────────────────────────────────────────────
+
+model AuditEvent {
+  id              String   @id @default(cuid())
+  userId          String?
+  action          String                     // AUTH_LOGIN|BYOK_SAVE|BYOK_DELETE|APIKEY_CREATE|APIKEY_REVOKE|XYZ_GRANT|XYZ_SPEND|...
+  detail          String?
+  source          String?                    // web|api|cron
+  ip              String?
+  requestId       String?
+  metadata        String?                    // JSON blob — no secrets
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }

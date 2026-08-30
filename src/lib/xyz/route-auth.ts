@@ -1,13 +1,57 @@
 /**
- * Shared route auth helper (PRD §88, §89, §91).
- * Server-side. Reads the session cookie via the auth module.
+ * Shared route auth helper (PRD §13, §14, §88, §89, §91).
+ * Server-side. Supports dual authentication:
+ *   1. Session cookie (web app users)
+ *   2. `Authorization: Bearer fx_live_*` API key (programmatic clients)
+ *
+ * The two credential layers are kept separate (PRD §14):
+ *   Layer 1 — FreeAIXYZ authenticates the application user (this file).
+ *   Layer 2 — Provider BYOK authenticates FreeAIXYZ against the upstream
+ *             provider using the user's stored credential (see byok.ts).
  */
 
 import { getSessionUserId } from "./auth";
+import { getApiKeyUserId } from "./api-keys";
+
+export interface AuthContext {
+  userId: string;
+  /** "session" = web cookie, "apikey" = fx_live_* bearer token */
+  authMethod: "session" | "apikey";
+  scopes: string[] | null; // null for session auth (no scope restriction)
+}
 
 export async function requireAuth(
   request: Request,
-): Promise<{ userId: string } | { response: Response }> {
+): Promise<{ userId: string; authMethod: "session" | "apikey"; scopes: string[] | null } | { response: Response }> {
+  // Layer 1.2 — try API key first (cheaper; no DB session lookup).
+  const authHeader = request.headers.get("authorization");
+  const xApiKey = request.headers.get("x-api-key");
+  if (authHeader || xApiKey) {
+    const ctx = await getApiKeyUserId(authHeader, xApiKey);
+    if (ctx) {
+      return {
+        userId: ctx.userId,
+        authMethod: "apikey",
+        scopes: ctx.scopes,
+      };
+    }
+    // If a key was supplied but invalid, return 401 immediately — don't
+    // fall back to session cookie (avoid confusing error messages).
+    return {
+      response: Response.json(
+        {
+          error: {
+            type: "authentication_error",
+            code: "INVALID_API_KEY",
+            message: "The supplied API key is invalid, revoked, or expired.",
+          },
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  // Layer 1.1 — session cookie (web users).
   const userId = await getSessionUserId(request);
   if (!userId) {
     return {
@@ -23,7 +67,34 @@ export async function requireAuth(
       ),
     };
   }
-  return { userId };
+  return { userId, authMethod: "session", scopes: null };
+}
+
+/** Same as requireAuth but additionally enforces an API scope. */
+export async function requireAuthScoped(
+  request: Request,
+  requiredScope: string,
+): Promise<{ userId: string; authMethod: "session" | "apikey"; scopes: string[] | null } | { response: Response }> {
+  const result = await requireAuth(request);
+  if ("response" in result) return result;
+  // Session auth bypasses scope checks (web users have full access).
+  if (result.authMethod === "session") return result;
+  // API key — check the scope.
+  if (!result.scopes || !result.scopes.includes(requiredScope)) {
+    return {
+      response: Response.json(
+        {
+          error: {
+            type: "authorization_error",
+            code: "INSUFFICIENT_SCOPE",
+            message: `This API key lacks the "${requiredScope}" scope.`,
+          },
+        },
+        { status: 403 },
+      ),
+    };
+  }
+  return result;
 }
 
 export function isSecure(request: Request): boolean {
