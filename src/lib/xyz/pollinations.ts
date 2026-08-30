@@ -37,9 +37,20 @@ export interface PollinationsValidationResult {
 }
 
 const MODELS_URL = "https://text.pollinations.ai/models";
+const USERINFO_URL = "https://enter.pollinations.ai/api/device/userinfo";
 const TIMEOUT_MS = 12_000;
 
-/** Validate a Pollinations token by fetching the models list. */
+/**
+ * Validate a Pollinations token.
+ *
+ * IMPORTANT: text.pollinations.ai/models is PUBLIC — it returns 200 with a
+ * model list even when no Authorization header is supplied. So calling it
+ * with a fake Bearer token also returns 200 and a naive validator would
+ * accept any string as "valid". To actually distinguish valid from invalid
+ * tokens we hit the authenticated userinfo endpoint instead — it returns
+ * 401 for missing/invalid tokens and 200 with `{ sub, preferred_username,
+ * picture, ... }` for valid ones.
+ */
 export async function validatePollinationsKey(
   key: string,
 ): Promise<PollinationsValidationResult> {
@@ -50,30 +61,37 @@ export async function validatePollinationsKey(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(MODELS_URL, {
+    // 1) Real validation: the userinfo endpoint requires a valid Bearer
+    //    token and 401s otherwise. This is the only way to reject fake keys.
+    const userRes = await fetch(USERINFO_URL, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${trimmed}`,
-        Accept: "application/json",
-      },
+      headers: { Authorization: `Bearer ${trimmed}`, Accept: "application/json" },
       signal: ctrl.signal,
     });
-    if (res.status === 401 || res.status === 403) {
+    if (userRes.status === 401 || userRes.status === 403) {
       return { ok: false, error: "Pollinations rejected this token (unauthorized)." };
     }
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: `Pollinations returned HTTP ${res.status}.`,
-      };
+    if (!userRes.ok) {
+      return { ok: false, error: `Pollinations returned HTTP ${userRes.status}.` };
     }
-    // 200 — token is valid. Count the models.
-    const data = await res.json().catch(() => null);
+    // 200 — token is valid. Count the models from the public list endpoint.
     let modelCount = 0;
-    if (Array.isArray(data)) {
-      modelCount = data.length;
-    } else if (data && typeof data === "object" && Array.isArray((data as { models?: unknown }).models)) {
-      modelCount = ((data as { models: unknown[] }).models).length;
+    try {
+      const modelsRes = await fetch(MODELS_URL, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${trimmed}`, Accept: "application/json" },
+        signal: ctrl.signal,
+      });
+      if (modelsRes.ok) {
+        const data = await modelsRes.json().catch(() => null);
+        if (Array.isArray(data)) {
+          modelCount = data.length;
+        } else if (data && typeof data === "object" && Array.isArray((data as { models?: unknown }).models)) {
+          modelCount = ((data as { models: unknown[] }).models).length;
+        }
+      }
+    } catch {
+      // model count is best-effort; the key itself is valid.
     }
     return { ok: true, modelCount };
   } catch (err) {
