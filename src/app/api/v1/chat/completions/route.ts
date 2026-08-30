@@ -67,6 +67,10 @@ import {
   type ProviderAdapter,
 } from "@/lib/gateway";
 import { ensureGateway, resolveAdapterForModel } from "@/lib/gateway/route-helpers";
+import {
+  imageAnnotation,
+  normalizeMessageContent,
+} from "@/lib/gateway/content-normalize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -390,53 +394,36 @@ function normalizeMessagesForGateway(
     }
   }
   for (const m of body.messages) {
-    const content = m.content;
-    if (Array.isArray(content)) {
-      // Drop image_url parts when the model lacks vision; keep text parts.
-      const textParts = content
-        .filter(
-          (p: unknown) =>
-            typeof p === "object" &&
-            p !== null &&
-            (p as Record<string, unknown>).type === "text",
-        )
-        .map(
-          (p: unknown) =>
-            ((p as Record<string, unknown>).text as string) ?? "",
-        )
-        .filter((t: string) => t !== "");
-      // If the model has vision, also annotate image attachments.
+    const role: "system" | "user" | "assistant" =
+      m.role === "assistant"
+        ? "assistant"
+        : m.role === "system"
+          ? "system"
+          : "user";
+    // CONTENT-NORMALIZE (the "image is OPTIONAL, never mandatory" fix — see
+    // src/lib/gateway/content-normalize.ts for the LLM7.io root cause).
+    // Array-form content with phantom image_url parts is normalized to PLAIN
+    // STRING text so non-vision upstreams (LLM7 codestral-latest, gpt-oss:20b,
+    // minimax-m2.7, …) never receive the `unsupported_model_feature` 400.
+    // Vision models get a `[image attached xN]` text annotation instead of
+    // raw image bytes (the gateway does not forward images today).
+    const norm = normalizeMessageContent(m.content);
+    if (norm.wasArray) {
       if (model.capabilities.vision) {
-        const imageCount = content.filter(
-          (p: unknown) =>
-            typeof p === "object" &&
-            p !== null &&
-            (p as Record<string, unknown>).type === "image_url",
-        ).length;
-        const combined = textParts.join("\n");
-        if (combined || imageCount > 0) {
-          const note =
-            imageCount > 0 ? `\n[image attached x${imageCount}]` : "";
+        if (norm.text || norm.imageCount > 0) {
           out.push({
-            role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-            content: combined + note,
+            role,
+            content: norm.text + imageAnnotation(norm.imageCount),
           });
         }
-      } else if (textParts.length > 0) {
-        out.push({
-          role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-          content: textParts.join("\n"),
-        });
+      } else if (norm.text) {
+        out.push({ role, content: norm.text });
       }
     } else {
+      // Plain string / null content → preserve existing tool/function
+      // extraction behaviour (messageToText handles role:tool messages).
       const text = messageToText(m);
       if (text !== null && text !== "") {
-        const role: "system" | "user" | "assistant" =
-          m.role === "assistant"
-            ? "assistant"
-            : m.role === "system"
-              ? "system"
-              : "user";
         out.push({ role, content: text });
       }
     }
@@ -875,43 +862,23 @@ function buildLegacyMessages(
     }
   }
   for (const m of body.messages) {
-    const content = m.content;
-    if (Array.isArray(content) && !model.capabilities.vision) {
-      const textParts = content
-        .filter(
-          (p: unknown) =>
-            typeof p === "object" &&
-            p !== null &&
-            (p as Record<string, unknown>).type === "text",
-        )
-        .map(
-          (p: unknown) => ((p as Record<string, unknown>).text as string) ?? "",
-        )
-        .filter((t: string) => t !== "");
-      const combined = textParts.join("\n");
-      if (combined) {
-        messages.push({ role: m.role as ProviderMessage["role"], content: combined });
-      }
-    } else if (Array.isArray(content)) {
-      const textParts = content
-        .filter(
-          (p: unknown) =>
-            typeof p === "object" &&
-            p !== null &&
-            (p as Record<string, unknown>).type === "text",
-        )
-        .map(
-          (p: unknown) => ((p as Record<string, unknown>).text as string) ?? "",
-        )
-        .filter((t: string) => t !== "");
-      const combined = textParts.join("\n");
-      if (combined) {
-        messages.push({ role: m.role as ProviderMessage["role"], content: combined });
+    const role = m.role as ProviderMessage["role"];
+    // CONTENT-NORMALIZE — same contract as the canonical path
+    // (see src/lib/gateway/content-normalize.ts). Array-form content with
+    // phantom image_url parts is normalized to PLAIN STRING text so legacy
+    // non-vision upstreams (LLM7 codestral-latest, etc.) never receive the
+    // `unsupported_model_feature` 400. Image input is OPTIONAL, never
+    // mandatory. The legacy path does NOT annotate (legacy vision models
+    // get text-only — same as before).
+    const norm = normalizeMessageContent(m.content);
+    if (norm.wasArray) {
+      if (norm.text) {
+        messages.push({ role, content: norm.text });
       }
     } else {
       const text = messageToText(m);
       if (text !== null && text !== "") {
-        messages.push({ role: m.role as ProviderMessage["role"], content: text });
+        messages.push({ role, content: text });
       }
     }
   }
