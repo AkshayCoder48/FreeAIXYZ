@@ -59,7 +59,7 @@ export interface PricingCardEntry {
     inputPerMillion: number | null;
     outputPerMillion: number | null;
     cachePerMillion?: number | null;
-    currency: "USD";
+    currency: "USD" | "pollen";
     status: string;
     source: string;
     verifiedAt?: string;
@@ -82,7 +82,7 @@ interface ModelPricingLite {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  currency: "USD";
+  currency: "USD" | "pollen";
   status: string;
   source: string;
   verifiedAt?: string;
@@ -178,9 +178,14 @@ function isFree(p: ModelPricingLite | null | undefined): boolean {
   return Boolean(p && p.status === "free");
 }
 
-function formatPrice(v: number | null | undefined): string {
+function formatPrice(v: number | null | undefined, currency: "USD" | "pollen" = "USD"): string {
   if (v == null) return "—";
-  if (v === 0) return "$0";
+  if (v === 0) return currency === "pollen" ? "0 pollen" : "$0";
+  if (currency === "pollen") {
+    if (v < 0.01) return `${v.toFixed(4)} pollen`;
+    if (v < 1) return `${v.toFixed(3)} pollen`;
+    return `${v.toFixed(2)} pollen`;
+  }
   if (v < 0.01) return `$${v.toFixed(4)}`;
   if (v < 1) return `$${v.toFixed(3)}`;
   return `$${v.toFixed(2)}`;
@@ -643,14 +648,14 @@ function PricingCard({
             <PricingRow
               label="Input"
               display={
-                free ? "Free" : formatPrice(p.inputPerMillion)
+                free ? "Free" : formatPrice(p.inputPerMillion, p.currency)
               }
               suffix={free ? undefined : "/ 1M"}
             />
             <PricingRow
               label="Output"
               display={
-                free ? "Free" : formatPrice(p.outputPerMillion)
+                free ? "Free" : formatPrice(p.outputPerMillion, p.currency)
               }
               suffix={free ? undefined : "/ 1M"}
             />
@@ -659,7 +664,7 @@ function PricingCard({
               display={
                 free
                   ? "Free"
-                  : formatPrice(p.cachePerMillion ?? null)
+                  : formatPrice(p.cachePerMillion ?? null, p.currency)
               }
               suffix={free ? undefined : "/ 1M"}
             />

@@ -113,6 +113,13 @@ function isToday(iso: string): boolean {
 
 function UnauthCard() {
   const [open, setOpen] = useState(false);
+  // The Zustand-backed useAuth store is shared across every component, so
+  // when the SignInDialog completes, the parent Dashboard re-renders
+  // automatically — no explicit onSignedIn wiring needed. We still pass
+  // the refresh callback so the Dashboard's XYZ balance / usage /
+  // transactions fetches fire immediately after sign-in (otherwise
+  // they'd wait for the next 60s poll or a manual refresh click).
+  const { refresh: refreshAuth } = useAuth();
   return (
     <Card className="max-w-md mx-auto w-full">
       <CardHeader>
@@ -121,14 +128,19 @@ function UnauthCard() {
         </CardTitle>
         <CardDescription>
           Sign in to track your XYZ balance, usage, and BYOK keys. No password
-          required — we&apos;ll email you a one-time code.
+          required — direct email login. Your account is saved in OnyxBase KV
+          so it persists across refresh and devices.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Button onClick={() => setOpen(true)} className="w-full">
           Sign in
         </Button>
-        <SignInDialog open={open} onOpenChange={setOpen} />
+        <SignInDialog
+          open={open}
+          onOpenChange={setOpen}
+          onSignedIn={refreshAuth}
+        />
       </CardContent>
     </Card>
   );

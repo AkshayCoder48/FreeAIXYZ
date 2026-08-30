@@ -71,6 +71,27 @@ function envErrorEnvelope(message: string, requestId: string) {
 // against, so the existing iteration + tallyUsage + recordByokUsage plumbing
 // is unchanged. (Sampling params temperature/maxTokens/topP are dropped for
 // Gratisfy per the new adapter's PRD §15 contract; G4F keeps them.)
+//
+// MODEL ID ROUTING (the "Invalid model or alias" 400 fix — 2026-08-30):
+// The unified registry emits Gratisfy model ids as
+// `gratisfy:<upstreamProvider>:<upstreamId>` where `upstreamId` is the
+// catalog's bare id (e.g. "tomdacatto/claude-opus-5", "glm-4-flashx:free",
+// "inclusionai/ling-3.0-flash-fin:free"). The upstream chat endpoint
+// `https://api.gratisfy.xyz/v1/chat/completions` expects ids in the form
+// `<upstreamProvider>/<upstreamId>` (verified live: upstream /v1/models
+// lists `unorouter/glm-4-search:free`, `crax-gpt/gpt-5-6-luna`,
+// `pollinations/<model>` — all prefixed with the upstream provider slug).
+//
+// The catalog's `id` field is the BARE form (no provider prefix). So we must
+// reconstruct the upstream chat-routable id as `<provider>/<upstreamId>`
+// before posting to the chat endpoint — otherwise upstream returns
+// HTTP 400 "Invalid model or alias: '<upstreamId>'. Must be a valid model
+// name or alias." (which is exactly the error the user reported on
+// `gratisfy:pollinations:tomdacatto/claude-opus-5`).
+//
+// The reconstruction is idempotent: if `upstreamId` already starts with
+// `<provider>/` (rare — happens when the catalog id happens to include the
+// provider prefix), we leave it alone. Otherwise we prepend `<provider>/`.
 
 type UpstreamUsage = {
   prompt_tokens?: number;
@@ -78,15 +99,40 @@ type UpstreamUsage = {
   total_tokens?: number;
 };
 
+/** Reconstruct the upstream chat-routable model id.
+ *
+ * - If `upstreamId` already starts with `${provider}/` → return as-is.
+ * - Otherwise → return `${provider}/${upstreamId}`.
+ *
+ * The Gratisfy chat endpoint (`api.gratisfy.xyz/v1/chat/completions`)
+ * expects the prefixed form `<providerSlug>/<modelId>` (verified live
+ * 2026-08-30 against /v1/models — all 185 routable ids are prefixed).
+ * The public catalog (`gratisfy.xyz/api/models/all`) strips the prefix
+ * into a separate `provider` field, so we must reconstruct it here.
+ */
+function buildUpstreamModelId(provider: string, upstreamId: string): string {
+  const p = (provider ?? "").trim();
+  const u = (upstreamId ?? "").trim();
+  if (!p || !u) return u || p;
+  if (u.startsWith(`${p}/`)) return u;
+  return `${p}/${u}`;
+}
+
 async function* bridgeGratisfyStream(args: {
   apiKey: string;
+  /** Routing provider slug (e.g. "pollinations", "unorouter", "crax-gpt"). */
+  provider: string;
   model: string;
   messages: Array<{ role: string; content: string }>;
   signal?: AbortSignal;
 }): AsyncGenerator<string, UpstreamUsage | undefined, unknown> {
+  // Reconstruct the upstream chat-routable id from the bare catalog id.
+  // Without this, Gratisfy returns 400 "Invalid model or alias" for any
+  // catalog id that doesn't include the provider prefix.
+  const upstreamModel = buildUpstreamModelId(args.provider, args.model);
   const stream = await streamGratisfyChat({
     apiKey: args.apiKey,
-    model: args.model,
+    model: upstreamModel,
     messages: args.messages,
     signal: args.signal,
   });
@@ -105,6 +151,8 @@ async function* bridgeGratisfyStream(args: {
 
 async function bridgeGratisfyComplete(args: {
   apiKey: string;
+  /** Routing provider slug (e.g. "pollinations", "unorouter", "crax-gpt"). */
+  provider: string;
   model: string;
   messages: Array<{ role: string; content: string }>;
 }): Promise<{
@@ -116,9 +164,10 @@ async function bridgeGratisfyComplete(args: {
     estimated: boolean;
   };
 }> {
+  const upstreamModel = buildUpstreamModelId(args.provider, args.model);
   const r = await completeGratisfyChat({
     apiKey: args.apiKey,
-    model: args.model,
+    model: upstreamModel,
     messages: args.messages,
   });
   return {
@@ -325,7 +374,7 @@ export async function handleByokChatCompletion(
       secure,
     });
   } catch (err) {
-    return byokErrorResponse(err, body.model, source, requestId);
+    return byokErrorResponse(err, body.model, source, provider, requestId);
   }
 }
 
@@ -357,6 +406,7 @@ async function streamByokResponse(args: {
     args.source === "gratisfy"
       ? bridgeGratisfyStream({
           apiKey: args.apiKey,
+          provider: args.provider,
           model: args.model,
           messages: args.messages,
           signal: args.sampling.signal,
@@ -486,6 +536,7 @@ async function completeByokResponse(args: {
     args.source === "gratisfy"
       ? await bridgeGratisfyComplete({
           apiKey: args.apiKey,
+          provider: args.provider,
           model: args.model,
           messages: args.messages,
         })
@@ -581,19 +632,46 @@ function byokErrorResponse(
   err: unknown,
   model: string,
   source: Source,
+  /** Upstream routing provider slug (e.g. "pollinations", "unorouter",
+   *  "crax-gpt"). Surfaced in the error envelope so the user can see which
+   *  specific upstream provider the request was routed to (and, for
+   *  400 "Invalid model or alias" errors on routed models like
+   *  `gratisfy:pollinations:tomdacatto/claude-opus-5`, which BYOK
+   *  sub-provider key they need to connect on the Gratisfy dashboard). */
+  provider: string,
   requestId: string,
 ): Response {
   // Never leak credentials (PRD §65). Strip any Authorization/key headers.
   if (err instanceof ByokUpstreamError) {
     const status = err.status >= 400 && err.status < 500 ? err.status : 502;
+    // Detect the "Invalid model or alias" 400 from upstream Gratisfy — this
+    // happens when the user's Gratisfy BYOK key doesn't have a per-provider
+    // sub-key connected for the routed provider (e.g. Pollinations-routed
+    // `tomdacatto/claude-opus-5` requires a Pollinations BYOK sub-key on the
+    // user's Gratisfy account). Surface a clearer actionable message rather
+    // than the opaque upstream blob.
+    const bodyLower = err.body.toLowerCase();
+    const isInvalidModel400 =
+      status === 400 &&
+      (bodyLower.includes("invalid model") ||
+        bodyLower.includes("must be a valid model name") ||
+        bodyLower.includes("model or alias"));
+    const routedProviderHint =
+      source === "gratisfy" && provider && provider !== "gratisfy"
+        ? ` This is a ${provider}-routed model. Connect a ${provider} BYOK sub-key on your Gratisfy dashboard (https://gratisfy.xyz/dashboard) to use it.`
+        : "";
+    const message = isInvalidModel400
+      ? `Gratisfy rejected model "${model}" (HTTP 400). The model id was sent in the upstream-routable form "${provider}/${model.split(":").slice(2).join(":")}".${routedProviderHint} Upstream body: ${err.body.slice(0, 200)}`
+      : `Upstream rejected request (HTTP ${err.status}).${routedProviderHint} ${err.body.slice(0, 200)}`;
     return new Response(
       JSON.stringify({
         error: {
           type: status === 401 || status === 403 ? "authentication_error" : "provider_error",
           source,
-          provider: source,
+          provider,
           model,
-          message: `Upstream rejected request (HTTP ${err.status}). ${err.body.slice(0, 200)}`,
+          message,
+          code: isInvalidModel400 ? "BAD_REQUEST" : undefined,
           retryable: status === 429 || status >= 500,
           request_id: requestId,
         },
@@ -607,7 +685,8 @@ function byokErrorResponse(
       error: {
         type: "provider_error",
         source,
-        provider: source,
+        provider,
+        model,
         message,
         retryable: false,
         request_id: requestId,

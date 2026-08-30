@@ -77,7 +77,9 @@ function toUserAccount(row: OnyxUserRecord): UserAccount {
   return {
     id: row.id,
     email: row.email,
-    emailVerified: true, // direct login — email is the login handle
+    // Direct email login — the email IS the verified login handle. We
+    // also persist this flag on the OnyxUserRecord so reads are stable.
+    emailVerified: row.emailVerified !== false ? true : false,
     createdAt: row.createdAt,
     lastLoginAt: row.lastLoginAt,
     status: row.status === "active" ? "active" : "disabled",
@@ -92,6 +94,11 @@ async function createUser(email: string): Promise<OnyxUserRecord> {
     createdAt: now,
     lastLoginAt: now,
     status: "active",
+    // Direct email login — the email is the login handle, so we treat
+    // it as implicitly verified at sign-in time. (Old records created
+    // before this field existed are also treated as verified — see
+    // toUserAccount's `!== false` check.)
+    emailVerified: true,
   };
   await saveUser(user);
   return user;
@@ -222,15 +229,19 @@ function readCookie(request: Request, name: string): string | null {
 /** Get the authenticated user's public account info. */
 export async function getAccount(
   userId: string,
-): Promise<{ id: string; email: string; emailVerified: boolean; createdAt: string; lastLoginAt: string } | null> {
+): Promise<{ id: string; email: string; emailVerified: boolean; createdAt: string; lastLoginAt: string; status: "active" | "disabled" } | null> {
   const u = await getUser(userId);
   if (!u) return null;
   return {
     id: u.id,
     email: u.email,
-    emailVerified: u.emailVerified,
+    // Direct email login → email is implicitly verified at sign-in time.
+    // Older records (created before the emailVerified field existed)
+    // default to true via the `!== false` check.
+    emailVerified: u.emailVerified !== false,
     createdAt: u.createdAt,
     lastLoginAt: u.lastLoginAt,
+    status: u.status === "active" ? "active" : "disabled",
   };
 }
 

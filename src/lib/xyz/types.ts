@@ -28,12 +28,17 @@ export type PricingSource =
   | "manual"
   | "unknown";
 
-/** Per-model pricing (PRD §25). All values are USD per 1M tokens. */
+/** Per-model pricing (PRD §25). Values are per 1M tokens in the stated
+ *  currency. `currency: "USD"` for USD-priced models; `currency: "pollen"`
+ *  for Pollinations-internal-currency pricing surfaced through Gratisfy's
+ *  catalog (the public catalog `https://gratisfy.xyz/api/models/all` lists
+ *  Pollinations-routed models with pricing strings like `"5 pollen/M"` —
+ *  these are NOT USD prices and must not be rendered as USD). */
 export interface ModelPricing {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  currency: "USD";
+  currency: "USD" | "pollen";
   status: PricingStatus;
   source: PricingSource;
   verifiedAt?: string;

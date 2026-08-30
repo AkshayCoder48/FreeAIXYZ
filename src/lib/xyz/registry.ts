@@ -4,8 +4,8 @@
  * Three sources merged into one normalized view:
  *   - native:     derived from the central pricing board (in-memory, no fetch).
  *   - g4f:         live discovery from g4f.space/backend-api/v2/* (PUBLIC).
- *   - gratisfy:    live discovery from api.gratisfy.xyz/v1/models (AUTH-gated,
- *                  per-user BYOK key; default key for catalog when no user key).
+ *   - gratisfy:    live discovery from gratisfy.xyz/api/models/all (PUBLIC,
+ *                  anonymous — 2084 models across 36 providers WITH pricing).
  *   - pollinations: live discovery from text.pollinations.ai/models (PUBLIC,
  *                  anonymous — no key required; only the anonymous-tier model
  *                  list is returned, currently just `openai-fast`).
@@ -43,7 +43,6 @@ import {
   getSuppliedPricingBoard,
   resolveSuppliedPricing,
 } from "./pricing-board";
-import { loadBYOKKey } from "./byok";
 import type {
   ModelCapabilities,
   ParsedModelId,
@@ -284,9 +283,11 @@ function buildG4fModels(discovered: DiscoveredG4fModel[]): UnifiedModel[] {
 // ─── Gratisfy dynamic discovery (fresh, no persistence) ─────────────────────
 
 /**
- * The platform default Gratisfy key — used ONLY for model discovery
- * (GET /v1/models). NEVER used for chat completions; users must supply
- * their own BYOK key for chat.
+ * The platform default Gratisfy key — used ONLY for `validateGratisfyKey()`
+ * (the BYOK connect flow that proves a saved key works). NOT used for
+ * discovery — the PUBLIC catalog endpoint
+ * (`https://gratisfy.xyz/api/models/all`) is anonymous and returns the
+ * full 2084-model / 36-provider catalog with rich pricing metadata.
  */
 const GRATISFY_DEFAULT_KEY =
   process.env.GRATISFY_DEFAULT_KEY ||
@@ -296,15 +297,22 @@ const GRATISFY_DEFAULT_KEY =
 let gratisfyDefaultCache: { at: number; models: UnifiedModel[] } | null = null;
 
 /**
- * Discover Gratisfy models using the platform default key. Visible to all
- * users in the catalog. When a user wants to actually CHAT, they must save
- * their own BYOK key (the default key is NOT used for chat).
+ * Discover Gratisfy models from the PUBLIC catalog endpoint
+ * (`https://gratisfy.xyz/api/models/all`). Anonymous — no Authorization
+ * header, no BYOK key needed. Returns the full 2084-model / 36-provider
+ * catalog with rich pricing metadata (verified live 2026-08-30).
+ *
+ * Visible to all users (anonymous OR signed-in). When a user wants to
+ * actually CHAT, they must save their own BYOK key — the chat route reads
+ * it from OnyxBase + posts to `api.gratisfy.xyz/v1/chat/completions`.
  */
 export async function getGratisfyModelsDefault(): Promise<UnifiedModel[]> {
   const cached = gratisfyDefaultCache;
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
   try {
-    const discovered = await discoverGratisfyModels(GRATISFY_DEFAULT_KEY);
+    // No key argument — discoverGratisfyModels() now fetches the public
+    // catalog endpoint anonymously.
+    const discovered = await discoverGratisfyModels();
     const models = buildGratisfyModels(discovered);
     gratisfyDefaultCache = { at: Date.now(), models };
     return models;
@@ -317,10 +325,11 @@ export async function getGratisfyModelsDefault(): Promise<UnifiedModel[]> {
 }
 
 /**
- * Gratisfy models for a specific user (uses their BYOK key; per-user cache).
- * If no key is saved, fall back to default-key discovery so the catalog
- * still shows Gratisfy models. The user's BYOK key is only required for
- * CHAT, not for discovery.
+ * Gratisfy models for a specific user. Discovery is anonymous (public
+ * catalog) so the user's BYOK key is NOT consulted for listing — only
+ * for chat. This function is kept for API parity with the per-user
+ * pattern used by other sources; it always returns the same catalog as
+ * `getGratisfyModelsDefault()`.
  */
 export async function getGratisfyModelsForUser(
   userId: string,
@@ -328,44 +337,42 @@ export async function getGratisfyModelsForUser(
   const cached = gratisfyCache.get(userId);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
 
-  const key = await loadBYOKKey(userId, "gratisfy");
-  if (!key) {
-    // No user key — use the default-key discovery (catalog still works).
-    return getGratisfyModelsDefault();
-  }
-
+  // Per-user key is consulted ONLY for chat (byok-route.ts). For discovery
+  // we always hit the public anonymous catalog — the same 2084-model view
+  // every user sees.
   try {
-    const discovered = await discoverGratisfyModels(key);
+    const discovered = await discoverGratisfyModels();
     const models = buildGratisfyModels(discovered);
     gratisfyCache.set(userId, { at: Date.now(), models });
     return models;
   } catch {
-    // User's key invalid / upstream down — fall back to default-key catalog.
+    // Upstream down — fall back to the shared default-key cache.
     return getGratisfyModelsDefault();
   }
 }
+
+/** Re-exported so the BYOK connect flow (validate + save) can still reach
+ *  the platform default key when needed. */
+export const GRATISFY_PLATFORM_KEY = GRATISFY_DEFAULT_KEY;
 
 /** Build normalized UnifiedModel[] directly from discovered Gratisfy models.
  *
  * DEDUP (parity with buildG4fModels): collapse by the resulting publicId
  * (`gratisfy:<upstreamProvider>:<upstreamId>`) so a duplicate listing in the
- * upstream /v1/models payload can never produce duplicate React keys in the
- * playground dropdown. First occurrence wins.
+ * upstream catalog payload can never produce duplicate React keys in the
+ * playground dropdown. First occurrence wins. Verified live 2026-08-30:
+ * the public catalog (`gratisfy.xyz/api/models/all`) carries 2084 entries
+ * of which 196 share an `id` with another entry — always under a different
+ * `provider` — so the publicId key is unique per (provider, model).
  *
- * PROVIDER RESOLUTION (verified live 2026-08-30): the upstream payload now
- * carries a dedicated `provider` field (always present, never "alias") which
- * is the REAL routing slug (e.g. "unorouter", "crax-gpt", "gratisfy"). We
- * read it from the rawMetadata here — it's far more reliable than slicing
- * the upstreamId on "/" because:
- *   (a) ~228 of 486 entries are bare aliases with no "/" in their id;
- *       the previous slicing code fell back to "gratisfy" for all of them,
- *       producing a fake "gratisfy" bucket full of GLM/Qwen/Llama models.
- *   (b) The new normalizeRawModel in the adapter drops bare aliases
- *       entirely, so this function only receives real `<provider>/<id>`
- *       entries — but we still use the `provider` field for correctness.
- *   (c) The platform key only surfaces 3 providers today ({gratisfy: 1,
- *       unorouter: 456, crax-gpt: 29}); the user's BYOK key unlocks the
- *       other ~34 providers documented in the original R1 research.
+ * PROVIDER RESOLUTION (verified live 2026-08-30): every entry on the public
+ * catalog carries a dedicated `provider` field (always present, never
+ * "alias") which is the REAL upstream routing slug (e.g. "openrouter",
+ * "unorouter", "crax-gpt", "cloudflare", "groq", "google-ai-studio"). We
+ * read it from rawMetadata here — it's far more reliable than slicing the
+ * upstreamId on "/" because some ids (e.g. `glm-5:free`) don't contain a
+ * slash. The 36 providers in the 2084-model catalog surface naturally in
+ * the playground dropdown's "Gratisfy — <provider>" group headers.
  */
 function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedModel[] {
   const now = new Date().toISOString();
@@ -501,10 +508,12 @@ function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): Uni
  * always listed (no caching — fresh fetch on every call per the user's
  * explicit "remove caching of catalog" directive).
  *
- * Gratisfy models are discovered using the platform default key (visible to
- * everyone); when a signed-in user has their own BYOK key, their key is
- * used instead. The default key is for DISCOVERY ONLY — chat still requires
- * the user's own BYOK key.
+ * Gratisfy models are discovered anonymously from the PUBLIC catalog
+ * endpoint `https://gratisfy.xyz/api/models/all` — every user (anonymous
+ * OR signed-in) sees the same 2084-model / 36-provider catalog with real
+ * pricing metadata. A signed-in user's BYOK key is consulted ONLY when
+ * they chat (the chat route reads it from OnyxBase + posts to
+ * `api.gratisfy.xyz/v1/chat/completions`).
  *
  * Pollinations models are fetched anonymously (no key required — the
  * `text.pollinations.ai/models` endpoint is public for the anonymous tier).

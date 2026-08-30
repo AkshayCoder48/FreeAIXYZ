@@ -1,24 +1,39 @@
 /**
  * Gratisfy BYOK adapter — PRD §15, §16, §17, §37, §56, §58.
  *
- * Base URL:   https://api.gratisfy.xyz/v1
- * Auth:       Authorization: Bearer <gxyz-key>   (BYOK — PRD §54)
- * Discovery:  GET  /v1/models?modality=language  (AUTH-gated — §17)
- * Chat:       POST /v1/chat/completions         (OpenAI-shaped)
+ * TWO endpoints:
+ *
+ *   1. PUBLIC CATALOG (discovery, no auth required):
+ *        https://gratisfy.xyz/api/models/all
+ *      Returns the FULL published catalog: 2084 models across 36 providers
+ *      with rich pricing metadata (`pricing.input` / `pricing.output` numeric
+ *      OR `"Free"`, `pricing.inputDisplay`/`outputDisplay` human strings,
+ *      `freeTier.isFree`, `rateLimits`, `features`, `contextWindow`,
+ *      `maxOutputTokens`, `inputModalities`, `outputModalities`, `ownedBy`,
+ *      `aliases`). Verified live 2026-08-30 — anonymous GET returns 8.2 MB
+ *      JSON with HTTP 200, no Authorization header needed.
+ *
+ *   2. AUTH-GATED BYOK (chat + key validation):
+ *        Base URL:   https://api.gratisfy.xyz/v1
+ *        Auth:       Authorization: Bearer <gxyz-key>  (BYOK — PRD §54)
+ *        Chat:       POST /v1/chat/completions        (OpenAI-shaped)
+ *        Validate:   GET  /v1/models?modality=language
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * KEY INVARIANT (PRD §17 — the auth-gating fix):
+ * DISCOVERY MODEL (PRD §17 — relaxed from auth-gated to public):
  *
- *   No saved Gratisfy key  →  DO NOT call the protected /v1/models endpoint.
- *   The public model list (registry.ts getUnifiedModels) MUST NOT include any
- *   Gratisfy models when the user has not connected a key. Models are fetched
- *   + cached (DB ProviderModel rows, discoveryMode="dynamic") ONLY AFTER a
- *   user saves a key AND it validates with a 200 from Gratisfy.
+ *   discoverGratisfyModels() now fetches the PUBLIC catalog endpoint with NO
+ *   Authorization header. The platform-default `gxyz-...` key is no longer
+ *   needed for discovery — every user (anonymous OR signed-in) sees the full
+ *   2084-model catalog. A user's own BYOK key is still required to CHAT with
+ *   a Gratisfy model (the chat route reads the per-user BYOK key from the
+ *   X-Gratisfy-API-Key header / OnyxBase credential store and posts to
+ *   api.gratisfy.xyz/v1/chat/completions — see ./byok-route.ts).
  *
- * Concretely: discoverGratisfyModels(apiKey) REQUIRES the raw key. It throws
- * MissingGratisfyKeyError synchronously when called with an empty/blank key.
- * It never silently returns [] on a missing key — that is the bug that let
- * the public catalog show an "auth error" before.
+ *   The previous auth-gated /v1/models?modality=all endpoint is kept ONLY for
+ *   validateGratisfyKey() (the BYOK connect flow), where the act of saving a
+ *   key must produce a real 200 from the protected endpoint to prove the key
+ *   is valid.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * Error normalization (PRD §62, §82): every upstream failure is converted into
@@ -26,10 +41,20 @@
  * (./openai-chat). Callers can `instanceof`-check to choose the right HTTP
  * envelope + retry policy.
  *
- * Pricing (PRD §37): resolveGratisfyPricing(model) tries, in order —
- *   1. Pricing metadata embedded in the upstream /v1/models response → "provider"
- *   2. The supplied pricing board (./pricing-board, by model id match)  → "market"
- *   3. Otherwise nulls                                           → "undocumented"
+ * Pricing (PRD §37): resolveGratisfyPricing(model) reads the public catalog's
+ * rich pricing metadata. Resolution order:
+ *   1. Numeric `pricing.input` / `pricing.output` (number OR a string like
+ *      "5 pollen/M") → status:"documented". Numbers < 1 are per-token →
+ *      multiplied by 1_000_000; numbers >= 1 are already per-million —
+ *      matches OpenRouter's convention. Strings like "5 pollen/M" parse
+ *      to 5 per million with `currency:"pollen"` (Pollinations-internal
+ *      currency surfaced through the Gratisfy catalog — NOT USD).
+ *      Per-image / per-second / per-hour strings ("0.06 pollen/img",
+ *      "0.00006 pollen/sec") do NOT surface as per-million (caller falls
+ *      through to the free / not_documented paths so the catalog doesn't
+ *      show nonsense $0/M for image / audio / video models).
+ *   2. `freeTier.isFree === true`              → status:"free", $0/$0
+ *   3. Otherwise nulls + status:"not_documented"  → catalog shows "—"
  */
 
 import {
@@ -50,6 +75,10 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const GRATISFY_BASE_URL = "https://api.gratisfy.xyz/v1";
+/** Public catalog endpoint — anonymous GET, returns the full 2084-model
+ *  catalog with rich pricing + provider classification. Live verified
+ *  2026-08-30: 8.2 MB JSON, HTTP 200, no Authorization header needed. */
+export const GRATISFY_PUBLIC_CATALOG_URL = "https://gratisfy.xyz/api/models/all";
 /** Default per-request timeout for validation calls (cheap endpoint). */
 export const GRATISFY_VALIDATE_TIMEOUT_MS = 20_000;
 
@@ -191,92 +220,142 @@ export class UnknownError extends Error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Discovery (PRD §17) — AUTH-GATED, requires the raw apiKey
+// Discovery (PRD §17) — PUBLIC CATALOG, no auth required
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Raw shape of one entry in Gratisfy's /v1/models `data` array.
+/** Raw shape of one entry in the public catalog's `models` array.
  *
- * Verified live against `?modality=all` (2026-08-30) — every entry carries
- * these fields. Always-present: id, object:"model", created, owned_by,
- * type (modality), pricing_tier, name, displayName, provider (the real
- * routing slug — never "alias"), input_modalities[], free_tier{is_free,
- * note}. Often-present: output_modalities[], features[], context_window,
- * context (dup of context_window), supported_parameters[],
- * max_output_tokens/maxOutput (camelCase dup).
+ * Verified live against `https://gratisfy.xyz/api/models/all` (2026-08-30).
+ * The response is `{ capabilitySchemaVersion, capabilityPayloadMode, models: [...], ... }`
+ * with 2084 entries. Each entry uses camelCase keys (NOT the snake_case shape
+ * of the legacy /v1/models endpoint). The high-signal fields:
  *
- * The bare-alias entries (228 of 486 in `?modality=all`) carry
- * `owned_by === "alias"` and are byte-for-byte duplicates of their
- * `<provider>/<id>` twin — they must be dropped here so the catalog
- * doesn't render duplicate React keys (PRD §19 / playground dedup).
+ *   - `id`                 — the upstream chat-compatible model id (e.g.
+ *                             "inclusionai/ling-3.0-flash-fin:free",
+ *                             "glm-5:free", "gpt-4o-transcribe"). ALWAYS a
+ *                             string, NEVER null/undefined. Pass-through to
+ *                             Gratisfy's /v1/chat/completions.
+ *   - `name`               — human display name (e.g. "Ling 3.0 Flash Fin (free)")
+ *   - `provider`           — the REAL upstream routing slug (e.g. "openrouter",
+ *                             "unorouter", "crax-gpt", "cloudflare", "groq",
+ *                             "google-ai-studio", …). 36 providers in the
+ *                             2084-model catalog.
+ *   - `type`               — modality: "language" | "image" | "audio" | "video"
+ *                             | "embedding" | "ocr" | "translation" | "moderation"
+ *   - `contextWindow`      — max prompt context in tokens (nullable)
+ *   - `maxOutputTokens`    — max completion length (nullable)
+ *   - `pricing`            — { input, output, image, inputDisplay, outputDisplay,
+ *                             webSearch } where `input`/`output` are EITHER the
+ *                             string "Free" OR a per-token/per-million number.
+ *                             `inputDisplay`/`outputDisplay` are HUMAN strings
+ *                             (e.g. "Free", "500K tokens/day shared",
+ *                             "5 RPM shared on free tier", "50 RPD",
+ *                             "1 credit/request", "neurons/M", "Unlimited").
+ *   - `freeTier`           — { isFree: boolean, note: string, ... } — the
+ *                             AUTHORITATIVE "is this model free to call right
+ *                             now" flag. If isFree===true the catalog stamps
+ *                             status:"free" + $0/$0 regardless of numeric price.
+ *   - `rateLimits`         — { rpm, ipm, rph, rpd, rpMonth, concurrentRequests,
+ *                             tpm, tph, tpd, ... } — rate-limit metadata.
+ *   - `features`           — ["reasoning","tool-use","web-search","vision",...]
+ *   - `inputModalities`    — ["text","image","audio","video",...]
+ *   - `outputModalities`   — ["text","image","audio","video",...]
+ *   - `ownedBy`            — string (e.g. "inclusionai", "OpenAI", "Google")
+ *   - `aliases`            — string[] (alternate ids also accepted by chat)
+ *
+ * DEDUP (PRD §19 / playground React-key fix): the public catalog DOES list
+ * some ids more than once (verified: 196 of 2084 entries are duplicates of
+ * another (provider, id) pair). The buildGratisfyModels() function in
+ * registry.ts collapses by the resulting publicId `gratisfy:<provider>:<id>`
+ * — first occurrence wins. No bare-alias duplicates exist on the public
+ * endpoint (unlike the legacy /v1/models endpoint which carried 228 of them).
  */
 interface GratisfyRawModel {
   id?: string;
   name?: string;
   displayName?: string;
   description?: string;
+  // camelCase (NEW public catalog shape):
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  type?: string; // modality: language|image|audio|video|embedding|ocr|translation|moderation
+  features?: string[];
+  inputModalities?: string[];
+  outputModalities?: string[];
+  supportedParameters?: string[];
+  pricing?: {
+    input?: string | number | null;
+    output?: string | number | null;
+    image?: string | number | null;
+    inputDisplay?: string | null;
+    outputDisplay?: string | null;
+    webSearch?: string | number | null;
+  };
+  freeTier?: { isFree?: boolean; note?: string | null };
+  rateLimits?: Record<string, unknown>;
+  provider?: string; // the REAL upstream routing slug — never "alias"
+  ownedBy?: string; // upstream owner (e.g. "inclusionai", "OpenAI")
+  aliases?: string[];
+  // snake_case (LEGACY /v1/models endpoint — kept for validateGratisfyKey()
+  // which still hits the auth-gated endpoint):
   context_length?: number;
   max_context_length?: number;
   context_window?: number;
   context?: number;
   modality?: string;
-  type?: string; // modality: language|image|audio|embedding|video
   capabilities?: string[] | Record<string, boolean>;
-  features?: string[];
   input_modalities?: string[];
   output_modalities?: string[];
   supported_parameters?: string[];
   max_output_tokens?: number;
   maxOutput?: number;
-  pricing?: Record<string, string | number>;
   pricing_tier?: string;
-  provider?: string; // the REAL upstream routing slug — never "alias"
-  owned_by?: string; // upstream owner; "alias" for bare-alias dupes
   free_tier?: { is_free?: boolean; note?: string };
   metadata?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
 /**
- * Discover Gratisfy models (PRD §17). REQUIRES the user's raw key — the
- * /v1/models endpoint is auth-gated. Throws MissingGratisfyKeyError if no key.
- * Throws InvalidKeyError / RateLimitedError / ProviderUnavailableError /
- * NetworkError for upstream failures (PRD §62).
+ * Discover Gratisfy models (PRD §17). Fetches the PUBLIC catalog endpoint
+ * `https://gratisfy.xyz/api/models/all` with NO Authorization header — every
+ * user (anonymous OR signed-in) sees the full 2084-model / 36-provider catalog
+ * with rich pricing + provider classification. The optional `apiKey` parameter
+ * is IGNORED at the catalog endpoint (it's accepted only for backward-compat
+ * with callers that previously passed the platform default key; discovery no
+ * longer needs it).
  *
- * The route handler is expected to upsert each DiscoveredGratisfyModel into
- * Prisma ProviderModel with providerId="gratisfy", discoveryMode="dynamic",
- * active=true. Models that are no longer returned should be deactivated
- * (active=false) NOT deleted (PRD §26 — historical rows preserved).
+ * Throws NetworkError / ProviderUnavailableError / UpstreamError for upstream
+ * failures (PRD §62). The route handler upserts each DiscoveredGratisfyModel
+ * into the registry's buildGratisfyModels() to produce UnifiedModel[] for the
+ * catalog + /api/v1/models response.
+ *
+ * The user's own BYOK key is still required to CHAT with a Gratisfy model
+ * (see ./byok-route.ts — the chat route reads the per-user BYOK key from
+ * OnyxBase + posts to api.gratisfy.xyz/v1/chat/completions).
  */
 export async function discoverGratisfyModels(
-  apiKey: string,
+  apiKey?: string,
   signal?: AbortSignal,
 ): Promise<DiscoveredGratisfyModel[]> {
-  const key = (apiKey ?? "").trim();
-  if (!key) throw new MissingGratisfyKeyError();
+  // apiKey is accepted but ignored — the public catalog endpoint is anonymous.
+  // (kept in the signature so the legacy caller in registry.ts that passes
+  // GRATISFY_DEFAULT_KEY still compiles without churn.)
+  void apiKey;
 
   let res: Response;
   try {
-    // CRITICAL: `?modality=all` is REQUIRED to surface ALL of Gratisfy's
-    // 486 model entries (~258 distinct after dropping 228 bare-alias
-    // duplicates). Without it the upstream serves either 26 entries
-    // (Cloudflare cache hit on the platform-key catalog minimum) or 366
-    // entries (cache miss = language modality only) — both paths EXCLUDE
-    // image / audio / video / embedding models. Verified live 2026-08-30.
-    //
-    // Cache-bust headers + a `?_=<nonce>` query param are also required
-    // because Cloudflare otherwise serves a stale 26-30 entry
-    // "platform-key catalog minimum" snapshot even when ?modality=all is
-    // present (the edge cache keys on URL + Authorization header and
-    // doesn't know the modality query changes the response shape).
+    // The public catalog endpoint returns an ~8 MB JSON blob — fresh on
+    // every call (per the user's "remove caching of catalog" directive).
+    // A small `?_=<nonce>` cache-bust + `Cache-Control: no-store` keeps
+    // Vercel's edge from serving a stale snapshot.
     const nonce = Date.now().toString(36);
-    res = await fetch(`${GRATISFY_BASE_URL}/models?modality=all&_=${nonce}`, {
+    res = await fetch(`${GRATISFY_PUBLIC_CATALOG_URL}?_=${nonce}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${key}`,
         Accept: "application/json",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Cache-Control": "no-store",
         Pragma: "no-cache",
-        "X-Request-Id": `freeaixyz-discovery-${nonce}`,
+        "X-Request-Id": `freeaixyz-gratisfy-discovery-${nonce}`,
       },
       signal,
     });
@@ -291,6 +370,7 @@ export async function discoverGratisfyModels(
 
   // Map status → typed error (PRD §62).
   if (res.status === 401 || res.status === 403) {
+    // Shouldn't happen on the public endpoint, but be defensive.
     throw new InvalidKeyError(res.status, await safeReadBody(res), "");
   }
   if (res.status === 429) {
@@ -303,18 +383,20 @@ export async function discoverGratisfyModels(
     throw new UpstreamError(res.status, await safeReadBody(res), "");
   }
 
-  let json: { data?: GratisfyRawModel[] };
+  let json: { models?: GratisfyRawModel[] };
   try {
-    json = (await res.json()) as { data?: GratisfyRawModel[] };
+    json = (await res.json()) as { models?: GratisfyRawModel[] };
   } catch (err) {
     throw new UpstreamError(
       res.status,
-      `Invalid JSON from /v1/models: ${err instanceof Error ? err.message : String(err)}`,
+      `Invalid JSON from ${GRATISFY_PUBLIC_CATALOG_URL}: ${err instanceof Error ? err.message : String(err)}`,
       "",
     );
   }
 
-  const list = Array.isArray(json.data) ? json.data : [];
+  // The public catalog wraps the model list under `models` (not `data`).
+  // Verified live: 2084 entries across 36 providers in `models[]`.
+  const list = Array.isArray(json.models) ? json.models : [];
   const out: DiscoveredGratisfyModel[] = [];
   for (const m of list) {
     const norm = normalizeRawModel(m);
@@ -325,31 +407,35 @@ export async function discoverGratisfyModels(
 
 /** Convert one raw upstream model into the normalized shape.
  *
- * Drops bare-alias entries (owned_by === "alias") because they are
- * byte-for-byte duplicates of their `<provider>/<id>` twin — same fields,
- * only id + owned_by differ. Including them produces duplicate React keys
- * in the playground dropdown (the upstream lists the same model twice).
- * Verified live 2026-08-30: 228 of 486 entries in `?modality=all` are
- * bare aliases; dropping them is the dedup the user asked for.
+ * The PUBLIC catalog endpoint (`gratisfy.xyz/api/models/all`) does NOT carry
+ * bare-alias duplicates — every entry has a real `id` + `provider` field
+ * (verified live 2026-08-30: 2084 entries, 196 of which share an `id` with
+ * another entry but always under a different `provider` — so they're
+ * legitimately distinct (provider, model) pairs, not duplicates).
  *
- * Capabilities derive from `features` + `input_modalities` +
- * `output_modalities` + `type` — the upstream no longer carries a
- * standalone `capabilities` field (the previous implementation read a
- * non-existent field and always defaulted to `["text"]`). Verified live:
- * `features` carries tags like `["tool_calling","vision"]` and the
- * modality arrays carry the input/output modality strings.
+ * The legacy `?modality=all` endpoint DID carry 228 bare-alias duplicates
+ * (entries with `owned_by === "alias"` and an id without a "/"). The drop
+ * logic below is kept as a defensive guard in case the upstream ever
+ * reintroduces that shape — but on the current public endpoint it's a no-op.
+ *
+ * Capabilities derive from `features` + `inputModalities` +
+ * `outputModalities` + `type` (all camelCase on the new endpoint). The
+ * legacy snake_case fields (`input_modalities`, etc.) are also read for
+ * safety in case a future payload mixes shapes.
  */
 function normalizeRawModel(m: GratisfyRawModel): DiscoveredGratisfyModel | null {
   const upstreamId = (m.id ?? "").trim();
   if (!upstreamId) return null;
 
-  // Drop bare-alias duplicates — their `<provider>/<id>` twin is already
-  // in the list and will surface as a separate entry.
-  const ownedBy = typeof m.owned_by === "string" ? m.owned_by.toLowerCase() : "";
-  const isAlias = ownedBy === "alias";
-  // Only drop a bare alias when an equivalent `<provider>/<id>` form is
-  // also in the list. We approximate this by checking the id has no "/"
-  // (bare aliases never have a slash; the real entries always do).
+  // Drop bare-alias duplicates (legacy /v1/models only — the public
+  // /api/models/all endpoint doesn't carry them, but be defensive).
+  const ownedByRaw =
+    typeof m.ownedBy === "string"
+      ? m.ownedBy
+      : typeof m.owned_by === "string"
+        ? m.owned_by
+        : "";
+  const isAlias = ownedByRaw.toLowerCase() === "alias";
   if (isAlias && !upstreamId.includes("/")) {
     return null;
   }
@@ -360,16 +446,13 @@ function normalizeRawModel(m: GratisfyRawModel): DiscoveredGratisfyModel | null 
     name,
     description: typeof m.description === "string" ? m.description : undefined,
     capabilities: capabilitiesToList(m),
-    contextLength:
-      typeof m.context_length === "number"
-        ? m.context_length
-        : typeof m.context_window === "number"
-          ? m.context_window
-          : typeof m.context === "number"
-            ? m.context
-            : typeof m.max_context_length === "number"
-              ? m.max_context_length
-              : undefined,
+    contextLength: pickFirstNumber(
+      m.contextWindow,
+      m.context_window,
+      m.context_length,
+      m.max_context_length,
+      m.context,
+    ),
     modality:
       typeof m.type === "string"
         ? m.type
@@ -380,63 +463,88 @@ function normalizeRawModel(m: GratisfyRawModel): DiscoveredGratisfyModel | null 
   };
 }
 
+/** Pick the first finite-number value from the list of candidates. */
+function pickFirstNumber(
+  ...candidates: Array<number | undefined | null>
+): number | undefined {
+  for (const c of candidates) {
+    if (typeof c === "number" && Number.isFinite(c)) return c;
+  }
+  return undefined;
+}
+
 /**
- * Build a normalized capability list from the new upstream payload shape.
+ * Build a normalized capability list from the public-catalog payload shape.
  *
- * The new shape carries:
- *   - `features`        — array of capability tags (e.g. "tool_calling",
- *                          "vision", "reasoning", "web_search")
- *   - `input_modalities`  — array of strings like "text", "image", "audio"
- *   - `output_modalities` — array of strings like "text", "image", "audio"
- *   - `type`            — modality ("language" | "image" | "audio" |
- *                          "embedding" | "video")
+ * The public catalog carries (all camelCase):
+ *   - `features`           — array of capability tags (e.g. "reasoning",
+ *                             "tool-use", "web-search", "vision")
+ *   - `inputModalities`    — array of strings like "text", "image", "audio"
+ *   - `outputModalities`   — array of strings like "text", "image", "audio"
+ *   - `type`               — modality ("language" | "image" | "audio" |
+ *                             "video" | "embedding" | "ocr" |
+ *                             "translation" | "moderation")
  *
- * We combine all of these into a flat list of capability strings used by
- * the registry's buildCapabilities() to populate the UnifiedModel's
- * capabilities field.
+ * The legacy snake_case variants (`input_modalities`, etc.) are also read
+ * so the function tolerates a mixed-shape payload.
+ *
+ * The registry's buildCapabilities() (src/lib/xyz/registry.ts) maps the
+ * resulting flat list into the UnifiedModel.capabilities object.
  */
 function capabilitiesToList(m: GratisfyRawModel): string[] {
   const caps = new Set<string>();
   caps.add("text"); // every Gratisfy model supports text chat
 
-  // Features → direct capability tags.
-  if (Array.isArray(m.features)) {
-    for (const f of m.features) {
-      if (typeof f === "string") caps.add(f);
-    }
+  // Features → direct capability tags. The public catalog uses kebab-case
+  // feature names like "tool-use" and "web-search"; the legacy endpoint
+  // used snake_case like "tool_calling". Normalize both to underscores so
+  // buildCapabilities()'s .toLowerCase() checks line up with the existing
+  // "tools" / "web_search" capability keys.
+  const features = Array.isArray(m.features) ? m.features : [];
+  for (const f of features) {
+    if (typeof f !== "string") continue;
+    const norm = f.toLowerCase().replace(/-/g, "_");
+    caps.add(norm);
   }
 
   // Legacy capabilities field (some entries may still carry it).
   if (Array.isArray(m.capabilities)) {
     for (const c of m.capabilities) {
-      if (typeof c === "string") caps.add(c);
+      if (typeof c === "string") caps.add(c.toLowerCase());
     }
   } else if (m.capabilities && typeof m.capabilities === "object") {
     for (const [k, v] of Object.entries(m.capabilities)) {
-      if (v === true) caps.add(k);
+      if (v === true) caps.add(k.toLowerCase());
     }
   }
 
-  // Input modalities → vision/audio capabilities.
-  if (Array.isArray(m.input_modalities)) {
-    for (const mod of m.input_modalities) {
-      if (typeof mod !== "string") continue;
-      const lower = mod.toLowerCase();
-      if (lower === "image") caps.add("vision");
-      else if (lower === "audio") caps.add("audio_input");
-      else if (lower === "video") caps.add("video_input");
-    }
+  // Input modalities → vision/audio/video input capabilities.
+  // Read BOTH the new camelCase field and the legacy snake_case one.
+  const inputMods = Array.isArray(m.inputModalities)
+    ? m.inputModalities
+    : Array.isArray(m.input_modalities)
+      ? m.input_modalities
+      : [];
+  for (const mod of inputMods) {
+    if (typeof mod !== "string") continue;
+    const lower = mod.toLowerCase();
+    if (lower === "image") caps.add("vision");
+    else if (lower === "audio") caps.add("audio_input");
+    else if (lower === "video") caps.add("video_input");
   }
 
-  // Output modalities → image/audio/video generation.
-  if (Array.isArray(m.output_modalities)) {
-    for (const mod of m.output_modalities) {
-      if (typeof mod !== "string") continue;
-      const lower = mod.toLowerCase();
-      if (lower === "image") caps.add("image");
-      else if (lower === "audio") caps.add("audio");
-      else if (lower === "video") caps.add("video");
-    }
+  // Output modalities → image/audio/video generation capabilities.
+  const outputMods = Array.isArray(m.outputModalities)
+    ? m.outputModalities
+    : Array.isArray(m.output_modalities)
+      ? m.output_modalities
+      : [];
+  for (const mod of outputMods) {
+    if (typeof mod !== "string") continue;
+    const lower = mod.toLowerCase();
+    if (lower === "image") caps.add("image");
+    else if (lower === "audio") caps.add("audio");
+    else if (lower === "video") caps.add("video");
   }
 
   // Modality (type field) → capability flag.
@@ -695,18 +803,31 @@ export async function validateGratisfyKey(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve pricing for a discovered Gratisfy model (PRD §37). Resolution:
- *   1. Pricing metadata embedded in the upstream /v1/models response → "provider"
- *   2. Otherwise nulls + source="undocumented"
+ * Resolve pricing for a discovered Gratisfy model (PRD §37). Resolution
+ * reads the PUBLIC catalog's rich pricing metadata in this order:
  *
- * Per the user's explicit request ("remove fake pricing from gratisfy
- * models"), we NO LONGER fall back to the supplied pricing board by
- * tail-segment match — that path was stamping foreign market prices
- * (e.g. `tb/gemini-2.5-flash` → $0.30/$2.50) onto Gratisfy models
- * whose `upstreamId` happened to share the trailing segment (e.g.
- * `google-ai-studio/gemini-2.5-flash`), even though Gratisfy doesn't
- * charge those rates. The catalog now shows "—" for Gratisfy models
- * unless Gratisfy itself publishes a price in the model payload.
+ *   1. Numeric `pricing.input` / `pricing.output` (when both finite) →
+ *      status:"documented". Numbers < 1 are per-token (OpenRouter
+ *      convention) → multiplied by 1_000_000 to convert to per-million.
+ *      Numbers >= 1 are already per-million. (e.g. `gpt-4o-transcribe` has
+ *      `pricing.input=2.5, output=10` → $2.50 / $10 per 1M — real prices
+ *      the user explicitly asked to surface.)
+ *   2. `freeTier.isFree === true` (camelCase on the new endpoint) OR
+ *      legacy `free_tier.is_free === true` OR `pricing_tier === "free"` OR
+ *      `pricing.input === "Free"` (string) → status:"free", $0/$0.
+ *      (e.g. `inclusionai/ling-3.0-flash-fin:free`, `glm-5:free`, the
+ *      431 "Free"-priced models, the 121 "500K tokens/day shared" models,
+ *      the 116 "5 RPM shared on free tier" models.)
+ *   3. Otherwise nulls + status:"not_documented" → catalog shows "—".
+ *
+ * Per the user's explicit directive ("remove fake pricing from gratisfy
+ * models"), we NEVER fall back to the supplied pricing board by tail-segment
+ * match — that path was stamping foreign market prices (e.g. `tb/gemini-2.5-flash`
+ * → $0.30/$2.50) onto Gratisfy models whose upstreamId happened to share
+ * the trailing segment. Now the catalog surfaces Gratisfy's OWN published
+ * prices (numeric or "Free"/`freeTier.isFree`) — exactly what the user
+ * asked for in "Fetch gratisfy model with prices from
+ * https://gratisfy.xyz/api/models/all this with prices".
  *
  * Values are USD per 1M tokens. null means "we could not establish a
  * price" (PRD §26 — never confuse $0 with "not documented").
@@ -715,185 +836,297 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  currency: "USD";
+  currency: "USD" | "pollen";
   status: "documented" | "supplied" | "estimated" | "free" | "not_documented";
   source: "provider" | "pricing-board" | "manual" | "unknown";
   verifiedAt?: string;
 } {
-  // 1. Provider-supplied pricing metadata embedded in the discovery payload.
-  //    This is the ONLY legitimate source for Gratisfy pricing — if
-  //    Gratisfy itself didn't publish a price in /v1/models, we show "—".
-  const providerPricing = extractProviderPricing(model);
-  if (providerPricing) {
+  // 1. Numeric pricing — surface REAL per-million rates from the catalog.
+  //    This is the user's "with prices" directive: stop showing fake $0/M
+  //    for paid models whose pricing was a string like "5 pollen/M".
+  //    The new `extractNumericPricing` parses BOTH plain numbers (per-token
+  //    when < 1, per-million when >= 1) AND strings like "5 pollen/M",
+  //    "0.06 pollen/img", "0.00006 pollen/sec" (it extracts the leading
+  //    numeric value and detects the currency from the unit suffix).
+  //    When real numeric rates are found, they are surfaced with
+  //    status:"documented" so the catalog shows the actual numbers — even
+  //    if `freeTier.isFree` is also true (the paid rate still applies past
+  //    the free-tier budget). Currency is "pollen" when the pricing string
+  //    contains "pollen" (Pollinations-internal currency surfaced through
+  //    Gratisfy's catalog), otherwise "USD".
+  const numeric = extractNumericPricing(model);
+  if (numeric) {
     return {
-      inputPerMillion: providerPricing.inputPerMillion,
-      outputPerMillion: providerPricing.outputPerMillion,
-      cachePerMillion: providerPricing.cachePerMillion ?? null,
-      currency: "USD",
+      inputPerMillion: numeric.inputPerMillion,
+      outputPerMillion: numeric.outputPerMillion,
+      cachePerMillion: null,
+      currency: numeric.currency,
       status: "documented",
       source: "provider",
       verifiedAt: new Date().toISOString(),
     };
   }
 
-  // 2. Gratisfy publishes every model as `pricing_tier: "free"` + a
-  //    `free_tier.is_free: true` flag in /v1/models — the catalog was
-  //    showing "—" before because the old resolver ignored that signal
-  //    (it only consulted a hard-coded pricing-board tail-segment match,
-  //    which is now removed for the fake-pricing fix). Surfacing the
-  //    upstream `free_tier` flag here lets Gratisfy models be honestly
-  //    marked as `status: "free"` with $0 in + $0 out — the catalog UI's
-  //    `isFree` check now lights up the green "free" badge on every
-  //    Gratisfy model and the playground's "free" pill appears next to
-  //    the BYOK ready state.
-  const freeTierFlag = readFreeTierFlag(model);
-  if (freeTierFlag) {
+  // 2. Free signal — `freeTier.isFree` (new) OR `free_tier.is_free` (legacy)
+  //    OR `pricing_tier === "free"` OR `pricing.input === "Free"` string.
+  //    Surface $0/$0 with status:"free" so the catalog UI lights up the
+  //    green "free" badge and the playground shows the "free" pill.
+  //    Currency defaults to USD when no pollen-string pricing was detected
+  //    (i.e. there was no `pricing.input/output` string mentioning pollen).
+  const freeCurrency = detectPricingCurrency(model) ?? "USD";
+  if (isFreeModel(model)) {
     return {
       inputPerMillion: 0,
       outputPerMillion: 0,
       cachePerMillion: 0,
-      currency: "USD",
+      currency: freeCurrency,
       status: "free",
       source: "provider",
       verifiedAt: new Date().toISOString(),
     };
   }
 
-  // 3. Undocumented — return nulls, NEVER $0.
-  // (Previously this method also consulted the supplied pricing board by
-  // trailing-segment match; that path produced fake prices on Gratisfy
-  // models and was removed per the user's "remove fake pricing" directive.)
+  // 3. Undocumented — return nulls, NEVER $0 (PRD §26).
   return {
     inputPerMillion: null,
     outputPerMillion: null,
     cachePerMillion: null,
-    currency: "USD",
+    currency: freeCurrency,
     status: "not_documented",
     source: "unknown",
   };
 }
 
 /**
- * Read Gratisfy's `free_tier` / `pricing_tier` / `tier` flags from the raw
- * upstream model payload. Gratisfy's /v1/models response advertises every
- * model with one of:
- *   - `pricing_tier: "free"` (top-level string)
- *   - `free_tier: { is_free: true, note: "…" }` (object)
- *   - `tier: "anonymous"` or `tier: "seed"` (lower-cased tier name)
+ * Read Gratisfy's free-tier signal from the raw upstream model payload.
+ * Both the new public catalog (`gratisfy.xyz/api/models/all`) and the
+ * legacy auth-gated endpoint (`api.gratisfy.xyz/v1/models`) are handled:
  *
- * Returns true when ANY of those flags indicates a free model. The resolver
- * uses this to honour the upstream `free_tier` signal — previously the
- * catalog ignored it entirely (it only consulted a hand-curated pricing
- * board that didn't carry Gratisfy entries), so every Gratisfy model
- * appeared as "—" in the catalog with no honest free classification.
+ *   - NEW: `freeTier: { isFree: true, note: "…" }`           (camelCase)
+ *   - NEW: `pricing.input === "Free"` (string)                  (free price)
+ *   - LEGACY: `free_tier: { is_free: true, note: "…" }`         (snake_case)
+ *   - LEGACY: `pricing_tier: "free"` (top-level string)
+ *   - LEGACY: `tier: "anonymous"` | `tier: "seed"` (Pollinations-style)
+ *
+ * Returns true when ANY of those flags indicates a free model.
  */
-function readFreeTierFlag(model: DiscoveredGratisfyModel): boolean {
+function isFreeModel(model: DiscoveredGratisfyModel): boolean {
   const raw = model.rawMetadata as Record<string, unknown> | undefined;
   if (!raw) return false;
-  // pricing_tier: "free"
+
+  // NEW: freeTier.isFree === true (camelCase, public catalog)
+  const ftCamel = raw.freeTier;
+  if (ftCamel && typeof ftCamel === "object") {
+    const isFree = (ftCamel as Record<string, unknown>).isFree;
+    if (isFree === true) return true;
+  }
+
+  // LEGACY: free_tier.is_free === true (snake_case, /v1/models)
+  const ftSnake = raw.free_tier;
+  if (ftSnake && typeof ftSnake === "object") {
+    const isFree = (ftSnake as Record<string, unknown>).is_free;
+    if (isFree === true) return true;
+  }
+
+  // NEW: pricing.input === "Free" (string) — the public catalog's free-price
+  // marker. Verified live: 431 of 2084 models carry `pricing.input="Free"`.
+  const pricing = raw.pricing;
+  if (pricing && typeof pricing === "object") {
+    const p = pricing as Record<string, unknown>;
+    if (
+      (typeof p.input === "string" && p.input.toLowerCase() === "free") ||
+      (typeof p.output === "string" && p.output.toLowerCase() === "free")
+    ) {
+      return true;
+    }
+  }
+
+  // LEGACY: pricing_tier === "free" (top-level string, /v1/models)
   if (typeof raw.pricing_tier === "string" && raw.pricing_tier.toLowerCase() === "free") {
     return true;
   }
-  // free_tier: { is_free: true, note?: string }
-  const ft = raw.free_tier;
-  if (ft && typeof ft === "object") {
-    const isFree = (ft as Record<string, unknown>).is_free;
-    if (isFree === true) return true;
-  }
-  // tier: "anonymous" | "seed" | "free" — Pollinations-style anonymous tier
+
+  // LEGACY: tier: "anonymous" | "seed" | "free" (Pollinations-style)
   if (typeof raw.tier === "string") {
     const t = raw.tier.toLowerCase();
     if (t === "anonymous" || t === "free" || t === "seed") {
       return true;
     }
   }
+
   return false;
 }
 
-/**
- * Extract provider-supplied per-million pricing from the raw upstream model
- * payload, accepting several common field shapes (per-token strings,
- * per-million numbers, nested pricing objects). Returns null if no usable
- * price can be extracted.
+/** Read the new public-catalog `pricing` object for numeric per-million rates.
+ *
+ * The public catalog's `pricing` field is `{ input, output, image,
+ * inputDisplay, outputDisplay, webSearch }`. The `input`/`output` values
+ * take one of these forms (verified live 2026-08-30 against
+ * `https://gratisfy.xyz/api/models/all` — 2084 entries):
+ *
+ *   - `null` / missing         → no price published for this side
+ *   - `"Free"` (string)         → free-tier marker (not a numeric price)
+ *   - number < 1                → per-token rate (× 1_000_000 → per-million)
+ *   - number >= 1               → already per-million
+ *   - `"5 pollen/M"`            → 5 pollen per 1M tokens (Pollinations
+ *                                internal currency surfaced through the
+ *                                Gratisfy catalog — NOT USD).
+ *   - `"25 pollen/M"`           → 25 pollen per 1M tokens
+ *   - `"0.06 pollen/img"`       → 0.06 pollen per image (image models —
+ *                                not per-token; surfaced as not_documented
+ *                                since the unit doesn't match per-million)
+ *   - `"0.00006 pollen/sec"`    → 0.00006 pollen per second (audio models —
+ *                                not per-token; surfaced as not_documented)
+ *
+ * Returns `{ inputPerMillion, outputPerMillion, currency }` when BOTH sides
+ * yield a usable per-million numeric value in the same currency. Otherwise
+ * returns null (the caller falls back to the free / not_documented paths).
+ *
+ * Verified live: 178 of 2084 models carry per-million pollen-string pricing
+ * (e.g. `tomdacatto/claude-opus-5` → input="5 pollen/M", output="25 pollen/M"
+ * — these are the real Pollinations-routed prices the user explicitly asked
+ * to surface instead of the previous fake `$0/M`).
  */
-function extractProviderPricing(
+function extractNumericPricing(
   model: DiscoveredGratisfyModel,
 ): {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
-  cachePerMillion?: number | null;
+  currency: "USD" | "pollen";
 } | null {
   const raw = model.rawMetadata;
   if (!raw) return null;
 
-  // Candidate pricing objects: top-level "pricing", "metadata.pricing", or
-  // top-level "pricing_input" / "pricing_output" pairs.
-  const candidates: Array<Record<string, unknown> | undefined> = [
-    isRecord(raw.pricing) ? (raw.pricing as Record<string, unknown>) : undefined,
-    isRecord(raw.metadata)
-      ? isRecord((raw.metadata as Record<string, unknown>).pricing)
-        ? ((raw.metadata as Record<string, unknown>).pricing as Record<string, unknown>)
-        : undefined
-      : undefined,
-    raw, // also look directly on the model object itself
-  ];
+  const pricing = raw.pricing;
+  if (!pricing || typeof pricing !== "object") return null;
+  const p = pricing as Record<string, unknown>;
 
-  for (const cand of candidates) {
-    if (!cand) continue;
-    const input = pickNumber(
-      cand,
-      ["input", "prompt", "input_per_million", "prompt_per_million", "input_price"],
-    );
-    const output = pickNumber(
-      cand,
-      ["output", "completion", "output_per_million", "completion_per_million", "output_price"],
-    );
-    // If either input or output is present, treat as provider-sourced pricing.
-    if (input != null || output != null) {
-      const cache = pickNumber(
-        cand,
-        ["cache", "cache_per_million", "cached", "cached_input"],
-      );
-      return {
-        inputPerMillion: input,
-        outputPerMillion: output,
-        cachePerMillion: cache,
-      };
-    }
+  const inputParsed = toPerMillionNumber(p.input);
+  const outputParsed = toPerMillionNumber(p.output);
+
+  // Surface only when BOTH sides are present (we don't want half-prices).
+  if (inputParsed && outputParsed) {
+    // Currency reconciliation: if either side is pollen, the whole entry
+    // is pollen (we never mix currencies on the same model).
+    const currency: "USD" | "pollen" =
+      inputParsed.currency === "pollen" || outputParsed.currency === "pollen"
+        ? "pollen"
+        : "USD";
+    return {
+      inputPerMillion: inputParsed.value,
+      outputPerMillion: outputParsed.value,
+      currency,
+    };
   }
 
   return null;
 }
 
-function pickNumber(
-  obj: Record<string, unknown>,
-  keys: string[],
-): number | null {
-  for (const k of keys) {
-    const v = obj[k];
-    if (v == null) continue;
-    if (typeof v === "number" && Number.isFinite(v)) {
-      // Heuristic: numbers < 1 in the "input"/"prompt"/"output"/"completion"
-      // fields are likely per-TOKEN (OpenRouter convention). Anything that
-      // smells like a per-million price (>= 1) is left as-is.
-      if (k.includes("per_million") || k.endsWith("_price") || v >= 1) {
-        return v;
-      }
-      // Otherwise treat as per-token → convert to per-million.
-      return v * 1_000_000;
-    }
-    if (typeof v === "string") {
-      const s = v.trim();
-      if (!s) continue;
-      const n = Number(s);
-      if (Number.isFinite(n)) {
-        if (k.includes("per_million") || k.endsWith("_price") || n >= 1) {
-          return n;
-        }
-        return n * 1_000_000;
-      }
+/**
+ * Detect the currency of a model's pricing strings WITHOUT requiring both
+ * sides to be numeric. Used by the free / not_documented fallbacks so they
+ * can stamp the correct currency (USD vs pollen) on the surfaced pricing.
+ *
+ * Returns "pollen" when ANY pricing string in the raw payload mentions
+ * "pollen" (case-insensitive), otherwise null (caller falls back to USD).
+ */
+function detectPricingCurrency(
+  model: DiscoveredGratisfyModel,
+): "pollen" | null {
+  const raw = model.rawMetadata as Record<string, unknown> | undefined;
+  if (!raw) return null;
+  const pricing = raw.pricing;
+  if (!pricing || typeof pricing !== "object") return null;
+  const p = pricing as Record<string, unknown>;
+  for (const k of ["input", "output", "image", "webSearch", "inputDisplay", "outputDisplay"]) {
+    const v = p[k];
+    if (typeof v === "string" && v.toLowerCase().includes("pollen")) {
+      return "pollen";
     }
   }
+  return null;
+}
+
+/** Coerce a pricing value (string|number) into a per-million numeric rate
+ * plus the detected currency.
+ *
+ * Accepted shapes (verified live against the public catalog
+ * `gratisfy.xyz/api/models/all`, 2026-08-30):
+ *
+ *  - `null` / `undefined`               → null (not present)
+ *  - `"Free"` (string)                  → null (free signal, not numeric)
+ *  - `"5 pollen/M"` (string)            → 5 per million, currency="pollen"
+ *  - `"25 pollen/M"` (string)            → 25 per million, currency="pollen"
+ *  - `"0.06 pollen/img"` (string)        → null (per-image, not per-million —
+ *                                         caller surfaces as not_documented)
+ *  - `"0.00006 pollen/sec"` (string)     → null (per-second, not per-million —
+ *                                         caller surfaces as not_documented)
+ *  - `"0.15 pollen/hour"` (string)       → null (per-hour, not per-million)
+ *  - number < 1                          → × 1_000_000 (per-token → per-million),
+ *                                         currency="USD"
+ *  - number >= 1                         → already per-million, currency="USD"
+ *  - plain numeric string "2.5"          → 2.5 per million, currency="USD"
+ *
+ * Returns `{ value, currency }` when the value can be expressed as a
+ * per-million rate, otherwise null. The caller (extractNumericPricing)
+ * reconciles currencies across input/output and surfaces the result.
+ */
+function toPerMillionNumber(
+  v: unknown,
+): { value: number; currency: "USD" | "pollen" } | null {
+  if (v == null) return null;
+
+  // Plain number → per-million USD (per-token when < 1).
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return { value: v < 1 ? v * 1_000_000 : v, currency: "USD" };
+  }
+
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (s.toLowerCase() === "free") return null; // free signal, not numeric
+
+  // String with explicit unit. Extract the leading numeric value and
+  // detect the currency + per-million-ness from the unit suffix.
+  //
+  // The public catalog uses these unit suffixes (verified):
+  //   "pollen/M"   → pollen per million tokens  ✓ per-million (numeric)
+  //   "pollen/img" → pollen per image            ✗ not per-million
+  //   "pollen/sec" → pollen per second            ✗ not per-million
+  //   "pollen/hour"→ pollen per hour              ✗ not per-million
+  //
+  // Only "pollen/M" (and bare numbers / "$/M") yield a per-million rate.
+  // The /img, /sec, /hour units are surfaced as not_documented (caller path)
+  // since the catalog UI's per-million display doesn't fit those modalities.
+  const lower = s.toLowerCase();
+  const isPollen = lower.includes("pollen");
+
+  // Extract the leading numeric value (supports decimals + scientific).
+  // Examples: "5 pollen/M" → 5; "0.06 pollen/img" → 0.06;
+  // "0.00006 pollen/sec" → 0.00006; "2.5" → 2.5.
+  const numMatch = s.match(/-?\d+(?:\.\d+)?/);
+  if (!numMatch) return null;
+  const n = Number(numMatch[0]);
+  if (!Number.isFinite(n)) return null;
+
+  // Per-million gate: only "pollen/M", "$/M", or a bare number (no unit)
+  // surface as per-million. "/M" alone (without currency word) defaults to
+  // USD per million. "pollen/M" → pollen per million. Anything else
+  // (/img, /sec, /hour, /req, /call) → not per-million → return null.
+  const hasPerMillionUnit = /\/m(illion)?\b/i.test(s) || /\bm\b/i.test(s.replace(/pollen/i, ""));
+  const isBareNumericString = !/[a-z/]/i.test(s.replace(/[-\d.]/g, ""));
+
+  if (isPollen && hasPerMillionUnit) {
+    // "5 pollen/M" → 5 pollen per million tokens
+    return { value: n, currency: "pollen" };
+  }
+  if (!isPollen && (hasPerMillionUnit || isBareNumericString)) {
+    // "2.5" (bare numeric string), "$5/M" → USD per million.
+    // Bare numeric strings follow the per-token rule (× 1M when < 1).
+    return { value: n < 1 && isBareNumericString ? n * 1_000_000 : n, currency: "USD" };
+  }
+
+  // Other units (/img, /sec, /hour, /req, /call) — not per-million.
   return null;
 }
 
@@ -980,6 +1213,8 @@ async function safeReadBody(res: Response): Promise<string> {
 // NOTE: the supplied-pricing-board helpers (`suppliedBoardIds`,
 // `SUPPLIED_BOARD_IDS`) were removed when `resolveGratisfyPricing` stopped
 // falling back to the supplied board by tail-segment match — that path
-// produced fake prices on Gratisfy models. If Gratisfy ever starts
-// publishing real per-model pricing metadata, the `extractProviderPricing`
-// path above already handles it.
+// produced fake prices on Gratisfy models. The PUBLIC catalog endpoint
+// (https://gratisfy.xyz/api/models/all) now publishes real per-model
+// pricing metadata directly — `extractNumericPricing` reads it and the
+// resolver surfaces it. The `isRecord` helper is kept as a defensive
+// shape-check utility in case future code paths need it.

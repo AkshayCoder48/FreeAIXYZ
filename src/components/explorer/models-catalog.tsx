@@ -72,13 +72,13 @@ interface ModelPricing {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  currency: "USD";
+  currency: "USD" | "pollen";
   status: string; // documented | supplied | estimated | free | not_documented
   source: string;
   verifiedAt?: string;
 }
 
-type Source = "native" | "gratisfy" | "g4f";
+type Source = "native" | "gratisfy" | "g4f" | "pollinations";
 
 interface UnifiedModelEntry {
   id: string; // publicId, e.g. "native:tb:gpt-5"
@@ -101,7 +101,7 @@ interface UnifiedResponse {
 
 interface PricingResponse {
   version: number;
-  currency: "USD";
+  currency: "USD" | "pollen";
   multiplier: number;
   referenceRequest: { inputTokens: number; outputTokens: number };
   updatedAt: string;
@@ -250,9 +250,14 @@ function isPricingDocumented(p: ModelPricing | undefined | null): boolean {
   return true;
 }
 
-function formatPrice(v: number | null | undefined): string {
+function formatPrice(v: number | null | undefined, currency: "USD" | "pollen" = "USD"): string {
   if (v == null) return "—";
-  if (v === 0) return "$0";
+  if (v === 0) return currency === "pollen" ? "0 pollen" : "$0";
+  if (currency === "pollen") {
+    if (v < 0.01) return `${v.toFixed(4)} pollen`;
+    if (v < 1) return `${v.toFixed(3)} pollen`;
+    return `${v.toFixed(2)} pollen`;
+  }
   if (v < 0.01) return `$${v.toFixed(4)}`;
   if (v < 1) return `$${v.toFixed(3)}`;
   return `$${v.toFixed(2)}`;
@@ -837,7 +842,7 @@ function ProviderCard({
               >
                 {isFree
                   ? "Free"
-                  : `${formatPrice(pricing!.inputPerMillion)}/M`}
+                  : `${formatPrice(pricing!.inputPerMillion, pricing!.currency)}/M`}
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-3 min-w-0">
@@ -850,7 +855,7 @@ function ProviderCard({
               >
                 {isFree
                   ? "Free"
-                  : `${formatPrice(pricing!.outputPerMillion)}/M`}
+                  : `${formatPrice(pricing!.outputPerMillion, pricing!.currency)}/M`}
               </span>
             </div>
             {respPer !== null && (

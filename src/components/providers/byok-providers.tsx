@@ -23,7 +23,7 @@
  * render the error object directly as a React child.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   RefreshCw,
@@ -33,6 +33,9 @@ import {
   XCircle,
   LogIn,
   Wallet,
+  Search,
+  Boxes,
+  Cpu,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -85,7 +88,7 @@ interface TestResponse {
 interface ProviderEntry {
   id: string;
   name: string;
-  source: "native" | "gratisfy" | "g4f";
+  source: "native" | "gratisfy" | "g4f" | "pollinations";
   requiresApiKey: boolean;
   supportsModelDiscovery: boolean;
   supportsStreaming: boolean;
@@ -135,7 +138,9 @@ function SourceBadge({ source }: { source: ProviderEntry["source"] }) {
       ? "border-transparent bg-violet-500/15 text-violet-700 dark:text-violet-300"
       : source === "g4f"
         ? "border-transparent bg-orange-500/15 text-orange-700 dark:text-orange-300"
-        : "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300";
+        : source === "pollinations"
+          ? "border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300"
+          : "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300";
   return <Badge className={className}>{label}</Badge>;
 }
 
@@ -389,6 +394,19 @@ export function ByokProviders() {
   const [stale, setStale] = useState(false);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [providerFilter, setProviderFilter] = useState("");
+
+  const filteredProviders = useMemo(() => {
+    if (!providers) return [];
+    const q = providerFilter.trim().toLowerCase();
+    if (!q) return providers;
+    return providers.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.source.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q),
+    );
+  }, [providers, providerFilter]);
 
   // Load saved (masked) BYOK keys on mount — the fix for "key deleted on
   // refresh": keys live in OnyxBase keyed by userId, fetched fresh here.
@@ -559,64 +577,149 @@ export function ByokProviders() {
 
       <Separator />
 
+      {/* Sources overview — the user explicitly asked to make gratisfy,
+          pollinations, g4f "available in the main menu providers section".
+          The unified catalog table below used to slice(0, 100) which CUT
+          OFF the pollinations providers entirely (they sort last: native →
+          g4f → gratisfy → pollinations, so 14+61+36 = 111 before
+          pollinations starts, and slice(0, 100) hid everything from
+          index 100 onward). The 4-card grid here surfaces every source's
+          totals up-front so all four are visibly present even before the
+          user scrolls the table. */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Unified catalog</h2>
-        <p className="text-xs text-muted-foreground">
-          {loadingMeta
-            ? "Loading providers…"
-            : providers
-              ? `Showing ${providers.length} providers${stale ? " (catalog stale)" : ""}.`
-              : "No providers loaded."}
-        </p>
-        <div className="overflow-x-auto rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>BYOK</TableHead>
-                <TableHead className="text-right">Models</TableHead>
-                <TableHead>Discovered</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {providers?.slice(0, 100).map((p) => (
-                <TableRow key={`${p.source}:${p.id}`}>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell>
-                    <SourceBadge source={p.source} />
-                  </TableCell>
-                  <TableCell>
-                    {p.requiresApiKey ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] uppercase tracking-wider"
-                      >
-                        BYOK
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {p.modelCount}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {p.lastDiscoveredAt
-                      ? new Date(p.lastDiscoveredAt).toLocaleString()
-                      : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex items-center gap-2">
+          <Boxes className="h-4 w-4" />
+          <h2 className="text-lg font-semibold">Sources</h2>
+          <span className="text-xs text-muted-foreground">
+            4 sources aggregated into one OpenAI-compatible gateway
+          </span>
         </div>
-        {providers && providers.length > 100 && (
-          <p className="text-xs text-muted-foreground">
-            Showing 100 of {providers.length} providers — narrow via the API
-            for the full list.
-          </p>
-        )}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {(
+            [
+              { key: "native", label: "Native", desc: "Built-in free providers" },
+              { key: "gratisfy", label: "Gratisfy", desc: "BYOK gxyz-… key" },
+              { key: "g4f", label: "G4F", desc: "BYOK g4f_… key" },
+              { key: "pollinations", label: "Pollinations", desc: "BYOK or anon" },
+            ] as const
+          ).map((s) => {
+            const srcProviders = (providers ?? []).filter(
+              (p) => p.source === s.key,
+            );
+            const totalModels = srcProviders.reduce(
+              (sum, p) => sum + (p.modelCount ?? 0),
+              0,
+            );
+            return (
+              <Card key={s.key} className="py-3">
+                <CardContent className="flex flex-col gap-1 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">{s.label}</span>
+                    <SourceBadge source={s.key} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{s.desc}</p>
+                  <div className="flex items-baseline gap-3 mt-1">
+                    <span className="text-xl font-bold tabular-nums">
+                      {srcProviders.length}
+                    </span>
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      providers
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                    <Cpu className="h-3 w-3" />
+                    <span className="tabular-nums">{totalModels.toLocaleString()}</span>
+                    <span>models</span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Unified catalog</h2>
+            <p className="text-xs text-muted-foreground">
+              {loadingMeta
+                ? "Loading providers…"
+                : providers
+                  ? `Showing all ${providers.length} providers across 4 sources${stale ? " (catalog stale)" : ""}.`
+                  : "No providers loaded."}
+            </p>
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="search"
+              placeholder="Filter providers or sources…"
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              className="pl-8 h-9"
+            />
+          </div>
+        </div>
+        <div className="overflow-x-auto rounded-md border">
+          <div className="max-h-[640px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur">
+                <TableRow>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>BYOK</TableHead>
+                  <TableHead className="text-right">Models</TableHead>
+                  <TableHead>Discovered</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProviders.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-sm text-muted-foreground py-6"
+                    >
+                      {providers
+                        ? "No providers match your filter."
+                        : "Loading providers…"}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filteredProviders.map((p) => (
+                  <TableRow key={`${p.source}:${p.id}`}>
+                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell>
+                      <SourceBadge source={p.source} />
+                    </TableCell>
+                    <TableCell>
+                      {p.requiresApiKey ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] uppercase tracking-wider"
+                        >
+                          BYOK
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {p.modelCount}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {p.lastDiscoveredAt
+                        ? new Date(p.lastDiscoveredAt).toLocaleString()
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
       </div>
     </div>
   );

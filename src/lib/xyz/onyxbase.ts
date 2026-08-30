@@ -199,6 +199,14 @@ export interface OnyxUserRecord {
   createdAt: string;
   lastLoginAt: string;
   status: "active" | "disabled";
+  /**
+   * Whether the user has verified control of their email. For the
+   * direct-email-login flow (no OTP, no password) we treat the email as
+   * implicitly verified at sign-in time, so this is always true. The
+   * field exists so future verification flows can flip it false without
+   * changing the record shape.
+   */
+  emailVerified?: boolean;
 }
 
 /** Session record shape stored under `fxz:session:{tokenHash}`. */

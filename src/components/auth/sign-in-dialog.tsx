@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Mail } from "lucide-react";
+import { authActions } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -71,6 +72,13 @@ export function SignInDialog({
         toast.success("Signed in");
         onOpenChange(false);
         reset();
+        // CRITICAL: refresh the singleton auth store AND broadcast to
+        // other tabs/components so every subscriber re-renders in lockstep.
+        // Without this, only the NavAuthButton updates — the Dashboard on
+        // /account and ByokProviders on /providers keep showing the
+        // "Sign in required" card even after a successful login.
+        await authActions.refresh();
+        authActions.broadcastSignIn();
         onSignedIn?.();
       } else {
         toast.error(data.message ?? "Could not sign in");

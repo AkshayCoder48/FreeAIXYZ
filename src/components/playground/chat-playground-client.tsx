@@ -88,7 +88,7 @@ interface ModelPricing {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
   cachePerMillion?: number | null;
-  currency: "USD";
+  currency: "USD" | "pollen";
   status: "documented" | "supplied" | "estimated" | "free" | "not_documented";
   source: "provider" | "pricing-board" | "manual" | "unknown";
   verifiedAt?: string;
@@ -300,9 +300,23 @@ function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provide
 }
 
 /** Format a USD price as $X.XX / 1M tokens. */
-function formatUsd(perMillion: number | null | undefined): string {
+/** Format a per-million price in the model's native currency.
+ *
+ * USD prices render as `$X.XX/1M` (or "free" for $0, "—" for null).
+ * Pollen prices (Pollinations-internal currency surfaced through the
+ * Gratisfy catalog) render as `X.XX pollen/1M` to make the currency
+ * distinction visible — never present pollen as USD (PRD §26). */
+function formatUsd(
+  perMillion: number | null | undefined,
+  currency: "USD" | "pollen" = "USD",
+): string {
   if (perMillion == null) return "—";
   if (perMillion === 0) return "free";
+  if (currency === "pollen") {
+    if (perMillion < 0.01) return `${perMillion.toFixed(4)} pollen/1M`;
+    if (perMillion < 1) return `${perMillion.toFixed(3)} pollen/1M`;
+    return `${perMillion.toFixed(2)} pollen/1M`;
+  }
   return `$${perMillion.toFixed(2)}/1M`;
 }
 
@@ -902,8 +916,8 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                           <span className="flex flex-col gap-0.5">
                             <span className="break-all">{m.id}</span>
                             <span className="text-[10px] text-muted-foreground not-italic">
-                              {formatUsd(m.pricing.inputPerMillion)} in ·{" "}
-                              {formatUsd(m.pricing.outputPerMillion)} out
+                              {formatUsd(m.pricing.inputPerMillion, m.pricing.currency)} in ·{" "}
+                              {formatUsd(m.pricing.outputPerMillion, m.pricing.currency)} out
                               {m.streaming ? " · stream" : ""}
                             </span>
                           </span>
@@ -1631,13 +1645,13 @@ function ModelCard({
 
       {/* Pricing grid */}
       <div className="grid grid-cols-2 gap-2 mt-1">
-        <PricingCell label="Input" value={formatUsd(pricing.inputPerMillion)} />
-        <PricingCell label="Output" value={formatUsd(pricing.outputPerMillion)} />
+        <PricingCell label="Input" value={formatUsd(pricing.inputPerMillion, pricing.currency)} />
+        <PricingCell label="Output" value={formatUsd(pricing.outputPerMillion, pricing.currency)} />
         <PricingCell
           label="Cache"
           value={
             pricing.cachePerMillion != null
-              ? formatUsd(pricing.cachePerMillion)
+              ? formatUsd(pricing.cachePerMillion, pricing.currency)
               : "—"
           }
         />

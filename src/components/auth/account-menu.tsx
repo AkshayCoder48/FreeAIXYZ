@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AuthUser } from "@/hooks/use-auth";
+import { authActions } from "@/hooks/use-auth";
 
 interface AccountMenuProps {
   user: AuthUser;
@@ -44,6 +45,10 @@ export function AccountMenu({ user, balance }: AccountMenuProps) {
         credentials: "include",
       });
     } finally {
+      // Update the shared auth store immediately AND broadcast to other
+      // tabs so every mounted useAuth() subscriber re-renders as
+      // unauthenticated. Then reload to flush any per-page cached state.
+      authActions.broadcastSignOut();
       window.location.reload();
     }
   }
