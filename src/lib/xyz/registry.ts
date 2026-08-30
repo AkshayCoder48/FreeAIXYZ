@@ -20,6 +20,7 @@ import {
   resolveSuppliedPricing,
 } from "./pricing-board";
 import { loadBYOKKey } from "./byok";
+import { g4fSeedModels, g4fSeedProviders, g4fSeedFetchedAt } from "./seed/g4f-from-seed";
 import type {
   ParsedModelId,
   Source,
@@ -96,7 +97,13 @@ export function getNativeProviders(): UnifiedProvider[] {
   }));
 }
 
-/** G4F models + providers (cached globally — discovery is public). */
+/**
+ * G4F models + providers. Live discovery is attempted first (cached 15 min —
+ * PRD §47). When live discovery returns EMPTY (g4f.space 403s Vercel's egress
+ * IPs — verified in prod logs), fall back to the committed seed snapshot so
+ * the catalog is never empty (PRD §47-50: serve last-known-good). The
+ * `stale` flag marks seed-backed responses.
+ */
 export async function getG4fModels(): Promise<{
   models: UnifiedModel[];
   providers: UnifiedProvider[];
@@ -106,13 +113,17 @@ export async function getG4fModels(): Promise<{
     return { models: g4fCache.models, providers: g4fCache.providers, stale: false };
   }
   const discovered = await discoverG4f();
-  // Only cache NON-empty results — a transient network failure from Vercel's
-  // egress must not poison the cache for 15 min (PRD §47-50: serve
-  // last-known-good, and a failed fetch should retry on the next request).
   if (discovered.models.length > 0 || discovered.providers.length > 0) {
     g4fCache = { at: Date.now(), models: discovered.models, providers: discovered.providers };
+    return { models: discovered.models, providers: discovered.providers, stale: false };
   }
-  return { models: discovered.models, providers: discovered.providers, stale: false };
+  // Live discovery blocked (403 from Vercel egress) → serve the seed.
+  void g4fSeedFetchedAt();
+  return {
+    models: g4fSeedModels(),
+    providers: g4fSeedProviders(),
+    stale: true,
+  };
 }
 
 /** Gratisfy models for a specific user (needs their BYOK key; per-user cache). */
