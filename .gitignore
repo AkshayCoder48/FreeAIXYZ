@@ -46,8 +46,10 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
-prompt
+# Only ignore a top-level /test/ + /prompt/ dir (test scripts), NOT nested
+# API route directories like src/app/api/v1/byok/<src>/test/route.ts
+/test
+/prompt
 
 server.log
 # Skills directory
