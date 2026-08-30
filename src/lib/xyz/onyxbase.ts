@@ -16,6 +16,15 @@
  * Values are auto-typed by OnyxBase (string / number / boolean / JSON).
  * We pass JSON objects and they round-trip as JSON.
  *
+ * FREEAIXYZ PERSISTENCE MODEL (this iteration):
+ *   OnyxBase is the SINGLE source of truth for:
+ *     - User accounts          key: fxz:user:{userId}
+ *     - Email→userId index     key: fxz:userbyemail:{email}
+ *     - Sessions               key: fxz:session:{tokenHash}
+ *     - BYOK credentials       key: fxz:byok:{userId}:{provider}
+ *   Prisma is no longer used for auth / sessions / byok. This means the
+ *   whole auth + BYOK flow works on Vercel without a synced DB schema.
+ *
  * SECURITY: this module is SERVER-ONLY. The API key is never sent to the
  * browser. Mark every route that uses this with `runtime = "nodejs"`.
  */
@@ -39,7 +48,7 @@ function apiKey(): string {
   return key;
 }
 
-/** Default collection name for FreeAIXYZ BYOK + misc KV. */
+/** Default collection name for FreeAIXYZ KV. */
 export const DEFAULT_COLLECTION = "freeaixyz";
 
 export interface OnyxGetResult<T = unknown> {
@@ -181,36 +190,127 @@ export async function onyxHealth(): Promise<boolean> {
   }
 }
 
-/**
- * Convenience: store a BYOK credential for a browser session.
- * Key shape: `byok:{browserId}:{provider}` → { encryptedKey, masked, addedAt }
- */
-export function byokKey(browserId: string, provider: string): string {
-  return `byok:${browserId}:${provider}`;
+// ─── User + Session helpers (OnyxBase-backed auth) ──────────────────────────
+
+/** User record shape stored under `fxz:user:{userId}`. */
+export interface OnyxUserRecord {
+  id: string;
+  email: string;
+  createdAt: string;
+  lastLoginAt: string;
+  status: "active" | "disabled";
 }
 
-/** Store a BYOK credential blob for a browser session. */
-export async function saveByokToOnyx(
-  browserId: string,
-  provider: string,
-  blob: { encryptedKey: string; masked: string; addedAt: string; validatedAt?: string | null; validationError?: string | null },
+/** Session record shape stored under `fxz:session:{tokenHash}`. */
+export interface OnyxSessionRecord {
+  userId: string;
+  email: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+const USER_PREFIX = "fxz:user:";
+const USER_BY_EMAIL_PREFIX = "fxz:userbyemail:";
+const SESSION_PREFIX = "fxz:session:";
+
+/** Build the OnyxBase key for a user record. */
+export function userKey(userId: string): string {
+  return `${USER_PREFIX}${userId}`;
+}
+
+/** Build the OnyxBase key for the email→userId index. */
+export function userByEmailKey(email: string): string {
+  return `${USER_BY_EMAIL_PREFIX}${email}`;
+}
+
+/** Build the OnyxBase key for a session record. */
+export function sessionKey(tokenHash: string): string {
+  return `${SESSION_PREFIX}${tokenHash}`;
+}
+
+/** Save a user record (upsert). */
+export async function saveUser(user: OnyxUserRecord): Promise<boolean> {
+  const r1 = await onyxSet(userKey(user.id), user);
+  // Also maintain the email→userId index so lookup-by-email is O(1).
+  const r2 = await onyxSet(userByEmailKey(user.email), user.id);
+  return r1.ok && r2.ok;
+}
+
+/** Load a user record by id. */
+export async function loadUserById(userId: string): Promise<OnyxUserRecord | null> {
+  return onyxGet<OnyxUserRecord>(userKey(userId));
+}
+
+/** Resolve a userId from an email (via the email→userId index). */
+export async function loadUserIdByEmail(email: string): Promise<string | null> {
+  return onyxGet<string>(userByEmailKey(email));
+}
+
+/** Delete a user record + its email index. */
+export async function deleteUser(userId: string, email: string): Promise<void> {
+  await onyxDelete(userKey(userId));
+  await onyxDelete(userByEmailKey(email));
+}
+
+/**
+ * Save a session record (upsert). Sessions are keyed by the SHA-256 hash of
+ * the session token (never the raw token) — a user may have multiple
+ * sessions across browsers/devices.
+ */
+export async function saveSession(
+  tokenHash: string,
+  session: OnyxSessionRecord,
 ): Promise<boolean> {
-  const result = await onyxSet(byokKey(browserId, provider), blob);
+  const result = await onyxSet(sessionKey(tokenHash), session);
   return result.ok;
 }
 
-/** Load a BYOK credential blob for a browser session. */
-export async function loadByokFromOnyx(
-  browserId: string,
-  provider: string,
-): Promise<{ encryptedKey: string; masked: string; addedAt: string; validatedAt?: string | null; validationError?: string | null } | null> {
-  return onyxGet(byokKey(browserId, provider));
+/** Load a session record by token hash. */
+export async function loadSession(tokenHash: string): Promise<OnyxSessionRecord | null> {
+  return onyxGet<OnyxSessionRecord>(sessionKey(tokenHash));
 }
 
-/** Remove a BYOK credential for a browser session. */
+/** Delete a session by token hash (logout). */
+export async function deleteSession(tokenHash: string): Promise<boolean> {
+  return onyxDelete(sessionKey(tokenHash));
+}
+
+// ─── BYOK helpers (OnyxBase-backed, keyed by userId) ────────────────────────
+
+/**
+ * Convenience: store a BYOK credential for a user.
+ * Key shape: `fxz:byok:{userId}:{provider}` → { encryptedKey, masked, addedAt }
+ *
+ * NOTE: the `id` parameter is the authenticated userId (from the session
+ * cookie), NOT a browser-local UUID. This means saved keys persist across
+ * refresh / tab changes / devices — they live with the account, server-side.
+ */
+export function byokKey(userId: string, provider: string): string {
+  return `fxz:byok:${userId}:${provider}`;
+}
+
+/** Store a BYOK credential blob for a user. */
+export async function saveByokToOnyx(
+  userId: string,
+  provider: string,
+  blob: { encryptedKey: string; masked: string; addedAt: string; validatedAt?: string | null; validationError?: string | null },
+): Promise<boolean> {
+  const result = await onyxSet(byokKey(userId, provider), blob);
+  return result.ok;
+}
+
+/** Load a BYOK credential blob for a user. */
+export async function loadByokFromOnyx(
+  userId: string,
+  provider: string,
+): Promise<{ encryptedKey: string; masked: string; addedAt: string; validatedAt?: string | null; validationError?: string | null } | null> {
+  return onyxGet(byokKey(userId, provider));
+}
+
+/** Remove a BYOK credential for a user. */
 export async function removeByokFromOnyx(
-  browserId: string,
+  userId: string,
   provider: string,
 ): Promise<boolean> {
-  return onyxDelete(byokKey(browserId, provider));
+  return onyxDelete(byokKey(userId, provider));
 }

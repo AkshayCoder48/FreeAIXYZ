@@ -1,19 +1,17 @@
 /**
- * Shared route auth helper (PRD §13, §14, §88, §89, §91).
+ * Shared route auth helper.
  * Server-side. Supports dual authentication:
- *   1. Session cookie (web app users)
+ *   1. Session cookie (web app users — OnyxBase-backed direct email login)
  *   2. `Authorization: Bearer fx_live_*` API key (programmatic clients)
  *
- * The two credential layers are kept separate (PRD §14):
+ * The two credential layers are kept separate:
  *   Layer 1 — FreeAIXYZ authenticates the application user (this file).
  *   Layer 2 — Provider BYOK authenticates FreeAIXYZ against the upstream
  *             provider using the user's stored credential (see byok.ts).
  *
- * ANONYMOUS BROWSER MODE (added this iteration):
- *   BYOK endpoints no longer require a signed-in user. Instead, the
- *   browser generates a random UUID stored in localStorage and sends it
- *   as the `X-Browser-Id` header. BYOK credentials are stored in OnyxBase
- *   keyed by this browser ID — no user accounts needed.
+ * BYOK endpoints REQUIRE a signed-in user. The userId resolved here is the
+ * namespace key for that user's BYOK credentials in OnyxBase — this is what
+ * makes saved keys persist across refresh / tab changes.
  */
 
 import { getSessionUserId } from "./auth";
@@ -66,7 +64,7 @@ export async function requireAuth(
           error: {
             type: "authentication_error",
             code: "UNAUTHENTICATED",
-            message: "Sign in required.",
+            message: "Sign in required to manage API keys.",
           },
         },
         { status: 401 },
@@ -101,34 +99,6 @@ export async function requireAuthScoped(
     };
   }
   return result;
-}
-
-// ─── Anonymous browser ID (BYOK without user accounts) ────────────────────────
-
-/**
- * Resolve the anonymous browser ID from a request. The browser generates a
- * random UUID stored in localStorage and sends it as the `X-Browser-Id`
- * header. We fall back to a session cookie value or "anonymous" if absent.
- *
- * No auth required — this is purely for keying BYOK credentials in OnyxBase.
- */
-export function getBrowserId(request: Request): string {
-  const header = request.headers.get("x-browser-id")?.trim();
-  if (header && header.length >= 8 && header.length <= 128) {
-    return header;
-  }
-  // Fall back to session cookie value (if signed in) — keeps existing keys.
-  const raw = request.headers.get("cookie") ?? "";
-  for (const part of raw.split(";")) {
-    const [k, ...v] = part.trim().split("=");
-    if (k === "fxz_session" && v.length) return `sess:${v.join("=")}`;
-  }
-  return "anonymous";
-}
-
-/** Returns true if the browser ID is a real per-browser identifier. */
-export function isAnonymousBrowserId(browserId: string): boolean {
-  return browserId !== "anonymous";
 }
 
 export function isSecure(request: Request): boolean {

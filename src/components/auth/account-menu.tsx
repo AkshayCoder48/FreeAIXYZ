@@ -4,18 +4,11 @@
  * AccountMenu — signed-in user menu (PRD §94, §93).
  *
  * Dropdown trigger = Avatar + email. Items: XYZ balance (disabled), Account,
- * Providers, Usage, Settings, Log Out. Links use next/link.
+ * Providers, Usage, Log Out. Links use next/link.
  */
 
 import Link from "next/link";
-import {
-  LogOut,
-  Settings,
-  User,
-  Wallet,
-  Boxes,
-  BarChart3,
-} from "lucide-react";
+import { LogOut, User, Wallet, Boxes, BarChart3 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,14 +94,6 @@ export function AccountMenu({ user, balance }: AccountMenuProps) {
             className="flex items-center gap-2 cursor-pointer"
           >
             <BarChart3 className="h-4 w-4" /> Usage
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <Settings className="h-4 w-4" /> Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

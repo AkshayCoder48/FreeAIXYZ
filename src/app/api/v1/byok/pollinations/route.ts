@@ -1,15 +1,18 @@
 /**
- * POST   /api/v1/byok/gratisfy — save (masked) BYOK key, validate.
- * DELETE /api/v1/byok/gratisfy — remove the key.
+ * POST   /api/v1/byok/pollinations — save (masked) Pollinations token, validate.
+ * DELETE /api/v1/byok/pollinations — remove the token.
  *
- * Requires a signed-in user (session cookie). The key is stored in OnyxBase
- * keyed by userId — persists across refresh / tab changes / devices.
- * Never returns the raw key. Marks validation state on the stored
- * credential.
+ * Requires a signed-in user. Stored in OnyxBase keyed by userId — persists
+ * across refresh / tab changes / devices. Never returns the raw token.
+ *
+ * For the OAuth "Connect" flow (Pollinations BYOP with commission), the
+ * callback URI to register in the Pollinations dashboard is:
+ *   https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/connect
+ * (Not yet implemented — the user will provide their app token afterwards.)
  */
 
 import { saveBYOK, removeBYOK, setBYOKValidation } from "@/lib/xyz";
-import { validateGratisfyKey } from "@/lib/xyz/gratisfy";
+import { validatePollinationsKey } from "@/lib/xyz/pollinations";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
@@ -23,19 +26,19 @@ export async function POST(request: Request) {
     const key = (body.key ?? "").trim();
     if (!key) {
       return Response.json(
-        { error: { type: "invalid_request_error", code: "EMPTY_KEY", message: "API key is required." } },
+        { error: { type: "invalid_request_error", code: "EMPTY_KEY", message: "Pollinations token is required." } },
         { status: 400 },
       );
     }
 
     // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBYOK(auth.userId, "gratisfy", key);
+    const meta = await saveBYOK(auth.userId, "pollinations", key);
 
     // Validate against the upstream — no fake "Connected".
-    const validation = await validateGratisfyKey(key);
+    const validation = await validatePollinationsKey(key);
     await setBYOKValidation(
       auth.userId,
-      "gratisfy",
+      "pollinations",
       validation.ok,
       validation.ok ? undefined : validation.error,
     );
@@ -69,6 +72,6 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const auth = await requireAuth(request);
   if ("response" in auth) return auth.response;
-  await removeBYOK(auth.userId, "gratisfy");
+  await removeBYOK(auth.userId, "pollinations");
   return Response.json({ ok: true });
 }

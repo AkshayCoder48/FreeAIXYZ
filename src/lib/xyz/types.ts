@@ -159,7 +159,7 @@ export interface EmailCodeRecord {
 
 /** BYOK credential metadata (PRD §54). The raw key is stored separately. */
 export interface BYOKCredentialMeta {
-  provider: "gratisfy" | "g4f";
+  provider: "gratisfy" | "g4f" | "pollinations";
   connected: boolean;
   masked: string; // never the full key
   addedAt: string;
@@ -167,7 +167,7 @@ export interface BYOKCredentialMeta {
   lastValidationOk?: boolean;
 }
 
-export type BYOKProvider = "gratisfy" | "g4f";
+export type BYOKProvider = "gratisfy" | "g4f" | "pollinations";
 
 /** Pricing board version snapshot (PRD §30). */
 export interface PricingVersion {

@@ -1,39 +1,22 @@
 /**
- * POST   /api/v1/byok/g4f — save (masked) BYOK key, validate (PRD §18, §54, §82).
+ * POST   /api/v1/byok/g4f — save (masked) BYOK key, validate.
  * DELETE /api/v1/byok/g4f — remove the key.
  *
- * ANONYMOUS BROWSER MODE: uses `X-Browser-Id` header + OnyxBase storage.
- * No sign-in required. Never returns the raw key.
- *
- * PRD §82 — never show "Connected" unless the provider credential was
- * actually validated against the upstream.
+ * Requires a signed-in user (session cookie). Stored in OnyxBase keyed by
+ * userId — persists across refresh / tab changes / devices. Never returns
+ * the raw key.
  */
 
-import {
-  saveBrowserByok,
-  removeBrowserByok,
-} from "@/lib/xyz";
+import { saveBYOK, removeBYOK, setBYOKValidation } from "@/lib/xyz";
 import { validateG4fKey } from "@/lib/xyz/g4f";
-import { setBrowserByokValidation } from "@/lib/xyz/byok";
-import { getBrowserId } from "@/lib/xyz/route-auth";
+import { requireAuth } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const browserId = getBrowserId(request);
-  if (browserId === "anonymous") {
-    return Response.json(
-      {
-        error: {
-          type: "invalid_request_error",
-          code: "MISSING_BROWSER_ID",
-          message: "Browser ID is required. Send it as the X-Browser-Id header.",
-        },
-      },
-      { status: 400 },
-    );
-  }
+  const auth = await requireAuth(request);
+  if ("response" in auth) return auth.response;
   try {
     const body = (await request.json()) as { key?: string };
     const key = (body.key ?? "").trim();
@@ -45,12 +28,12 @@ export async function POST(request: Request) {
     }
 
     // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBrowserByok(browserId, "g4f", key);
+    const meta = await saveBYOK(auth.userId, "g4f", key);
 
-    // Validate against the upstream (PRD §82 — no fake "Connected").
+    // Validate against the upstream — no fake "Connected".
     const validation = await validateG4fKey(key);
-    await setBrowserByokValidation(
-      browserId,
+    await setBYOKValidation(
+      auth.userId,
       "g4f",
       validation.ok,
       validation.ok ? undefined : validation.error,
@@ -83,19 +66,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const browserId = getBrowserId(request);
-  if (browserId === "anonymous") {
-    return Response.json(
-      {
-        error: {
-          type: "invalid_request_error",
-          code: "MISSING_BROWSER_ID",
-          message: "Browser ID is required.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-  await removeBrowserByok(browserId, "g4f");
+  const auth = await requireAuth(request);
+  if ("response" in auth) return auth.response;
+  await removeBYOK(auth.userId, "g4f");
   return Response.json({ ok: true });
 }
