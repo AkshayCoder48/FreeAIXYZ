@@ -16,7 +16,7 @@
  * is realtime.
  */
 
-import { db } from "@/lib/db";
+import { db, withDb } from "@/lib/db";
 import {
   discoverG4fModels,
   discoverG4fProviders,
@@ -149,10 +149,12 @@ export async function getG4fModels(): Promise<{
   // Live discovery failed — serve last-known-good from Prisma with stale=true.
   const { models, providers } = await loadG4fFromDb();
   // Mark G4F provider row as degraded (PRD §25).
-  await db.provider.updateMany({
-    where: { id: "g4f" },
-    data: { status: "degraded" },
-  }).catch(() => {});
+  await withDb((tx) =>
+    tx.provider.updateMany({
+      where: { id: "g4f" },
+      data: { status: "degraded" },
+    }),
+  );
   g4fCache = { at: Date.now(), models, providers, stale: true };
   return g4fCache;
 }
@@ -162,26 +164,27 @@ async function persistG4fDiscovery(
   providers: DiscoveredG4fProvider[],
   models: DiscoveredG4fModel[],
 ): Promise<void> {
-  // Upsert the G4F provider row.
-  await db.provider.upsert({
-    where: { id: "g4f" },
-    create: {
-      id: "g4f",
-      shortId: "g4f",
-      name: "G4F",
-      type: "byok",
-      baseUrl: "https://g4f.space/v1",
-      docsUrl: "https://g4f.space",
-      status: "available",
-      requiresApiKey: true,
-      discoveryMode: "dynamic",
-      lastFetchedAt: new Date(),
-    },
-    update: {
-      lastFetchedAt: new Date(),
-      status: "available",
-    },
-  });
+  try {
+    // Upsert the G4F provider row.
+    await db.provider.upsert({
+      where: { id: "g4f" },
+      create: {
+        id: "g4f",
+        shortId: "g4f",
+        name: "G4F",
+        type: "byok",
+        baseUrl: "https://g4f.space/v1",
+        docsUrl: "https://g4f.space",
+        status: "available",
+        requiresApiKey: true,
+        discoveryMode: "dynamic",
+        lastFetchedAt: new Date(),
+      },
+      update: {
+        lastFetchedAt: new Date(),
+        status: "available",
+      },
+    });
 
   // Upsert each provider's models.
   // Build a set of upstreamIds we just saw — anything in DB but not in this
@@ -269,13 +272,23 @@ async function persistG4fDiscovery(
       durationMs: 0,
     },
   });
+  } catch (err) {
+    // Schema mismatch / DB error — fail silently. Discovery still returns
+    // models to the caller; they just won't be persisted for next time.
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[persistG4fDiscovery] error:', err instanceof Error ? err.message : String(err))
+    }
+  }
 }
 
 /** Load G4F models + providers from Prisma (cache for fallback). */
 async function loadG4fFromDb(): Promise<{ models: UnifiedModel[]; providers: UnifiedProvider[] }> {
-  const rows = await db.providerModel.findMany({
-    where: { providerId: "g4f", active: true },
-  });
+  const rows = await withDb((tx) =>
+    tx.providerModel.findMany({
+      where: { providerId: "g4f", active: true },
+    }),
+  );
+  if (!rows) return { models: [], providers: [] };
   const now = new Date().toISOString();
   const models: UnifiedModel[] = rows.map((r) => ({
     id: r.publicId,
@@ -357,6 +370,7 @@ async function persistGratisfyDiscovery(
   userId: string,
   discovered: DiscoveredGratisfyModel[],
 ): Promise<void> {
+  try {
   // Upsert the Gratisfy provider row.
   await db.provider.upsert({
     where: { id: "gratisfy" },
@@ -457,6 +471,11 @@ async function persistGratisfyDiscovery(
       durationMs: 0,
     },
   });
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[persistGratisfyDiscovery] error:', err instanceof Error ? err.message : String(err))
+    }
+  }
 }
 
 /** Load Gratisfy models from Prisma for display. */
@@ -464,9 +483,12 @@ async function loadGratisfyFromDb(userId: string): Promise<UnifiedModel[]> {
   // userId unused for now — the catalog is per-provider, not per-user at the
   // DB level. The route handler enforces user-key presence before showing.
   void userId;
-  const rows = await db.providerModel.findMany({
-    where: { providerId: "gratisfy", active: true },
-  });
+  const rows = await withDb((tx) =>
+    tx.providerModel.findMany({
+      where: { providerId: "gratisfy", active: true },
+    }),
+  );
+  if (!rows) return [];
   return rows.map((r) => ({
     id: r.publicId,
     displayName: r.name,
