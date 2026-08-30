@@ -6,9 +6,14 @@
  * across refresh / tab changes / devices. Never returns the raw token.
  *
  * For the OAuth "Connect" flow (Pollinations BYOP with commission), the
- * callback URI to register in the Pollinations dashboard is:
+ * callback URI registered in the Pollinations dashboard for app key
+ * pk_EGCSwhDRDNf7HtvK is:
  *   https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/connect
- * (Not yet implemented — the user will provide their app token afterwards.)
+ * That path is implemented at ./connect/route.ts (GET handler) — it
+ * exchanges the OAuth code (+ PKCE verifier from a cookie) for a Bearer
+ * token via exchangePollinationsCodeForToken, then saveBYOK + validate.
+ * Manual key entry via the POST handler below is the fallback when the
+ * OAuth round-trip isn't available.
  */
 
 import { saveBYOK, removeBYOK, setBYOKValidation } from "@/lib/xyz";

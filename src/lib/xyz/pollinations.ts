@@ -106,7 +106,7 @@ export function getPollinationsAppKey(): string {
 /**
  * Build the OAuth authorize URL for the "Connect your Pollinations Wallet"
  * button. The user is sent to enter.pollinations.ai/authorize with our app
- * key as client_id and our /api/v1/byok/pollinations/callback as the
+ * key as client_id and our /api/v1/byok/pollinations/connect as the
  * redirect_uri.
  *
  * PKCE (Proof Key for Code Exchange, RFC 7636) is MANDATORY as of 2026-08-30:
@@ -118,7 +118,7 @@ export function getPollinationsAppKey(): string {
  *   code_challenge_method = "S256"
  *
  * The caller MUST persist `codeVerifier` (and `state`) in a same-origin
- * cookie so the /api/v1/byok/pollinations/callback handler can replay the
+ * cookie so the /api/v1/byok/pollinations/connect handler can replay the
  * verifier against the token endpoint. SameSite=Lax is required so the
  * cookie is sent on the top-level redirect back from enter.pollinations.ai.
  *
@@ -140,7 +140,7 @@ export function buildPollinationsAuthorizeUrl(opts: {
 }): { url: string; state: string } | null {
   const appKey = getPollinationsAppKey();
   if (!appKey) return null;
-  const redirectUri = `${opts.origin.replace(/\/$/, "")}/api/v1/byok/pollinations/callback`;
+  const redirectUri = `${opts.origin.replace(/\/$/, "")}/api/v1/byok/pollinations/connect`;
   const state =
     opts.state ||
     (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)) +

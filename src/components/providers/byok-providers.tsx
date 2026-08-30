@@ -265,7 +265,7 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
    * PKCE OAuth connect flow for the "Connect wallet" button (Pollinations
    * only). Generates a code_verifier + code_challenge (S256) pair in the
    * browser, persists them in two SameSite=Lax cookies so the
-   * /api/v1/byok/pollinations/callback handler can replay the verifier
+   * /api/v1/byok/pollinations/connect handler can replay the verifier
    * against the token endpoint, then navigates (same tab — top-level
    * navigation, so the cookies ride along on the redirect back from
    * enter.pollinations.ai) to the authorize URL with code_challenge +
@@ -285,7 +285,7 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
     setConnecting(true);
     try {
       const origin = window.location.origin.replace(/\/$/, "");
-      const redirectUri = `${origin}/api/v1/byok/pollinations/callback`;
+      const redirectUri = `${origin}/api/v1/byok/pollinations/connect`;
 
       // PKCE pair — S256 method (base64url(SHA-256(verifier))).
       const verifierBytes = new Uint8Array(32);
@@ -355,7 +355,7 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
         )}
         {/* "Connect wallet" button — only for Pollinations. Generates a PKCE
             (S256) pair, stores the code_verifier + state in two SameSite=Lax
-            cookies so the /api/v1/byok/pollinations/callback handler can
+            cookies so the /api/v1/byok/pollinations/connect handler can
             replay the verifier against the token endpoint, then navigates
             to enter.pollinations.ai/authorize. The publishable app key is
             exposed to the browser via NEXT_PUBLIC_POLLINATIONS_APP_KEY.

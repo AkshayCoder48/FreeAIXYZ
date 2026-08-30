@@ -1,6 +1,15 @@
 /**
- * GET  /api/v1/byok/pollinations/callback — OAuth2 callback for the
+ * GET  /api/v1/byok/pollinations/connect — OAuth2 callback for the
  * "Connect your Pollinations Wallet" button.
+ *
+ * PATH NOTE (2026-08-30): Pollinations' app dashboard has THIS exact URI
+ * registered as the only allowed redirect_uri for app key
+ * pk_EGCSwhDRDNf7HtvK:
+ *   https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/connect
+ * (Confirmed via GET https://enter.pollinations.ai/api/app-lookup?client_id=
+ *  pk_EGCSwhDRDNf7HtvK — redirectUris[0] is ".../connect", not ".../callback".
+ *  The previous /callback path returned redirect_uri_mismatch → "This
+ *  redirect URL is not registered for this app. Authorization blocked.")
  *
  * Flow (PKCE / S256, mandatory since 2026-08-30 — the Pollinations
  * authorize server returns "PKCE code_challenge is required for the
@@ -46,6 +55,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROVIDERS_PAGE = "/providers";
+/** The path segment Pollinations has registered for this app key. Must
+ *  match the redirectUris[0] returned by /api/app-lookup. DO NOT change
+ *  to /callback — that path returns redirect_uri_mismatch. */
+const CALLBACK_PATH = "/api/v1/byok/pollinations/connect";
 
 const PKCE_VERIFIER_COOKIE = "pollinations_pkce_verifier";
 const OAUTH_STATE_COOKIE = "pollinations_oauth_state";
@@ -177,7 +190,7 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const redirectUri = `${origin.replace(/\/$/, "")}/api/v1/byok/pollinations/callback`;
+  const redirectUri = `${origin.replace(/\/$/, "")}${CALLBACK_PATH}`;
 
   // Exchange the code + verifier for a Bearer token.
   let token: string;
