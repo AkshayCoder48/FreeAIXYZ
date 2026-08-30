@@ -14,14 +14,22 @@ import { resolveUnifiedModel } from "@/lib/xyz/registry";
 import { getSuppliedPricingBoard, REFERENCE_REQUEST, XYZ_USD_MULTIPLIER } from "@/lib/xyz/pricing-board";
 import { estimateResponsesPerXYZ } from "@/lib/xyz/credit";
 import { getSessionUserId } from "@/lib/xyz/auth";
-import { SiteFooter } from "@/components/site-footer";
+import { SiteFooter } from "@/components/site/site-footer";
 import { Nav } from "@/components/nav";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ExternalLink, MessageSquare, ShieldCheck, AlertTriangle, Clock } from "lucide-react";
-import { formatUsd } from "@/lib/format";
+
+/** Format a USD price per million tokens — "Not documented" for null, "Free" for 0. */
+function formatUsd(perMillion: number | null | undefined): string {
+  if (perMillion == null) return "Not documented";
+  if (perMillion === 0) return "Free";
+  if (perMillion < 0.01) return `$${perMillion.toFixed(4)}`;
+  if (perMillion < 1) return `$${perMillion.toFixed(3)}`;
+  return `$${perMillion.toFixed(2)}`;
+}
 
 export const dynamic = "force-dynamic";
 
