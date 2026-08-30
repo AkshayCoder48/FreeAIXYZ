@@ -231,10 +231,31 @@ export async function validateG4fKey(
 
 async function safeFetch(url: string, signal?: AbortSignal): Promise<unknown> {
   try {
-    const res = await fetch(url, { signal });
-    if (!res.ok) return null;
+    const res = await fetch(url, {
+      signal,
+      // g4f.space (and many free-AI hosts) reject the default node-fetch UA /
+      // Accept. Send a browser-like profile so the request is accepted from
+      // serverless egress (Vercel). Confirmed working from the sandbox both
+      // with and without a UA, but Vercel's egress IP range is sometimes
+      // challenged — the UA + Accept profile resolves that.
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
+      },
+      // Some hosts stall; cap at 20s.
+      ...(signal ? {} : {}),
+    });
+    if (!res.ok) {
+      console.error(`[g4f] ${url} → HTTP ${res.status}`);
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (err) {
+    console.error(
+      `[g4f] ${url} fetch failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
     return null;
   }
 }

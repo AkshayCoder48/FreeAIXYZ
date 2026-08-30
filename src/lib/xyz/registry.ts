@@ -103,11 +103,16 @@ export async function getG4fModels(): Promise<{
   stale: boolean;
 }> {
   if (g4fCache && Date.now() - g4fCache.at < CACHE_TTL_MS) {
-    return { ...g4fCache, stale: false, models: g4fCache.models, providers: g4fCache.providers };
+    return { models: g4fCache.models, providers: g4fCache.providers, stale: false };
   }
   const discovered = await discoverG4f();
-  g4fCache = { at: Date.now(), models: discovered.models, providers: discovered.providers };
-  return { ...g4fCache, stale: false };
+  // Only cache NON-empty results — a transient network failure from Vercel's
+  // egress must not poison the cache for 15 min (PRD §47-50: serve
+  // last-known-good, and a failed fetch should retry on the next request).
+  if (discovered.models.length > 0 || discovered.providers.length > 0) {
+    g4fCache = { at: Date.now(), models: discovered.models, providers: discovered.providers };
+  }
+  return { models: discovered.models, providers: discovered.providers, stale: false };
 }
 
 /** Gratisfy models for a specific user (needs their BYOK key; per-user cache). */
