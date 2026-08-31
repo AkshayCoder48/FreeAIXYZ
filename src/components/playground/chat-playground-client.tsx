@@ -81,6 +81,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { providerDisplayName } from "@/lib/xyz/provider-names";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -346,9 +347,11 @@ function providerLabel(source: Source, provider: string): string {
   if (source === "native") {
     return provider || "Native";
   }
-  if (source === "gratisfy") return "Gratisfy";
+  if (source === "gratisfy") {
+    return providerDisplayName("gratisfy", provider);
+  }
   if (source === "pollinations") {
-    return provider === "pollinations" ? "Pollinations" : `Pollinations — ${provider}`;
+    return providerDisplayName("pollinations", provider);
   }
   return provider;
 }
@@ -508,8 +511,13 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   }, []);
 
   // PRD §54 — BYOK readiness for the currently selected model.
+  // Pollen-priced models (user directive: "pollen models required pollination
+  // connection") additionally require a Pollinations wallet connection,
+  // even when the upstream call routes through Gratisfy (gratisfy:pollinations:*
+  // models are pollen-denominated and thus gated behind the user's
+  // Pollinations OAuth token in addition to the Gratisfy BYOK key).
   const byokState = React.useMemo<{
-    state: "ready" | "invalid" | "needs-key" | "needs-auth" | "n/a";
+    state: "ready" | "invalid" | "needs-key" | "needs-auth" | "needs-pollen" | "n/a";
     label: string;
     panelKind: "none" | "sign-in" | "configure-gratisfy" | "configure-pollinations" | "invalid";
     maskedKey?: string;
@@ -539,8 +547,22 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         maskedKey: local.masked,
       };
     }
+    // Pollen gate: pollen-priced models require a Pollinations wallet.
+    // Applies to gratisfy:pollinations:* models (pollen-denominated, routed
+    // via Gratisfy) — they need the Gratisfy BYOK key above AND a
+    // Pollinations connection here.
+    const isPollen =
+      selectedModel?.pricing?.currency === "pollen" &&
+      selectedModel.pricing.status !== "free";
+    if (isPollen && !byokLocal.pollinations?.connected) {
+      return {
+        state: "needs-pollen",
+        label: "Connect Pollinations",
+        panelKind: "configure-pollinations",
+      };
+    }
     return { state: "ready", label: "Ready", panelKind: "none", maskedKey: local.masked };
-  }, [selectedByokProvider, user, byokLocal]);
+  }, [selectedByokProvider, user, byokLocal, selectedModel]);
 
   // ─── Actions ────────────────────────────────────────────────────────────
 
@@ -627,6 +649,39 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         const headerName =
           byokP === "gratisfy" ? "X-Gratisfy-API-Key" : "X-Pollinations-API-Key";
         byokHeader = { [headerName]: storedRaw };
+      }
+
+      // Pollen gate (user directive: "pollen models required pollination
+      // connection"). Pollen-priced models require a connected Pollinations
+      // wallet token in localStorage, in addition to the BYOK key above.
+      // The token is sent as X-Pollinations-API-Key so the server can
+      // attribute the pollen-denominated usage to the user's wallet.
+      const selModel = models.find((m) => m.id === selectedModelRef.current);
+      const isPollen =
+        selModel?.pricing?.currency === "pollen" &&
+        selModel.pricing.status !== "free";
+      if (isPollen) {
+        let pollenToken = "";
+        try {
+          const raw = window.localStorage.getItem("fxz:byok");
+          if (raw) {
+            const parsed = JSON.parse(raw) as Record<string, { raw?: string } | null>;
+            pollenToken = (parsed.pollinations?.raw ?? "").trim();
+          }
+        } catch {
+          /* ignore */
+        }
+        if (!pollenToken) {
+          setPhase("error");
+          setErrorMessage(
+            "This pollen-priced model requires a connected Pollinations wallet. Connect yours on the Providers page (OAuth Connect-wallet).",
+          );
+          toast.error("Connect your Pollinations wallet to use pollen-priced models.");
+          return;
+        }
+        // Attach the Pollinations token even when the upstream route is
+        // Gratisfy, so the gateway can attribute pollen usage.
+        byokHeader["X-Pollinations-API-Key"] = pollenToken;
       }
 
       // Build the message list — prior turns + new user turn.
@@ -1610,7 +1665,7 @@ function ModelCard({
 }: {
   model: PlaygroundModel;
   byokState: {
-    state: "ready" | "invalid" | "needs-key" | "needs-auth" | "n/a";
+    state: "ready" | "invalid" | "needs-key" | "needs-auth" | "needs-pollen" | "n/a";
     label: string;
     panelKind: string;
     maskedKey?: string;
@@ -1640,7 +1695,9 @@ function ModelCard({
       ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
       : byokState.state === "invalid"
         ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-        : byokState.state === "needs-key" || byokState.state === "needs-auth"
+        : byokState.state === "needs-key" ||
+            byokState.state === "needs-auth" ||
+            byokState.state === "needs-pollen"
           ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
           : "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700";
 

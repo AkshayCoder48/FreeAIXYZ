@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
 import type { ModelCapabilities, ModelPricing, Source } from "@/lib/xyz/types";
+import { providerDisplayName } from "@/lib/xyz/provider-names";
 
 export interface ProviderModelEntry {
   id: string;
@@ -172,10 +173,10 @@ function ProviderPageCard({
 
   const subLabel =
     model.source === "native"
-      ? `Native · ${model.provider}`
+      ? `Native · ${providerDisplayName("native", model.provider)}`
       : model.source === "pollinations"
-        ? `Pollinations · ${model.provider}`
-        : sourceLabel(model.source);
+        ? `Pollinations · ${providerDisplayName("pollinations", model.provider)}`
+        : `Gratisfy · ${providerDisplayName("gratisfy", model.provider)}`;
 
   const href = `/models/${encodeURIComponent(model.provider)}/${encodeURIComponent(
     model.id,

@@ -17,6 +17,7 @@ import {
   XYZ_USD_MULTIPLIER,
 } from "@/lib/xyz";
 import type { Source, UnifiedModel } from "@/lib/xyz/types";
+import { providerDisplayName } from "@/lib/xyz/provider-names";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,28 +28,16 @@ export const maxDuration = 30;
 /**
  * Resolve the human-readable label for a provider segment.
  *
- * Native providers are short codes ("tb", "au", "fx"…) → uppercased.
- * BYOK sources use their friendly source name. The "provider" segment
- * from the URL can be either an actual provider code (e.g. "openai"
- * under gratisfy) OR a source name ("gratisfy", "native"). The
- * catalog collapses gratisfy sub-providers into a single "gratisfy"
- * section, so we try the source-name match first; otherwise we match
- * by m.provider.
+ * Uses the provider-display-name map so tabs/headers read "Cloudflare
+ * Workers AI", "OpenRouter", "Toolbaz" — not raw slugs.
  */
 function resolveProviderLabel(
   providerSeg: string,
   matchedSource: Source,
   matchedProvider: string | null,
 ): string {
-  if (matchedSource === "native") {
-    return (matchedProvider ?? providerSeg).toUpperCase();
-  }
-  if (matchedSource === "pollinations") {
-    if (providerSeg.toLowerCase() === "pollinations") return "Pollinations";
-    return providerSeg;
-  }
-  if (matchedSource === "gratisfy") return "Gratisfy";
-  return providerSeg;
+  const slug = matchedProvider ?? providerSeg;
+  return providerDisplayName(matchedSource, slug);
 }
 
 // ─── Page params type ───────────────────────────────────────────────────────
@@ -70,7 +59,7 @@ export async function generateMetadata({
     /* keep raw */
   }
   return {
-    title: `${providerSeg.toUpperCase()} — FreeAIXYZ Models`,
+    title: `${resolveProviderLabel(providerSeg, "gratisfy", providerSeg)} — FreeAIXYZ Models`,
     description: `All live models discovered under ${providerSeg} on FreeAIXYZ — capability badges, per-model pricing, and direct copy of the canonical model id.`,
   };
 }

@@ -53,6 +53,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { providerDisplayName } from "@/lib/xyz/provider-names";
 
 // ─── Types from /api/v1/models/unified + /api/v1/pricing ─────────────────────
 
@@ -115,37 +116,30 @@ function sourceLabel(source: Source): string {
   return "Native";
 }
 
-/**
- * Section id — collapses all gratisfy sub-providers into a single
- * "gratisfy" section and all pollinations into "pollinations" (so we
- * don't end up with 280+ tabs). Native providers stay per-provider
- * since each short code (tb / au / fx / …) is a distinct upstream.
- *
- * Matches the user's example: `All | Gratisfy | Pollinations | Provider X | Y`.
- */
+/** Section id — per-provider split. Each upstream provider (routing slug /
+ * brand / native short-code) gets its OWN section so the user can browse
+ * e.g. "Cloudflare", "OpenRouter", "AI Horde", "TomdacatAI" separately —
+ * NOT collapsed into a single "Gratisfy" / "Pollinations" bucket.
+ * Matches the user's directive: "make the providers from pollination and
+ * gratisfy to show every provider separately not in a single provider". */
 function sectionId(m: UnifiedModelEntry): string {
   if (m.source === "native") return `native:${m.provider}`;
-  return m.source; // "gratisfy" or "pollinations"
+  return `${m.source}:${m.provider}`; // e.g. "gratisfy:cloudflare"
 }
 
-/**
- * Section header / tab label. Native providers are short codes (e.g. "tb",
- * "au") → uppercased; BYOK sources use their friendly source name. Nothing
- * is hardcoded — labels are derived from the source string itself.
- */
+/** Section header / tab label. Uses the friendly display-name map so tabs
+ * read "Cloudflare Workers AI", "OpenRouter", "AI Horde" — not raw slugs. */
 function sectionLabel(source: Source, provider: string): string {
-  if (source === "native") return provider.toUpperCase();
-  return sourceLabel(source);
+  return providerDisplayName(source, provider);
 }
 
 function providerSubLabel(m: UnifiedModelEntry): string {
-  // Small label under the model name on the card. For native, show the
-  // raw provider code; for BYOK sources, show the source label + sub-id.
-  if (m.source === "native") return `Native · ${m.provider}`;
+  // Small label under the model name on the card. Shows source + provider.
+  if (m.source === "native") return `Native · ${providerDisplayName("native", m.provider)}`;
   if (m.source === "pollinations") {
-    return `Pollinations · ${m.provider}`;
+    return `Pollinations · ${providerDisplayName("pollinations", m.provider)}`;
   }
-  return sourceLabel(m.source);
+  return `Gratisfy · ${providerDisplayName("gratisfy", m.provider)}`;
 }
 
 /** Strip the provider prefix from the upstream id, e.g. "tb/gpt-5" → "gpt-5". */
@@ -243,6 +237,35 @@ function capabilityBadges(caps: ModelCapabilities): string[] {
   return out;
 }
 
+/** Modality filter matcher — used by the modality filter tabs. */
+function modelMatchesModality(m: UnifiedModelEntry, modality: string): boolean {
+  const c = m.capabilities;
+  switch (modality) {
+    case "chat":
+      return c.text;
+    case "image":
+      return c.image;
+    case "audio":
+      return c.audio;
+    case "video":
+      return c.video;
+    case "reasoning":
+      return c.reasoning;
+    case "vision":
+      return c.vision;
+    default:
+      return true;
+  }
+}
+
+/** Pollen-priced models require a Pollinations wallet connection (user
+ * directive: "pollen models required pollination connection"). Returns
+ * true when this model is pollen-denominated and thus gated behind the
+ * user having connected their Pollinations wallet. */
+function requiresPollenConnection(m: UnifiedModelEntry): boolean {
+  return m.pricing?.currency === "pollen" && m.pricing.status !== "free";
+}
+
 function isPricingDocumented(p: ModelPricing | undefined | null): boolean {
   if (!p) return false;
   if (p.status === "not_documented") return false;
@@ -301,6 +324,7 @@ export function ModelsCatalog() {
 
   const [query, setQuery] = React.useState("");
   const [activeSection, setActiveSection] = React.useState<string>("all");
+  const [modality, setModality] = React.useState<string>("all");
 
   React.useEffect(() => {
     let cancelled = false;
@@ -367,11 +391,12 @@ export function ModelsCatalog() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [availableModels]);
 
-  // Apply search + active tab.
+  // Apply modality + search + active tab.
   const filtered = React.useMemo(() => {
     const q = query.toLowerCase().trim();
     return availableModels.filter((m) => {
       if (activeSection !== "all" && sectionId(m) !== activeSection) return false;
+      if (modality !== "all" && !modelMatchesModality(m, modality)) return false;
       if (!q) return true;
       return (
         m.id.toLowerCase().includes(q) ||
@@ -381,7 +406,7 @@ export function ModelsCatalog() {
         sourceLabel(m.source).toLowerCase().includes(q)
       );
     });
-  }, [availableModels, query, activeSection]);
+  }, [availableModels, query, activeSection, modality]);
 
   // Group filtered models by section for rendering.
   const grouped = React.useMemo(() => {
@@ -436,6 +461,32 @@ export function ModelsCatalog() {
           />
         </div>
       </header>
+
+      {/* Modality filter tabs — Chat / Image / Audio / Video / Embeddings */}
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <FilterTab
+          active={modality === "all"}
+          onClick={() => setModality("all")}
+          label="All modalities"
+          count={availableModels.length}
+        />
+        {[
+          { id: "chat", label: "Chat" },
+          { id: "image", label: "Image gen" },
+          { id: "audio", label: "Audio / TTS" },
+          { id: "video", label: "Video gen" },
+          { id: "reasoning", label: "Reasoning" },
+          { id: "vision", label: "Vision" },
+        ].map((mod) => (
+          <FilterTab
+            key={mod.id}
+            active={modality === mod.id}
+            onClick={() => setModality(mod.id)}
+            label={mod.label}
+            count={availableModels.filter((m) => modelMatchesModality(m, mod.id)).length}
+          />
+        ))}
+      </div>
 
       {/* Provider filter tabs — wrap when out of room */}
       <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -817,7 +868,7 @@ function ProviderCard({
         </div>
       )}
 
-      {/* Row 7: source badge (BYOK / G4F / Native) */}
+      {/* Row 7: source badge (BYOK / Pollinations / Native) + pollen-required */}
       <div className="flex flex-wrap gap-1.5 min-w-0">
         <Badge
           variant="outline"
@@ -828,6 +879,15 @@ function ProviderCard({
         >
           {srcBadge.label}
         </Badge>
+        {requiresPollenConnection(model) && (
+          <Badge
+            variant="outline"
+            title="Pollen-priced models require a connected Pollinations wallet."
+            className="text-[10px] uppercase tracking-wider px-1.5 py-0 h-5 bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
+          >
+            Pollen · Connect
+          </Badge>
+        )}
       </div>
 
       {/* Row 8: pricing rows — flex justify-between, min-w-0 so prices don't escape */}
