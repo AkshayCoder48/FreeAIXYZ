@@ -27,6 +27,12 @@ export async function GET(request: Request) {
       available: m.available,
       capabilities: m.capabilities,
       pricing: m.pricing,
+      // PRD §5, §6, §16, §17 — access classification so the UI can show a
+      // FREE / PAID / FREEMIUM / UNKNOWN badge on every card and support a
+      // strict Free-Only filter. `accessReason` powers the tooltip.
+      access: m.access,
+      accessReason: m.accessReason,
+      metadataConfidence: m.metadataConfidence,
     })),
     stale,
   });

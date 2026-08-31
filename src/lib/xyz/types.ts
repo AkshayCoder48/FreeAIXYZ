@@ -46,7 +46,24 @@ export interface ModelPricing {
   verifiedAt?: string;
 }
 
-/** Capabilities advertised for a model (PRD §14). */
+/** Capabilities advertised for a model (PRD §14, §3).
+ *
+ * Derived ONLY from provider metadata (type, inputModalities,
+ * outputModalities, features, category) — NEVER from name matching (PRD §2,
+ * §8, §9). A model may carry several capabilities (multi-modal) and should
+ * appear in every applicable UI filter (PRD §3).
+ *
+ * Capability semantics (PRD §9 — validation layer):
+ *   text      — text generation / chat / completion
+ *   tts       — text → speech (audio OUTPUT from text input). Distinct from
+ *               `audio` (generic audio) and from `stt` (speech → text).
+ *   stt       — speech → text (audio INPUT → text output)
+ *   image     — image GENERATION (text/image → image output). Distinct from
+ *               `vision` (image UNDERSTANDING / image INPUT).
+ *   video     — video GENERATION (text/image → video output)
+ *   embedding — text/multimodal → vector embedding
+ *   code      — code generation / coding-specialised
+ */
 export interface ModelCapabilities {
   text: boolean;
   vision: boolean;
@@ -57,7 +74,35 @@ export interface ModelCapabilities {
   webSearch: boolean;
   streaming: boolean;
   tools?: boolean;
+  /** Text → speech generation (audio output from text input). */
+  tts?: boolean;
+  /** Speech → text transcription (audio input → text output). */
+  stt?: boolean;
+  /** Vector embedding generation. */
+  embedding?: boolean;
+  /** Code generation / coding-specialised. */
+  code?: boolean;
 }
+
+/** Access classification (PRD §5, §6, §7, §17).
+ *
+ * Determined ONLY from provider metadata — never inferred from popularity,
+ * openness, or "provider has free models" (PRD §7).
+ *   free      — provider metadata confirms the operation costs zero
+ *   paid      — provider requires payment/credits for the operation
+ *   freemium  — a free allowance exists AND paid usage is also possible
+ *   unknown   — pricing/access cannot be reliably established
+ *
+ * Free-Only mode (PRD §6) filters strictly on `access === "free"` — paid,
+ * freemium, and unknown models are ALL excluded. */
+export type AccessType = "free" | "paid" | "freemium" | "unknown";
+
+/** Confidence in the metadata source (PRD §13 — provider priority). */
+export type MetadataConfidence =
+  | "authoritative" // provider's own API / official metadata
+  | "verified" // provider's official model metadata
+  | "inferred" // fallback inference (lower confidence)
+  | "unknown";
 
 /** Unified model entry (PRD §14). One entry per (source, provider, model). */
 export interface UnifiedModel {
@@ -72,6 +117,16 @@ export interface UnifiedModel {
   available: boolean;
   discoveredAt: string;
   metadata: Record<string, unknown>;
+  /** Access classification (PRD §5, §6, §7). Derived ONLY from provider
+   *  metadata — never inferred. Free-Only mode filters strictly on
+   *  `access === "free"`; paid/freemium/unknown are all excluded. */
+  access: AccessType;
+  /** Human-readable reason for the access classification (for UI tooltips +
+   *  debugging — e.g. "freeTier.isFree=true, pricing=Free" or
+   *  "paid_only=true"). */
+  accessReason?: string;
+  /** Confidence in the metadata source (PRD §13). */
+  metadataConfidence?: MetadataConfidence;
 }
 
 /** Provider entry (PRD §15). */

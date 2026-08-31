@@ -67,7 +67,18 @@ interface ModelCapabilities {
   webSearch: boolean;
   streaming: boolean;
   tools?: boolean;
+  /** Text → speech generation (PRD §3, §9). */
+  tts?: boolean;
+  /** Speech → text transcription (PRD §3, §9). */
+  stt?: boolean;
+  /** Vector embedding generation (PRD §3). */
+  embedding?: boolean;
+  /** Code generation / coding-specialised (PRD §3). */
+  code?: boolean;
 }
+
+/** Access classification (PRD §5, §6, §16, §17). */
+type AccessType = "free" | "paid" | "freemium" | "unknown";
 
 interface ModelPricing {
   inputPerMillion: number | null;
@@ -92,6 +103,11 @@ interface UnifiedModelEntry {
   available: boolean;
   capabilities: ModelCapabilities;
   pricing: ModelPricing;
+  // PRD §5, §6, §16, §17 — access classification for the Access badge +
+  // strict Free-Only filter.
+  access?: AccessType;
+  accessReason?: string;
+  metadataConfidence?: string;
 }
 
 interface UnifiedResponse {
@@ -150,16 +166,24 @@ function shortModelName(m: UnifiedModelEntry): string {
   return m.displayName || oid;
 }
 
-/** Derive a one-line description from capabilities (never hardcoded model-by-model). */
+/** Derive a one-line description from capabilities (never hardcoded model-by-model).
+ *
+ * PRD §3, §9 — capabilities are metadata-derived, not name-matched. A
+ * TTS model shows "text-to-speech", an image model shows "image gen",
+ * a video model shows "video gen" — never conflated. */
 function modelDescription(m: UnifiedModelEntry): string {
   const caps = m.capabilities;
   const parts: string[] = [];
+  if (caps.tts) parts.push("text-to-speech");
+  if (caps.stt) parts.push("speech-to-text");
+  if (caps.image) parts.push("image gen");
+  if (caps.video) parts.push("video gen");
+  if (caps.audio && !caps.tts && !caps.stt) parts.push("audio");
+  if (caps.embedding) parts.push("embeddings");
+  if (caps.code) parts.push("code");
   if (caps.reasoning) parts.push("reasoning");
   if (caps.vision) parts.push("vision");
   if (caps.webSearch) parts.push("web search");
-  if (caps.image) parts.push("image gen");
-  if (caps.audio) parts.push("audio");
-  if (caps.video) parts.push("video");
   if (caps.tools) parts.push("tool use");
   if (parts.length === 0) {
     return caps.text ? "Text completion model" : "Specialized model";
@@ -224,20 +248,32 @@ function sourceBadge(m: UnifiedModelEntry): SourceBadgeMeta {
   };
 }
 
+/** Build the capability badge list (PRD §3, §16, §17 — every card shows
+ *  capabilities; filters are generated from the normalized registry). */
 function capabilityBadges(caps: ModelCapabilities): string[] {
   const out: string[] = [];
   if (caps.text) out.push("Chat");
   if (caps.reasoning) out.push("Reasoning");
   if (caps.vision) out.push("Vision");
   if (caps.webSearch) out.push("Search");
+  if (caps.tts) out.push("TTS");
+  if (caps.stt) out.push("STT");
   if (caps.image) out.push("Image");
-  if (caps.audio) out.push("Audio");
   if (caps.video) out.push("Video");
+  if (caps.audio) out.push("Audio");
+  if (caps.embedding) out.push("Embed");
+  if (caps.code) out.push("Code");
   if (caps.tools) out.push("Tools");
   return out;
 }
 
-/** Modality filter matcher — used by the modality filter tabs. */
+/** Modality filter matcher — used by the modality filter tabs.
+ *
+ * PRD §3, §9, §17 — filters generated from the normalized registry, not
+ * hardcoded. A model only matches a modality if it carries the actual
+ * capability (validated from provider metadata, not name-matching). A
+ * text model NEVER matches "tts"; an image model NEVER matches "tts";
+ * a video model requires actual video-generation capability. */
 function modelMatchesModality(m: UnifiedModelEntry, modality: string): boolean {
   const c = m.capabilities;
   switch (modality) {
@@ -245,10 +281,18 @@ function modelMatchesModality(m: UnifiedModelEntry, modality: string): boolean {
       return c.text;
     case "image":
       return c.image;
+    case "tts":
+      return Boolean(c.tts);
+    case "stt":
+      return Boolean(c.stt);
     case "audio":
-      return c.audio;
+      return c.audio || Boolean(c.tts) || Boolean(c.stt);
     case "video":
       return c.video;
+    case "embedding":
+      return Boolean(c.embedding);
+    case "code":
+      return Boolean(c.code);
     case "reasoning":
       return c.reasoning;
     case "vision":
@@ -258,12 +302,45 @@ function modelMatchesModality(m: UnifiedModelEntry, modality: string): boolean {
   }
 }
 
-/** Pollen-priced models require a Pollinations wallet connection (user
- * directive: "pollen models required pollination connection"). Returns
- * true when this model is pollen-denominated and thus gated behind the
- * user having connected their Pollinations wallet. */
+/** Access badge metadata (PRD §5, §6, §16, §17). Every card shows an
+ *  Access badge: FREE / PAID / FREEMIUM / UNKNOWN. Free-Only mode (PRD §6)
+ *  filters strictly on access==="free" — paid/freemium/unknown excluded. */
+interface AccessBadgeMeta {
+  label: string;
+  cls: string;
+}
+function accessBadge(m: UnifiedModelEntry): AccessBadgeMeta {
+  switch (m.access) {
+    case "free":
+      return {
+        label: "FREE",
+        cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      };
+    case "paid":
+      return {
+        label: "PAID",
+        cls: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+      };
+    case "freemium":
+      return {
+        label: "FREEMIUM",
+        cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      };
+    default:
+      return {
+        label: "UNKNOWN",
+        cls: "bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/30",
+      };
+  }
+}
+
+/** Pollen-priced PAID models require a Pollinations wallet connection.
+ * PRD fix: free pollen-denominated models do NOT require a connection
+ * (the user's directive #5 — "pollen models required pollination connection"
+ * was wrong for free-tier models). Only pollen-PRICED + access==="paid"
+ * models need a connected wallet. */
 function requiresPollenConnection(m: UnifiedModelEntry): boolean {
-  return m.pricing?.currency === "pollen" && m.pricing.status !== "free";
+  return m.pricing?.currency === "pollen" && m.access === "paid";
 }
 
 function isPricingDocumented(p: ModelPricing | undefined | null): boolean {
@@ -325,6 +402,9 @@ export function ModelsCatalog() {
   const [query, setQuery] = React.useState("");
   const [activeSection, setActiveSection] = React.useState<string>("all");
   const [modality, setModality] = React.useState<string>("all");
+  // PRD §6 — strict Free-Only filter. When ON, only access==="free" models
+  // are shown; paid/freemium/unknown are ALL excluded.
+  const [freeOnly, setFreeOnly] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -391,10 +471,11 @@ export function ModelsCatalog() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [availableModels]);
 
-  // Apply modality + search + active tab.
+  // Apply modality + search + active tab + free-only (PRD §6).
   const filtered = React.useMemo(() => {
     const q = query.toLowerCase().trim();
     return availableModels.filter((m) => {
+      if (freeOnly && m.access !== "free") return false;
       if (activeSection !== "all" && sectionId(m) !== activeSection) return false;
       if (modality !== "all" && !modelMatchesModality(m, modality)) return false;
       if (!q) return true;
@@ -406,7 +487,7 @@ export function ModelsCatalog() {
         sourceLabel(m.source).toLowerCase().includes(q)
       );
     });
-  }, [availableModels, query, activeSection, modality]);
+  }, [availableModels, query, activeSection, modality, freeOnly]);
 
   // Group filtered models by section for rendering.
   const grouped = React.useMemo(() => {
@@ -462,7 +543,9 @@ export function ModelsCatalog() {
         </div>
       </header>
 
-      {/* Modality filter tabs — Chat / Image / Audio / Video / Embeddings */}
+      {/* Modality filter tabs — PRD §3, §10, §17: Text / Image / Video /
+          Audio(TTS+STT) / TTS / STT / Embeddings / Code / Reasoning / Vision.
+          Filters generated from the normalized registry, not hardcoded. */}
       <div className="flex flex-wrap items-center gap-2 min-w-0">
         <FilterTab
           active={modality === "all"}
@@ -471,21 +554,45 @@ export function ModelsCatalog() {
           count={availableModels.length}
         />
         {[
-          { id: "chat", label: "Chat" },
+          { id: "chat", label: "Text" },
           { id: "image", label: "Image gen" },
-          { id: "audio", label: "Audio / TTS" },
           { id: "video", label: "Video gen" },
+          { id: "tts", label: "TTS" },
+          { id: "stt", label: "STT" },
+          { id: "audio", label: "Audio" },
+          { id: "embedding", label: "Embeddings" },
+          { id: "code", label: "Code" },
           { id: "reasoning", label: "Reasoning" },
           { id: "vision", label: "Vision" },
-        ].map((mod) => (
-          <FilterTab
-            key={mod.id}
-            active={modality === mod.id}
-            onClick={() => setModality(mod.id)}
-            label={mod.label}
-            count={availableModels.filter((m) => modelMatchesModality(m, mod.id)).length}
-          />
-        ))}
+        ].map((mod) => {
+          const count = availableModels.filter((m) => modelMatchesModality(m, mod.id)).length;
+          if (count === 0) return null; // hide empty modality tabs
+          return (
+            <FilterTab
+              key={mod.id}
+              active={modality === mod.id}
+              onClick={() => setModality(mod.id)}
+              label={mod.label}
+              count={count}
+            />
+          );
+        })}
+        {/* Free-Only toggle (PRD §6) — strict; excludes paid/freemium/unknown */}
+        <button
+          type="button"
+          onClick={() => setFreeOnly((v) => !v)}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium uppercase tracking-[0.1em] transition-all ml-1",
+            freeOnly
+              ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+              : "border border-border text-muted-foreground hover:text-foreground hover:border-emerald-500/30",
+          )}
+          style={{ fontFamily: "var(--font-mono), monospace" }}
+          title="When ON, only verified FREE models are shown. Paid, freemium, and unknown-access models are all excluded."
+        >
+          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", freeOnly ? "bg-emerald-500" : "bg-muted-foreground/40")} />
+          Free only
+        </button>
       </div>
 
       {/* Provider filter tabs — wrap when out of room */}
@@ -868,7 +975,10 @@ function ProviderCard({
         </div>
       )}
 
-      {/* Row 7: source badge (BYOK / Pollinations / Native) + pollen-required */}
+      {/* Row 7: source badge + Access badge (PRD §16 — every card shows
+          provider + capabilities + access). The Access badge is derived
+          from the access classification (free/paid/freemium/unknown) —
+          never inferred. */}
       <div className="flex flex-wrap gap-1.5 min-w-0">
         <Badge
           variant="outline"
@@ -879,10 +989,20 @@ function ProviderCard({
         >
           {srcBadge.label}
         </Badge>
+        <Badge
+          variant="outline"
+          title={model.accessReason || `Access: ${model.access ?? "unknown"}`}
+          className={cn(
+            "text-[10px] uppercase tracking-wider px-1.5 py-0 h-5 font-semibold",
+            accessBadge(model).cls,
+          )}
+        >
+          {accessBadge(model).label}
+        </Badge>
         {requiresPollenConnection(model) && (
           <Badge
             variant="outline"
-            title="Pollen-priced models require a connected Pollinations wallet."
+            title="This pollen-priced PAID model requires a connected Pollinations wallet to call."
             className="text-[10px] uppercase tracking-wider px-1.5 py-0 h-5 bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
           >
             Pollen · Connect

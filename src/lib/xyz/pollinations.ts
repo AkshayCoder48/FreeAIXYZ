@@ -341,6 +341,140 @@ export async function validatePollinationsKey(
   }
 }
 
+/**
+ * Classify a Pollinations model's capabilities from provider metadata
+ * (PRD §2, §8, §9).
+ *
+ * Pollinations' `gen.pollinations.ai/models` payload carries:
+ *   - `category`            — text|image|video|3d|audio|realtime|embedding
+ *   - `input_modalities`    — ["text","image","audio",...]
+ *   - `output_modalities`   — ["text","image","audio","video","3d",...]
+ *   - `tools`               — boolean (tool/function calling)
+ *   - `reasoning`           — boolean
+ *
+ * Capability derivation rules (PRD §9):
+ *   text      ← category in [text, realtime] OR input ⊇ text OR output ⊇ text
+ *   tts       ← category === "audio" (Pollinations audio IS text→speech)
+ *               OR (input ⊇ text AND output ⊇ audio)
+ *   stt       ← (input ⊇ audio) AND (output ⊇ text)
+ *   image     ← category === "image" OR output ⊇ image
+ *   video     ← category === "video" OR output ⊇ video
+ *   vision    ← input ⊇ image
+ *   embedding← category === "embedding"
+ *   reasoning← reasoning === true
+ *   tools    ← tools === true
+ *
+ * NOTE: a text model is NEVER auto-classified as tts/image/video — those
+ * require the corresponding output modality or category (PRD §9 validation).
+ */
+function classifyPollinationsCapabilities(obj: Record<string, unknown>): string[] {
+  const caps = new Set<string>();
+
+  const inMods = (Array.isArray(obj.input_modalities) ? obj.input_modalities : []) as string[];
+  const outMods = (Array.isArray(obj.output_modalities) ? obj.output_modalities : []) as string[];
+  const inSet = new Set(inMods.map((s) => String(s).toLowerCase()));
+  const outSet = new Set(outMods.map((s) => String(s).toLowerCase()));
+  const hasTextInput = inSet.has("text");
+  const hasImageInput = inSet.has("image");
+  const hasAudioInput = inSet.has("audio");
+  const hasTextOutput = outSet.has("text");
+  const hasImageOutput = outSet.has("image");
+  const hasAudioOutput = outSet.has("audio");
+  const hasVideoOutput = outSet.has("video");
+
+  const category = typeof obj.category === "string" ? obj.category.toLowerCase() : "";
+
+  // text — chat/text-generation models only.
+  const textCats = new Set(["text", "realtime"]);
+  if (textCats.has(category) || hasTextInput || hasTextOutput) {
+    caps.add("text");
+  }
+
+  // tts — text → speech. Pollinations `audio` category IS TTS (ElevenLabs).
+  if (category === "audio" || (hasTextInput && hasAudioOutput)) {
+    caps.add("tts");
+    caps.add("audio");
+  }
+
+  // stt — speech → text.
+  if (hasAudioInput && hasTextOutput) {
+    caps.add("stt");
+    caps.add("audio");
+  }
+
+  // image generation.
+  if (category === "image" || hasImageOutput) {
+    caps.add("image");
+  }
+
+  // video generation.
+  if (category === "video" || hasVideoOutput) {
+    caps.add("video");
+  }
+
+  // vision (image understanding).
+  if (hasImageInput) {
+    caps.add("vision");
+  }
+
+  // embedding.
+  if (category === "embedding") {
+    caps.add("embedding");
+  }
+
+  // realtime (voice/chat) → treat as text + audio (it carries both).
+  if (category === "realtime" && hasAudioOutput) {
+    caps.add("audio");
+  }
+
+  // tools + reasoning booleans.
+  if (obj.tools === true) caps.add("tools");
+  if (obj.reasoning === true) caps.add("reasoning");
+
+  return Array.from(caps);
+}
+
+/**
+ * Classify a Pollinations model's access tier (PRD §5, §6, §7).
+ *
+ * Pollinations publishes a per-model `paid_only` boolean. This is the
+ * AUTHORITATIVE access signal — not an inference (PRD §7). When
+ * `paid_only === true`, the model requires a paid pollen balance. When
+ * `paid_only` is false or absent, the model is usable on the free
+ * anonymous tier (Pollinations' documented free anonymous access).
+ *
+ * Free-Only mode (PRD §6) filters strictly on `access === "free"`.
+ */
+export function classifyPollinationsAccess(model: DiscoveredPollinationsModel): {
+  access: "free" | "paid" | "freemium" | "unknown";
+  reason: string;
+} {
+  const raw = model.rawMetadata as Record<string, unknown> | undefined;
+  if (!raw) return { access: "unknown", reason: "no metadata" };
+
+  // paid_only === true → PAID (requires pollen balance).
+  if (raw.paid_only === true) {
+    return {
+      access: "paid",
+      reason: "paid_only=true (requires paid pollen balance)",
+    };
+  }
+  // paid_only === false → explicitly FREE.
+  if (raw.paid_only === false) {
+    return {
+      access: "free",
+      reason: "paid_only=false (anonymous tier)",
+    };
+  }
+  // paid_only absent → the model is not marked paid, so it's usable on the
+  // free anonymous tier. Pollinations' catalog explicitly marks paid models
+  // with paid_only=true; its absence means free-tier access.
+  return {
+    access: "free",
+    reason: "not paid_only (free anonymous tier)",
+  };
+}
+
 /** Discover Pollinations models for the catalog (anonymous, no key needed).
  *
  * The user explicitly asked: "add pollinations model fetching api it can
@@ -390,21 +524,11 @@ export async function discoverPollinationsModels(
           ? obj.name
           : id;
       const desc = typeof obj.description === "string" ? obj.description : undefined;
-      // Capabilities derive from the explicit `capabilities` array (when
-      // present) + the boolean flags `tools`/`reasoning` + the
-      // input/output modalities.
-      const capsRaw = obj.capabilities;
-      const caps = Array.isArray(capsRaw)
-        ? capsRaw.map((c) => String(c))
-        : ["text"];
-      if (obj.tools === true && !caps.includes("tool_calling")) caps.push("tool_calling");
-      if (obj.reasoning === true && !caps.includes("reasoning")) caps.push("reasoning");
-      const inMods = Array.isArray(obj.input_modalities) ? obj.input_modalities : [];
-      const outMods = Array.isArray(obj.output_modalities) ? obj.output_modalities : [];
-      if ((inMods as string[]).includes("image") && !caps.includes("vision")) caps.push("vision");
-      if ((inMods as string[]).includes("audio") && !caps.includes("audio")) caps.push("audio");
-      if ((outMods as string[]).includes("image") && !caps.includes("image")) caps.push("image");
-      if ((outMods as string[]).includes("video") && !caps.includes("video")) caps.push("video");
+      // PRD §2, §8, §9 — capability-driven classification. Derived ONLY
+      // from provider metadata (`category`, `input_modalities`,
+      // `output_modalities`, `tools`, `reasoning`). NEVER name-matching.
+      // A model may carry several capabilities (multi-modal, PRD §3).
+      const caps = classifyPollinationsCapabilities(obj);
       const ctx = typeof obj.context_length === "number" ? obj.context_length : undefined;
       const cat = typeof obj.category === "string" ? obj.category : undefined;
       const brand = typeof obj.brand === "string" ? obj.brand : undefined;

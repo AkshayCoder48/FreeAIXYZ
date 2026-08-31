@@ -476,35 +476,140 @@ function pickFirstNumber(
 /**
  * Build a normalized capability list from the public-catalog payload shape.
  *
- * The public catalog carries (all camelCase):
- *   - `features`           — array of capability tags (e.g. "reasoning",
- *                             "tool-use", "web-search", "vision")
- *   - `inputModalities`    — array of strings like "text", "image", "audio"
- *   - `outputModalities`   — array of strings like "text", "image", "audio"
- *   - `type`               — modality ("language" | "image" | "audio" |
- *                             "video" | "embedding" | "ocr" |
- *                             "translation" | "moderation")
+ * PRD §2, §8, §9 — capability-driven classification. Capabilities are
+ * derived ONLY from provider metadata (`type`, `inputModalities`,
+ * `outputModalities`, `features`). NEVER from name matching (PRD §2).
  *
- * The legacy snake_case variants (`input_modalities`, etc.) are also read
- * so the function tolerates a mixed-shape payload.
+ * The public catalog carries (all camelCase):
+ *   - `type`               — modality ("language" | "image" | "audio" |
+ *                            "video" | "embedding" | "ocr" |
+ *                            "translation" | "moderation")
+ *   - `features`           — array of capability tags (e.g. "reasoning",
+ *                            "tool-use", "web-search", "vision",
+ *                            "image-generation", "pdf-input")
+ *   - `inputModalities`    — array like ["text","image","audio","video","file"]
+ *   - `outputModalities`   — array like ["text","image","audio","video"]
+ *
+ * Capability derivation rules (PRD §9 — validation layer):
+ *   text      ← type in [language, translation, moderation, ocr] OR
+ *               inputModalities ⊇ text OR outputModalities ⊇ text
+ *   tts       ← (inputModalities ⊇ text) AND (outputModalities ⊇ audio)
+ *               OR type === "audio"  (audio generation from text)
+ *   stt       ← (inputModalities ⊇ audio) AND (outputModalities ⊇ text)
+ *   image     ← outputModalities ⊇ image OR type === "image"
+ *               OR features ⊇ "image-generation"
+ *   video     ← outputModalities ⊇ video OR type === "video"
+ *   vision    ← inputModalities ⊇ image
+ *   embedding← type === "embedding"
+ *   code      ← features ⊇ "code" | "coding"
+ *   reasoning← features ⊇ "reasoning"
+ *   webSearch← features ⊇ "web-search"
+ *   tools    ← features ⊇ "tool-use" | "tools"
+ *
+ * MULTI-MODAL models legitimately carry several capabilities (PRD §3) — a
+ * model with inputModalities=["text","image"] + outputModalities=["text",
+ * "audio"] is text + vision + tts + audio simultaneously, and SHOULD appear
+ * in all applicable UI filters.
  *
  * The registry's buildCapabilities() (src/lib/xyz/registry.ts) maps the
  * resulting flat list into the UnifiedModel.capabilities object.
  */
 function capabilitiesToList(m: GratisfyRawModel): string[] {
   const caps = new Set<string>();
-  caps.add("text"); // every Gratisfy model supports text chat
 
-  // Features → direct capability tags. The public catalog uses kebab-case
-  // feature names like "tool-use" and "web-search"; the legacy endpoint
-  // used snake_case like "tool_calling". Normalize both to underscores so
-  // buildCapabilities()'s .toLowerCase() checks line up with the existing
-  // "tools" / "web_search" capability keys.
+  // ─── Input modalities ───────────────────────────────────────────────
+  const inputMods = (Array.isArray(m.inputModalities)
+    ? m.inputModalities
+    : Array.isArray(m.input_modalities)
+      ? m.input_modalities
+      : []) as string[];
+  const inSet = new Set(inputMods.map((s) => String(s).toLowerCase()));
+  const hasTextInput = inSet.has("text");
+  const hasImageInput = inSet.has("image");
+  const hasAudioInput = inSet.has("audio");
+  const hasVideoInput = inSet.has("video");
+
+  // ─── Output modalities ──────────────────────────────────────────────
+  const outputMods = (Array.isArray(m.outputModalities)
+    ? m.outputModalities
+    : Array.isArray(m.output_modalities)
+      ? m.output_modalities
+      : []) as string[];
+  const outSet = new Set(outputMods.map((s) => String(s).toLowerCase()));
+  const hasTextOutput = outSet.has("text");
+  const hasImageOutput = outSet.has("image");
+  const hasAudioOutput = outSet.has("audio");
+  const hasVideoOutput = outSet.has("video");
+
+  // ─── Type (modality) field ───────────────────────────────────────────
+  const type = typeof m.type === "string"
+    ? m.type.toLowerCase()
+    : typeof m.modality === "string"
+      ? m.modality.toLowerCase()
+      : "";
+
+  // ─── text capability ────────────────────────────────────────────────
+  // A model is "text" if it accepts text input OR produces text output,
+  // OR its type is a text-modality (language/translation/moderation/ocr).
+  // An image/TTS/video/embedding-only model is NOT text.
+  const textTypes = new Set(["language", "translation", "moderation", "ocr"]);
+  const isText =
+    textTypes.has(type) || hasTextInput || hasTextOutput;
+  if (isText) caps.add("text");
+
+  // ─── tts (text → speech) ────────────────────────────────────────────
+  // TTS = produces audio from text input. type==="audio" is the Gratisfy
+  // audio-generation modality (text→audio / music generation). A model
+  // that only accepts audio input and outputs text is STT, not TTS.
+  if (type === "audio" || (hasTextInput && hasAudioOutput)) {
+    caps.add("tts");
+    caps.add("audio"); // audio output capability (for the generic Audio tab)
+  }
+
+  // ─── stt (speech → text) ───────────────────────────────────────────
+  if (hasAudioInput && hasTextOutput) {
+    caps.add("stt");
+    caps.add("audio");
+  }
+
+  // ─── image generation ───────────────────────────────────────────────
+  if (hasImageOutput || type === "image") {
+    caps.add("image");
+  }
+
+  // ─── video generation ───────────────────────────────────────────────
+  if (hasVideoOutput || type === "video") {
+    caps.add("video");
+  }
+
+  // ─── vision (image understanding / image INPUT) ───────────────────
+  if (hasImageInput) {
+    caps.add("vision");
+  }
+
+  // ─── embedding ──────────────────────────────────────────────────────
+  if (type === "embedding") {
+    caps.add("embedding");
+  }
+
+  // ─── Features → capability tags ─────────────────────────────────────
+  // The public catalog uses kebab-case feature names like "tool-use",
+  // "web-search", "image-generation", "pdf-input", "vision", "audio",
+  // "reasoning", "code". Normalize to underscores.
   const features = Array.isArray(m.features) ? m.features : [];
   for (const f of features) {
     if (typeof f !== "string") continue;
     const norm = f.toLowerCase().replace(/-/g, "_");
     caps.add(norm);
+    // image-generation feature → image capability (some image models don't
+    // carry outputModalities but DO carry the "image-generation" feature).
+    if (norm === "image_generation") caps.add("image");
+    if (norm === "code" || norm === "coding") caps.add("code");
+    if (norm === "reasoning") caps.add("reasoning");
+    if (norm === "web_search") caps.add("web_search");
+    if (norm === "tool_use" || norm === "tools") caps.add("tools");
+    if (norm === "vision") caps.add("vision");
+    if (norm === "audio") caps.add("audio");
   }
 
   // Legacy capabilities field (some entries may still carry it).
@@ -516,43 +621,6 @@ function capabilitiesToList(m: GratisfyRawModel): string[] {
     for (const [k, v] of Object.entries(m.capabilities)) {
       if (v === true) caps.add(k.toLowerCase());
     }
-  }
-
-  // Input modalities → vision/audio/video input capabilities.
-  // Read BOTH the new camelCase field and the legacy snake_case one.
-  const inputMods = Array.isArray(m.inputModalities)
-    ? m.inputModalities
-    : Array.isArray(m.input_modalities)
-      ? m.input_modalities
-      : [];
-  for (const mod of inputMods) {
-    if (typeof mod !== "string") continue;
-    const lower = mod.toLowerCase();
-    if (lower === "image") caps.add("vision");
-    else if (lower === "audio") caps.add("audio_input");
-    else if (lower === "video") caps.add("video_input");
-  }
-
-  // Output modalities → image/audio/video generation capabilities.
-  const outputMods = Array.isArray(m.outputModalities)
-    ? m.outputModalities
-    : Array.isArray(m.output_modalities)
-      ? m.output_modalities
-      : [];
-  for (const mod of outputMods) {
-    if (typeof mod !== "string") continue;
-    const lower = mod.toLowerCase();
-    if (lower === "image") caps.add("image");
-    else if (lower === "audio") caps.add("audio");
-    else if (lower === "video") caps.add("video");
-  }
-
-  // Modality (type field) → capability flag.
-  if (typeof m.type === "string") {
-    const t = m.type.toLowerCase();
-    if (t === "image") caps.add("image");
-    else if (t === "audio") caps.add("audio");
-    else if (t === "video") caps.add("video");
   }
 
   return Array.from(caps);
@@ -894,6 +962,61 @@ export function resolveGratisfyPricing(model: DiscoveredGratisfyModel): {
     currency: freeCurrency,
     status: "not_documented",
     source: "unknown",
+  };
+}
+
+/**
+ * Classify a Gratisfy model's access tier (PRD §5, §6, §7).
+ *
+ * Determined ONLY from provider metadata — `freeTier.isFree` (the
+ * authoritative "is this free to call right now" flag) combined with the
+ * presence of numeric pricing. Never inferred from popularity/openness.
+ *
+ * Rules (PRD §7):
+ *   freeTier.isFree===true  + numeric pricing  → "freemium" (free allowance
+ *                                                  + paid usage past it)
+ *   freeTier.isFree===true  + "Free" pricing   → "free" (explicitly free,
+ *                                                  no paid rate)
+ *   freeTier.isFree===false + numeric pricing   → "paid"
+ *   freeTier.isFree===false + no pricing        → "unknown" (PRD §7 — never
+ *                                                  label unknown as free)
+ *
+ * Free-Only mode (PRD §6) filters strictly on `access === "free"` — paid,
+ * freemium, and unknown are ALL excluded.
+ */
+export function classifyGratisfyAccess(model: DiscoveredGratisfyModel): {
+  access: "free" | "paid" | "freemium" | "unknown";
+  reason: string;
+} {
+  const free = isFreeModel(model);
+  const pricing = resolveGratisfyPricing(model);
+  const hasNumericPricing = pricing.status === "documented";
+  const raw = model.rawMetadata as Record<string, unknown> | undefined;
+  const ftNote =
+    (raw?.freeTier as Record<string, unknown> | undefined)?.note ??
+    (raw?.free_tier as Record<string, unknown> | undefined)?.note;
+
+  if (free && hasNumericPricing) {
+    return {
+      access: "freemium",
+      reason: `Free tier + paid rate (${ftNote ? String(ftNote).slice(0, 60) : "free tier exists"}${pricing.currency === "pollen" ? ", pollen-priced" : ""})`,
+    };
+  }
+  if (free) {
+    return {
+      access: "free",
+      reason: `freeTier.isFree=true${ftNote ? ` (${String(ftNote).slice(0, 60)})` : ""}`,
+    };
+  }
+  if (hasNumericPricing) {
+    return {
+      access: "paid",
+      reason: `numeric pricing (${pricing.currency === "pollen" ? "pollen" : "USD"})`,
+    };
+  }
+  return {
+    access: "unknown",
+    reason: "no free-tier flag and no numeric pricing",
   };
 }
 

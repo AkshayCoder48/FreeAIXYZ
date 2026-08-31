@@ -23,11 +23,13 @@
  */
 
 import {
+  classifyGratisfyAccess,
   discoverGratisfyModels,
   resolveGratisfyPricing,
   type DiscoveredGratisfyModel,
 } from "./gratisfy";
 import {
+  classifyPollinationsAccess,
   discoverPollinationsModels,
   resolvePollinationsPricing,
   type DiscoveredPollinationsModel,
@@ -37,6 +39,8 @@ import {
   resolveSuppliedPricing,
 } from "./pricing-board";
 import type {
+  AccessType,
+  MetadataConfidence,
   ModelCapabilities,
   ParsedModelId,
   Source,
@@ -121,13 +125,22 @@ function nativeProviderDisplayName(prefix: string): string {
   return NATIVE_PROVIDER_DISPLAY_NAMES[prefix] || prefix;
 }
 
-/** Native models derived from the central pricing board. */
+/** Native models derived from the central pricing board.
+ *
+ * Native models are the gateway's own free upstream providers (Toolbaz,
+ * LLM7, FreeGPT, etc.) — they're all text-chat models and all free (the
+ * pricing board marks them $0 with status:"free" or supplied). Access is
+ * "free" with confidence "verified" (the product-owner pricing board is
+ * the authoritative source for native providers). */
 export function getNativeModels(): UnifiedModel[] {
   const board = getSuppliedPricingBoard();
   const now = new Date().toISOString();
   return Object.entries(board).map(([id, pricing]) => {
     const [providerSeg, ...rest] = id.split("/");
     const displayName = nativeProviderDisplayName(providerSeg);
+    const isFree =
+      pricing.status === "free" ||
+      (pricing.inputPerMillion === 0 && pricing.outputPerMillion === 0);
     return {
       id: `native:${providerSeg}:${rest.join("/")}`,
       displayName: rest.join("/") || id,
@@ -149,6 +162,11 @@ export function getNativeModels(): UnifiedModel[] {
       available: true,
       discoveredAt: now,
       metadata: { boardId: id, shortPrefix: providerSeg },
+      access: (isFree ? "free" : "paid") as AccessType,
+      accessReason: isFree
+        ? "native pricing board: $0/free"
+        : "native pricing board: supplied rate",
+      metadataConfidence: "verified" as MetadataConfidence,
     };
   });
 }
@@ -178,11 +196,21 @@ export function getNativeProviders(): UnifiedProvider[] {
 
 // ─── Capabilities helper ────────────────────────────────────────────────────
 
-/** Build a ModelCapabilities object from a discovery capabilities string[] . */
+/** Build a ModelCapabilities object from a discovery capabilities string[].
+ *
+ * PRD §2, §8, §9 — capability-driven. Maps the flat capability list (built
+ * by the source adapter's capabilitiesToList / classifyPollinationsCapabilities)
+ * into the ModelCapabilities booleans. NEVER forces `text: true` — a model
+ * only gets `text` if its metadata indicates text input/output. This is the
+ * core fix for the bug where TTS/image/video models leaked into the Chat
+ * filter (PRD §9 — text model ≠ TTS, image model ≠ TTS).
+ *
+ * A model may legitimately carry multiple capabilities (PRD §3 — e.g. a
+ * text+vision+reasoning model appears in all three filters). */
 function buildCapabilities(caps: string[] | undefined): ModelCapabilities {
   const set = new Set((caps ?? []).map((c) => c.toLowerCase()));
   return {
-    text: true, // all discovered models support text
+    text: set.has("text"),
     vision: set.has("vision"),
     audio: set.has("audio"),
     video: set.has("video"),
@@ -190,7 +218,11 @@ function buildCapabilities(caps: string[] | undefined): ModelCapabilities {
     reasoning: set.has("reasoning"),
     webSearch: set.has("web_search") || set.has("websearch"),
     streaming: true,
-    tools: set.has("tools"),
+    tools: set.has("tools") || set.has("tool_calling") || set.has("tool_use"),
+    tts: set.has("tts"),
+    stt: set.has("stt"),
+    embedding: set.has("embedding"),
+    code: set.has("code") || set.has("coding"),
   };
 }
 
@@ -307,6 +339,7 @@ function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedMode
     const publicId = `gratisfy:${upstreamProvider}:${m.upstreamId}`;
     if (seen.has(publicId)) continue; // drop upstream-listed duplicate
     seen.add(publicId);
+    const accessInfo = classifyGratisfyAccess(m);
     out.push({
       id: publicId,
       displayName: m.name || m.upstreamId,
@@ -324,6 +357,10 @@ function buildGratisfyModels(discovered: DiscoveredGratisfyModel[]): UnifiedMode
         contextLength: m.contextLength,
         modality: m.modality,
       },
+      access: accessInfo.access,
+      accessReason: accessInfo.reason,
+      // The public catalog is Gratisfy's official model metadata → authoritative.
+      metadataConfidence: "authoritative" as MetadataConfidence,
     });
   }
   return out;
@@ -393,6 +430,7 @@ function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): Uni
     const publicId = `pollinations:${brand}:${m.upstreamId}`;
     if (seen.has(publicId)) continue; // drop upstream-listed duplicate
     seen.add(publicId);
+    const accessInfo = classifyPollinationsAccess(m);
     out.push({
       id: publicId,
       displayName: m.name || m.upstreamId,
@@ -410,6 +448,10 @@ function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): Uni
         contextLength: m.contextLength,
         modality: m.modality,
       },
+      access: accessInfo.access,
+      accessReason: accessInfo.reason,
+      // Pollinations' own /models endpoint is the authoritative source.
+      metadataConfidence: "authoritative" as MetadataConfidence,
     });
   }
   return out;
@@ -496,10 +538,13 @@ export async function resolveUnifiedModel(
     const pricing = resolveSuppliedPricing(id);
     if (pricing.status !== "not_documented") {
       const [provider, ...rest] = id.split("/");
+      const isFree =
+        pricing.status === "free" ||
+        (pricing.inputPerMillion === 0 && pricing.outputPerMillion === 0);
       return {
         id: `native:${provider}:${rest.join("/")}`,
         displayName: rest.join("/") || id,
-        source: "native",
+        source: "native" as Source,
         provider: nativeProviderDisplayName(provider),
         originalModelId: id,
         capabilities: {
@@ -517,6 +562,11 @@ export async function resolveUnifiedModel(
         available: true,
         discoveredAt: new Date().toISOString(),
         metadata: { boardId: id },
+        access: (isFree ? "free" : "paid") as AccessType,
+        accessReason: isFree
+          ? "native pricing board: $0/free"
+          : "native pricing board: supplied rate",
+        metadataConfidence: "verified" as MetadataConfidence,
       };
     }
     return null;
@@ -535,5 +585,40 @@ export async function refreshDiscovery(userId?: string): Promise<void> {
   await getPollinationsModelsForCatalog();
 }
 
-// Re-export the per-source pricing resolvers for the registry consumers.
-export { resolveGratisfyPricing, resolvePollinationsPricing };
+// ─── Free-Only + capability filters (PRD §6, §17) ────────────────────────────
+
+/**
+ * Strict Free-Only filter (PRD §6). Returns ONLY models whose `access`
+ * field is exactly "free" — paid, freemium, AND unknown models are ALL
+ * excluded. This prevents accidentally presenting a paid model as free
+ * (PRD §6, §7). Never relaxes to freemium/unknown.
+ */
+export function filterFreeOnly(models: UnifiedModel[]): UnifiedModel[] {
+  return models.filter((m) => m.access === "free");
+}
+
+/** Filter models by a single capability flag (PRD §17 — filters generated
+ *  from the normalized registry, not hardcoded). Returns models that carry
+ *  the requested capability (multi-modal models appear in multiple). */
+export function filterByCapability(
+  models: UnifiedModel[],
+  capability:
+    | "text"
+    | "vision"
+    | "image"
+    | "audio"
+    | "tts"
+    | "stt"
+    | "video"
+    | "embedding"
+    | "code"
+    | "reasoning"
+    | "webSearch"
+    | "tools"
+    | "streaming",
+): UnifiedModel[] {
+  return models.filter((m) => Boolean(m.capabilities[capability]));
+}
+
+// Re-export the per-source pricing + access resolvers for the registry consumers.
+export { resolveGratisfyPricing, resolvePollinationsPricing, classifyGratisfyAccess, classifyPollinationsAccess };
