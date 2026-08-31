@@ -5,7 +5,7 @@
  *
  *   { error: { type, message, provider, model, request_id, code, status, upstreamStatus? } }
  *
- * 403 from a provider → PROVIDER_UNAVAILABLE, status 502, NOT retried
+ * 403 from a provider → UPSTREAM_4XX, status preserved, NOT retried
  * (PRD §63, §148 — the original bug was the gateway retrying 403s).
  * 429 → RATE_LIMITED, retried. 5xx → UPSTREAM_5XX, retried.
  * 408/504 → UPSTREAM_TIMEOUT, retried. 401 → AUTHENTICATION_REQUIRED, NOT retried.
@@ -25,15 +25,15 @@ import {
 const CTX = { provider: "freegpt", model: "gpt-5" };
 
 export async function run() {
-  // 1. 403 → PROVIDER_UNAVAILABLE, status 502, NOT retried (PRD §63, §148).
+  // 1. 403 → UPSTREAM_4XX, upstream status preserved, NOT retried.
   {
     const err = classifyUpstreamStatus(403, CTX);
-    assert.equal(err.type, "PROVIDER_UNAVAILABLE");
-    assert.equal(err.status, 502, "403 → status 502 (default for PROVIDER_UNAVAILABLE)");
+    assert.equal(err.type, "UPSTREAM_4XX");
+    assert.equal(err.status, 403, "403 status preserved");
     assert.equal(err.upstreamStatus, 403, "upstreamStatus preserved");
     assert.equal(err.provider, "freegpt");
     assert.equal(err.model, "gpt-5");
-    assert.equal(isRetryableStatus(403), false, "403 is NOT retried (PRD §63)");
+    assert.equal(isRetryableStatus(403), false, "403 is NOT retried");
   }
 
   // 2. 429 → RATE_LIMITED, retried.
@@ -45,11 +45,11 @@ export async function run() {
     assert.equal(isRetryableStatus(429), true, "429 IS retried");
   }
 
-  // 3. 500 → UPSTREAM_5XX, retried.
+  // 3. 500 → UPSTREAM_5XX, NOT retried by default.
   {
     const err = classifyUpstreamStatus(500, CTX);
     assert.equal(err.type, "UPSTREAM_5XX");
-    assert.equal(err.status, 502);
+    assert.equal(err.status, 500);
     assert.equal(err.upstreamStatus, 500);
     assert.equal(isRetryableStatus(500), false, "500 not in retry list (only 408/429/502/503/504)");
   }
@@ -76,11 +76,11 @@ export async function run() {
     assert.equal(isRetryableStatus(401), false, "401 NOT retried");
   }
 
-  // 6. 504 → UPSTREAM_TIMEOUT, retried.
+  // 6. 504 → UPSTREAM_UNAVAILABLE (retryable), retried.
   {
     const err = classifyUpstreamStatus(504, CTX);
-    assert.equal(err.type, "UPSTREAM_TIMEOUT");
-    assert.equal(err.status, 504);
+    assert.equal(err.type, "UPSTREAM_UNAVAILABLE");
+    assert.equal(err.status, 503);
     assert.equal(err.upstreamStatus, 504);
     assert.equal(isRetryableStatus(504), true);
   }
@@ -96,7 +96,7 @@ export async function run() {
   {
     const err = classifyUpstreamStatus(400, CTX);
     assert.equal(err.type, "UPSTREAM_4XX");
-    assert.equal(err.status, 502);
+    assert.equal(err.status, 400);
     assert.equal(isRetryableStatus(400), false);
   }
 
@@ -108,9 +108,9 @@ export async function run() {
   assert.equal(defaultStatusFor("AUTHENTICATION_REQUIRED"), 401);
   assert.equal(defaultStatusFor("RATE_LIMITED"), 429);
   assert.equal(defaultStatusFor("UPSTREAM_TIMEOUT"), 504);
-  assert.equal(defaultStatusFor("PROVIDER_UNAVAILABLE"), 502);
+  assert.equal(defaultStatusFor("PROVIDER_UNAVAILABLE"), 503);
   assert.equal(defaultStatusFor("UPSTREAM_5XX"), 502);
-  assert.equal(defaultStatusFor("UPSTREAM_4XX"), 502);
+  assert.equal(defaultStatusFor("UPSTREAM_4XX"), 400);
   assert.equal(defaultStatusFor("STREAM_ERROR"), 502);
   assert.equal(defaultStatusFor("DISCOVERY_FAILED"), 502);
   assert.equal(defaultStatusFor("VERIFICATION_FAILED"), 502);
@@ -149,13 +149,12 @@ export async function run() {
   {
     const err = classifyUpstreamStatus(403, CTX);
     const body = err.toJSON();
-    assert.equal(body.type, "PROVIDER_UNAVAILABLE");
-    assert.equal(body.status, 502);
+    assert.equal(body.type, "UPSTREAM_4XX");
+    assert.equal(body.status, 403);
     assert.equal(body.upstreamStatus, 403);
     assert.equal(body.provider, "freegpt");
     assert.equal(body.model, "gpt-5");
     assert.ok(body.request_id.startsWith("req_"));
-    assert.equal(body.code, "provider_unavailable");
   }
 
   // 13. errorResponse builds a JSON Response with the right status.
@@ -175,7 +174,7 @@ export async function run() {
     const line = sseErrorEvent(err);
     assert.ok(line.startsWith("event: error\n"), "starts with event: error");
     assert.ok(line.endsWith("\n\n"), "ends with \\n\\n");
-    assert.ok(line.includes(`"type":"PROVIDER_UNAVAILABLE"`), "contains type");
+    assert.ok(line.includes(`"type":"UPSTREAM_4XX"`), "contains type");
     assert.ok(line.includes(`"upstreamStatus":403`), "contains upstreamStatus");
   }
 

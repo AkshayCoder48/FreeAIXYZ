@@ -8,9 +8,7 @@
  * Singletons:
  *   - catalogStore          — model catalog + provider/model health cache
  *   - providerRegistry      — adapter registry (legacy + dynamic)
- *   - modelDiscoveryService — discoverAll() / discoverProvider()
  *   - providerHealthService — circuit breaker + provider/model health
- *   - modelVerificationService — verifyModel() / verifyProviderModels()
  *   - streamingProxyService — streamChat() (the streaming fix)
  *   - metricsService        — rolling 1000-request ring buffer
  *   - initGateway           — idempotent startup
@@ -100,13 +98,7 @@ export { catalogStore } from "@/lib/gateway/catalog";
 export type { ModelHealthEntry } from "@/lib/gateway/catalog";
 export { providerRegistry } from "@/lib/gateway/registry";
 export type { DynamicDiscoverer } from "@/lib/gateway/registry";
-export { modelDiscoveryService } from "@/lib/gateway/discovery";
 export { providerHealthService } from "@/lib/gateway/health";
-export {
-  modelVerificationService,
-  VERIFICATION_THRESHOLDS,
-} from "@/lib/gateway/verification";
-export type { VerifyResult } from "@/lib/gateway/verification";
 export {
   STREAM_HEADERS,
   streamChat,

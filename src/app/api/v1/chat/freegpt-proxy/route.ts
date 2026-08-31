@@ -89,6 +89,18 @@ export async function POST(request: Request) {
     );
   }
   const model = resolveGatewayModel(body.model);
+  if (!model) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "MODEL_NOT_FOUND",
+        status: 404,
+        code: "model_not_found",
+        message: `Unknown model "${body.model}".`,
+        model: body.model,
+        provider: "freegpt",
+      }),
+    );
+  }
   const provider = freeGptProvider;
 
   const messages = (body.messages ?? []).map((m) => ({

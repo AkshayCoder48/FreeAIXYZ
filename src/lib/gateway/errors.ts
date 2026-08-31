@@ -510,7 +510,7 @@ export function sseTerminalErrorChunk(
  *   → message: "Upstream error (HTTP 500)."
  *     upstream_detail: "<!DOCTYPE html>…"
  *
- * Example: "Pollinations returned HTTP 500: {\"error\":\"402 Payment Required\",\"deprecation_notice\":\"…\"}"
+ * Example: "Swarm returned HTTP 500: {\"error\":\"402 Payment Required\"}"
  *   → message: "Upstream error (HTTP 500)."
  *     upstream_detail: "{\"error\":\"402 Payment Required\",\"deprecation_notice\":\"…\"}"
  */

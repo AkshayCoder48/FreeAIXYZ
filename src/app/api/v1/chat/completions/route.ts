@@ -2,7 +2,7 @@
  * POST /api/v1/chat/completions — OpenAI-compatible chat completions.
  *
  * THE STREAMING FIX (PRD §137, §238):
- *   - Canonical ids (`fg/gpt-5`, `po/gpt-4o`, `oc/big-pickle`) go through the
+ *   - Canonical ids (`fg/gpt-5`, `tb/gpt-4o`, `oc/big-pickle`) go through the
  *     NEW gateway path — `streamChat(req, adapter)` from the streaming-proxy
  *     service forwards every upstream delta immediately as an OpenAI-shaped
  *     SSE chunk. NO buffering, NO re-pacing, NO sleep, NO heartbeat.
@@ -470,65 +470,6 @@ export async function POST(request: Request) {
     const wantsStream = body.stream === true;
     const useTools = hasTools(body.tools);
 
-    // ─── BYOK SOURCE-AWARE PATH (PRD §17, §61, PRIVACY-MODE) ──────────────
-    // Model ids of the form `gratisfy:<provider>:<model>` are routed to
-    // the BYOK handler. The user's BYOK key is read ONLY from the
-    // X-Gratisfy-API-Key header (or the generic X-API-Key + X-Provider:
-    // gratisfy header) — never from a server-side credential store.
-    // PRIVACY-MODE: the user's private BYOK keys live in their browser
-    // localStorage and are sent per-request. NO provider fallback (a
-    // Gratisfy request stays on Gratisfy — PRD §17).
-    if (
-      typeof body.model === "string" &&
-      body.model.startsWith("gratisfy:")
-    ) {
-      const { handleByokChatCompletion } = await import("@/lib/xyz/byok-route");
-      return handleByokChatCompletion(body, request);
-    }
-
-    // ─── POLLINATIONS SOURCE-AWARE TRANSLATION ───────────────────────────────
-    // The unified registry emits Pollinations model ids as
-    // `pollinations:<provider>:<name>` (the source-prefixed form used by
-    // the catalog + playground dropdown). The gateway's native Pollinations
-    // adapter (registered in src/providers/pollinations/ + the legacy
-    // adapter shim in src/lib/gateway/adapters/legacy.ts) consumes the
-    // canonical short-id form `po/<name>` — so translate here and let the
-    // canonical-path resolver + legacy fallback take over.
-    //
-    // If the user has connected a Pollinations token (via Connect-wallet
-    // OAuth → localStorage), the client sends it as the
-    // X-Pollinations-API-Key header. We forward that header to the gateway
-    // adapter so it can use the authenticated tier (paid models, higher
-    // rate limits). If no header is present, the gateway adapter falls
-    // back to anonymous-tier chat (PRD §82 — never fake "Connected").
-    if (typeof body.model === "string" && body.model.startsWith("pollinations:")) {
-      const parts = body.model.split(":");
-      // pollinations:<provider>:<model...> → po/<model...>
-      // (provider segment is dropped — the gateway only cares about the
-      // upstream model name; "pollinations" is the only Pollinations
-      // provider today anyway.)
-      if (parts.length >= 3) {
-        const modelRest = parts.slice(2).join(":");
-        body.model = `po/${modelRest}`;
-      }
-    }
-
-    // ─── SOURCE-AWARE NATIVE ID TRANSLATION ────────────────────────────────────
-    // The catalog uses source-aware ids like `native:tb:gpt-5`. The legacy
-    // gateway expects `<provider>/<model>` (e.g. `tb/gpt-5`). Translate.
-    if (
-      typeof body.model === "string" &&
-      body.model.startsWith("native:")
-    ) {
-      const parts = body.model.split(":");
-      // native:<provider>:<model...> → <provider>/<model...>
-      if (parts.length >= 3) {
-        const provider = parts[1];
-        const modelRest = parts.slice(2).join(":");
-        body.model = `${provider}/${modelRest}`;
-      }
-    }
-
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {
@@ -565,7 +506,7 @@ async function handleCanonicalRequest(
   //
   // R-8: the breaker is keyed per-ROUTE (model id), NOT just per-provider.
   // The audit found that a single failing model of a provider took down
-  // its healthy siblings (`po/openai-fast`, both `ss/*` models all scored
+  // its healthy siblings (`tb/gpt-5`, both `ss/*` models all scored
   // 0% under load but 100% when serialized — BUG-6). The per-provider
   // breaker is still consulted for genuine provider-wide outages, but
   // the per-model breaker now fires independently so one bad sibling
@@ -946,8 +887,8 @@ function buildLegacyMessages(
 
 /**
  * Extract the OpenAI sampling params from the request body (audit E1).
- * These are forwarded to OpenAI-compatible legacy providers (pollinations,
- * opencode, llm7, kilocode, vexa, gptoss, swarm). Custom-POST providers
+ * These are forwarded to OpenAI-compatible legacy providers (opencode,
+ * llm7, kilocode, vexa, gptoss, swarm). Custom-POST providers
  * (surfsense, jollygen, unlimitedai, freechat, miklium, spicywriter,
  * freeaixyz, toolbaz) silently ignore them.
  */
@@ -981,7 +922,7 @@ async function handleLegacyRequest(
     return gatewayErrorResponse(
       new GatewayError({
         type: "MODEL_NOT_FOUND",
-        message: `Model "${body.model}" was not found in the catalog. Check GET /api/v1/models for the list of available canonical ids (e.g. "fx/grok", "au/llama3-8b", "po/openai-fast").`,
+        message: `Model "${body.model}" was not found in the catalog. Check GET /api/v1/models for the list of available canonical ids (e.g. "tb/gpt-5", "au/llama3-8b", "l7/minimax-m2.7").`,
         status: 404,
       }),
     );
@@ -1254,7 +1195,6 @@ function isRealStreamProvider(provider: string): boolean {
     "surfsense",
     "jollygen",
     "unlimitedai",
-    "pollinations",
     "kilocode",
     "llm7",
     "spicywriter",

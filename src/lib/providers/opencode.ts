@@ -11,7 +11,6 @@
  * No signup, no API key, no rate limits observed.
  *
  * Retry: Up to 2 retries with 1s delay on 503 (endpoint unavailable).
- * Fallback: On persistent 503, falls back to Pollinations provider.
  *
  * Credit: OpenCode.ai (https://opencode.ai)
  */
@@ -20,7 +19,6 @@ import type { Provider, ProviderCompletionRequest } from "./types";
 
 const ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
 const MODELS_ENDPOINT = "https://opencode.ai/zen/v1/models";
-const POLLINATIONS_ENDPOINT = "https://text.pollinations.ai/";
 
 const RETRY_DELAY_MS = 1000;
 
@@ -84,61 +82,6 @@ export async function fetchOpenCodeModels(): Promise<
   }
 }
 
-/** Fall back to Pollinations when OpenCode is unavailable. */
-async function* fallbackToPollinations(
-  req: ProviderCompletionRequest,
-): AsyncGenerator<string, void, unknown> {
-  const messages = req.messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
-
-  const payload: Record<string, unknown> = {
-    model: "openai",
-    messages,
-    stream: true,
-  };
-
-  yield "[OpenCode unavailable — using Pollinations fallback] ";
-
-  const res = await fetch(POLLINATIONS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify(payload),
-    signal: req.signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Pollinations fallback also failed: HTTP ${res.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const delta = parseSseLine(line);
-        if (delta) yield delta;
-      }
-    }
-    const delta = parseSseLine(buffer);
-    if (delta) yield delta;
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 export const openCodeProvider: Provider = {
   id: "opencode",
 
@@ -171,15 +114,6 @@ export const openCodeProvider: Provider = {
       body: JSON.stringify(payload),
       signal: req.signal,
     });
-
-    if (res.status === 503) {
-      // All retries exhausted — fall back to Pollinations
-      let text = "";
-      for await (const chunk of this.stream(req)) {
-        text += chunk;
-      }
-      return { text };
-    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -225,12 +159,6 @@ export const openCodeProvider: Provider = {
       body: JSON.stringify(payload),
       signal: req.signal,
     });
-
-    if (res.status === 503) {
-      // All retries exhausted — fall back to Pollinations
-      yield* fallbackToPollinations(req);
-      return;
-    }
 
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => "");

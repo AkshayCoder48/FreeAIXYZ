@@ -8,6 +8,7 @@ import {
   Search,
   Code2,
   Activity,
+  BookLock,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import {
@@ -22,6 +23,10 @@ import {
   FadeIn,
 } from "@/components/site";
 import { ProviderCards } from "@/components/dashboard/provider-cards";
+import {
+  NATIVE_PROVIDERS,
+  OFFERED_MODELS,
+} from "@/lib/native-catalog";
 
 const FEATURES = [
   {
@@ -41,9 +46,9 @@ const FEATURES = [
     desc: "No API keys, no bearer tokens. The gateway aggregates free upstream providers behind one OpenAI-shaped surface.",
   },
   {
-    icon: Server,
-    title: "Dynamic Model Discovery",
-    desc: "Model catalogs are fetched from each provider's /models endpoint at startup — no hand-maintained model list. New upstream models appear automatically.",
+    icon: BookLock,
+    title: "Static Model Registry",
+    desc: "The model catalog is a hand-curated static registry bundled with the app — no dynamic fetching, no discovery, no stale caches. Every listed model maps to an implemented native adapter.",
   },
   {
     icon: Search,
@@ -77,7 +82,7 @@ export default function Home() {
             <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-12 items-center">
               {/* Left: headline + CTAs */}
               <FadeIn className="flex flex-col items-start gap-6 max-w-2xl">
-                <SectionLabel>Dynamic discovery · True SSE</SectionLabel>
+                <SectionLabel>Native models · True SSE</SectionLabel>
                 <h1 className="text-5xl sm:text-6xl lg:text-7xl font-normal tracking-tight text-foreground leading-[1.05]">
                   The observable{" "}
                   <GradientText>AI gateway</GradientText>
@@ -85,10 +90,10 @@ export default function Home() {
                   that streams.
                 </h1>
                 <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
-                  A robust OpenAI-compatible gateway that aggregates free
-                  upstream providers, discovers their model catalogs at launch,
-                  preserves true end-to-end SSE streaming, classifies upstream
-                  errors, and exposes per-provider health — all behind canonical{" "}
+                  A lean OpenAI-compatible gateway that aggregates free
+                  native providers, preserves true end-to-end SSE streaming,
+                  classifies upstream errors, and exposes per-provider health
+                  — all behind canonical{" "}
                   <code
                     className="font-mono text-foreground bg-muted px-1.5 py-0.5 rounded-md text-sm"
                     style={{ fontFamily: "var(--font-mono), monospace" }}
@@ -137,13 +142,21 @@ export default function Home() {
           <div className="relative z-10">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-10 sm:pt-12">
               <SectionLabel className="border-white/10 bg-white/5 text-white/70">
-                Live metrics
+                Static registry
               </SectionLabel>
               <h2 className="mt-4 text-2xl sm:text-3xl font-normal tracking-tight text-white">
-                Snapshot of the gateway, refreshed every 10s.
+                Every model, verified and bundled at build time.
               </h2>
             </div>
-            <LiveStatsBar />
+            <LiveStatsBar
+              stats={{
+                providers: NATIVE_PROVIDERS.length,
+                models: OFFERED_MODELS.length,
+                streamingModels: OFFERED_MODELS.filter(
+                  (m) => m.capabilities.streaming,
+                ).length,
+              }}
+            />
           </div>
         </InvertedSection>
 
@@ -153,14 +166,24 @@ export default function Home() {
             <FadeIn className="flex flex-col gap-2 mb-8">
               <SectionLabel>Providers</SectionLabel>
               <h2 className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground mt-2">
-                Every adapter exposes discovery, chat, image, and health.
+                Every adapter implements chat, streaming, and health.
               </h2>
               <p className="text-sm text-muted-foreground max-w-2xl mt-1">
                 Adding a provider requires one adapter — never touches the
-                chat UI, model selector, or router. Each card below is live.
+                chat UI, model selector, or router. Every model is free and
+                needs no API key.
               </p>
             </FadeIn>
-            <ProviderCards />
+            <ProviderCards providers={NATIVE_PROVIDERS.map((p) => ({
+              id: p.id,
+              shortId: p.shortId,
+              name: p.name,
+              description: p.description,
+              modelCount: p.modelCount,
+              streamingCount: p.streamingCount,
+              toolsCount: p.toolsCount,
+              visionCount: p.visionCount,
+            }))} />
           </div>
         </section>
 
@@ -214,14 +237,14 @@ export default function Home() {
                   className="font-mono text-accent px-1"
                   style={{ fontFamily: "var(--font-mono), monospace" }}
                 >
-                  fg/gpt-5
+                  tb/gpt-5
                 </code>
                 ,{" "}
                 <code
                   className="font-mono text-accent px-1"
                   style={{ fontFamily: "var(--font-mono), monospace" }}
                 >
-                  po/openai-fast
+                  l7/glm-5.3-flash
                 </code>
                 ).
               </p>
@@ -248,7 +271,7 @@ export default function Home() {
                   <code>{`curl -N https://<gateway>/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "po/openai-fast",
+    "model": "tb/gpt-5",
     "messages": [{"role":"user","content":"Hello"}],
     "stream": true
   }'`}</code>

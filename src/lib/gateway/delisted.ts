@@ -48,9 +48,6 @@ export const DELISTED_MODELS: ReadonlySet<string> = new Set<string>([
   "oc/muse-spark-1.2-contributor-free",
   "oc/nemotron-3.5-lightning-free",
 
-  // ─── pollinations — openai-fast returns HTTP 500 (provider routing broken)
-  "po/openai-fast",
-
   // ─── swarm — Qwen gguf models all return HTTP 500 / empty upstream ───────
   "sm/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
   "sm/Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",

@@ -44,7 +44,14 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  // The FreeGPT Cloudflare-bypass signer is intentionally CommonJS
+  // (wasm-bindgen output + Node-only require) — require() is correct there.
+  files: ["src/lib/freegpt-signer.cjs", "src/lib/freegpt-wasm.js", "src/app/api/v1/chat/freeaixyz-proxy/route.ts", "src/app/api/v1/chat/freegpt-proxy/route.ts"],
+  rules: {
+    "@typescript-eslint/no-require-imports": "off",
+  },
+}, {
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills/**", "tests/**", "scripts/**", "mini-services/**"]
 }];
 
 export default eslintConfig;

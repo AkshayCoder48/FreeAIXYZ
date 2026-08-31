@@ -3,16 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
-import {
-  Menu,
-  Sun,
-  Cpu,
-  BookOpen,
-  MessageSquare,
-  DollarSign,
-  Boxes,
-  User,
-} from "lucide-react";
+import { Menu, Sun, Cpu, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -22,7 +13,6 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { NavAuthButton } from "@/components/nav-auth-button";
 
 const emptySubscribe = () => () => {};
 function useMounted() {
@@ -32,10 +22,6 @@ function useMounted() {
 const NAV_LINKS = [
   { href: "/chat", label: "Playground", icon: MessageSquare },
   { href: "/models", label: "Models", icon: Cpu },
-  { href: "/pricing", label: "Pricing", icon: DollarSign },
-  { href: "/providers", label: "Providers", icon: Boxes },
-  { href: "/account", label: "Account", icon: User },
-  { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 
 export function Nav() {
@@ -90,17 +76,6 @@ export function Nav() {
           {mounted ? <ThemeToggle /> : (
             <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Toggle theme">
               <Sun className="h-4 w-4" />
-            </Button>
-          )}
-
-          {mounted ? <NavAuthButton /> : (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9"
-              aria-label="Sign in"
-            >
-              Sign in
             </Button>
           )}
 

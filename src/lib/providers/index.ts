@@ -7,7 +7,6 @@ import { auroraAiProvider } from "./auroraai";
 import { surfSenseProvider } from "./surfsense";
 import { jollyGenProvider } from "./jollygen";
 import { unlimitedAiProvider } from "./unlimitedai";
-import { pollinationsProvider } from "./pollinations";
 import { kiloCodeProvider } from "./kilocode";
 import { llm7Provider } from "./llm7";
 import { spicyWriterProvider } from "./spicywriter";
@@ -31,7 +30,6 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   surfsense: surfSenseProvider,
   jollygen: jollyGenProvider,
   unlimitedai: unlimitedAiProvider,
-  pollinations: pollinationsProvider,
   kilocode: kiloCodeProvider,
   llm7: llm7Provider,
   spicywriter: spicyWriterProvider,

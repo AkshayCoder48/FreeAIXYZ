@@ -6,7 +6,7 @@
  * `<shortId>/<originalUpstreamId>` — ids are NEVER generated from
  * random strings or model names (PRD §26).
  *
- * Duplicate providers (pollinations text vs pollinations image, PRD §168)
+ * Duplicate provider namespaces
  * must have DISTINCT short ids so the same upstream id from each is
  * addressable as `po/model-x` vs `pi/model-x`.
  *
@@ -63,20 +63,20 @@ export async function run() {
     assert.equal(r.upstreamId, "", "upstreamId is empty string");
   }
 
-  // 6. Duplicate providers — both valid, distinct (PRD §168).
+  // 6. Distinct providers — both valid, distinct.
   assert.equal(
-    canonicalModelId("pollinations", "model-x"),
-    "po/model-x",
-    "pollinations → po",
+    canonicalModelId("uncloseai", "model-x"),
+    "un/model-x",
+    "uncloseai → un",
   );
   assert.equal(
-    canonicalModelId("pollinations-image", "model-x"),
-    "pi/model-x",
-    "pollinations-image → pi (distinct from po)",
+    canonicalModelId("free2gpt", "model-x"),
+    "f2/model-x",
+    "free2gpt → f2",
   );
   assert.notEqual(
-    canonicalModelId("pollinations", "model-x"),
-    canonicalModelId("pollinations-image", "model-x"),
+    canonicalModelId("uncloseai", "model-x"),
+    canonicalModelId("free2gpt", "model-x"),
     "same upstream id under different providers → distinct canonical ids",
   );
 

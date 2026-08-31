@@ -9,7 +9,7 @@
  *   data: {"choices":[{"delta":{"content":"token"}}]}
  *   data: [DONE]
  *
- * 15+ text models across multiple upstream providers (DeepAI, Pollinations,
+ * 15+ text models across multiple upstream providers (DeepAI,
  * AIFree, TalkAI, Dolphin, Toolbaz). Default model: "vexa".
  * No API key, no account, CORS enabled.
  *

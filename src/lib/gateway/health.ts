@@ -9,7 +9,7 @@
  * R-8 (per-route circuit breaker): in addition to the per-provider breaker,
  * there is now a per-MODEL breaker keyed by canonical model id. This is the
  * direct fix for BUG-6 from the audit — a single failing model of a provider
- * was taking down its healthy siblings (`po/openai-fast` and `ss/*` scored
+ * was taking down its healthy siblings (`tb/gpt-5` and `ss/*` scored
  * 0% under load but 100% when serialized). Now an individual model that
  * fails N times opens its OWN breaker, leaving the rest of the provider's
  * models untouched. The provider-wide breaker is still consulted for
@@ -19,7 +19,6 @@
  * failed stream and by the health-check background loop.
  */
 
-import { db } from "@/lib/db";
 import { catalogStore } from "@/lib/gateway/catalog";
 import { getByShortId } from "@/lib/gateway/ids";
 import { providerRegistry } from "@/lib/gateway/registry";
@@ -96,7 +95,7 @@ interface ModelHealthInternal {
 class ProviderHealthService {
   private breakers = new Map<string, BreakerEntry>();
   /** R-8: per-MODEL circuit breaker map. Keyed by canonical model id
-   * (e.g. `po/openai-fast`, `ss/qwen-2.5`). Separate from the per-provider
+   * (e.g. `tb/gpt-5`, `ss/qwen-2.5`). Separate from the per-provider
    * breaker so a single failing model can't take down its siblings. */
   private modelBreakers = new Map<string, BreakerEntry>();
   private modelHealth = new Map<string, ModelHealthInternal>();
@@ -147,9 +146,6 @@ class ProviderHealthService {
         errorRate: 1 - successRate,
       };
       catalogStore.setProviderHealth(providerId, enriched);
-      this.persistProviderHealth(providerId, enriched).catch((err) =>
-        console.error(`[gateway.health] provider persist ${providerId}:`, err),
-      );
       return enriched;
     } catch (err) {
       this.recordProviderOutcome(providerId, false, err);
@@ -252,8 +248,8 @@ class ProviderHealthService {
    * The model breaker opens after MODEL_BREAKER_THRESHOLD consecutive
    * failures (lower than the provider threshold so a single bad model
    * trips quickly without dragging the rest of the provider down — direct
-   * fix for BUG-6 where one failing `po/openai-fast` model was poisoning
-   * the entire `po/*` pool).
+   * fix for BUG-6 where one failing `tb/gpt-5` model was poisoning
+   * the entire provider pool).
    *
    * Cooldown is shorter (30s) than the provider cooldown (60s) so a model
    * that recovers gets re-probed sooner.
@@ -297,9 +293,6 @@ class ProviderHealthService {
     }
     this.modelHealth.set(publicId, entry);
     catalogStore.setModelHealth(publicId, entry.status, entry.latencyMs);
-    this.persistModelHealth(publicId, entry).catch((err) =>
-      console.error(`[gateway.health] model persist ${publicId}:`, err),
-    );
   }
 
   /** Record a failed model request — bump failures, downgrade status, maybe open model breaker. */
@@ -333,9 +326,6 @@ class ProviderHealthService {
     }
     this.modelHealth.set(publicId, entry);
     catalogStore.setModelHealth(publicId, entry.status, entry.latencyMs);
-    this.persistModelHealth(publicId, entry).catch((err) =>
-      console.error(`[gateway.health] model persist ${publicId}:`, err),
-    );
     if (err) {
       console.warn(
         `[gateway.health] model ${publicId} failure:`,
@@ -370,63 +360,6 @@ class ProviderHealthService {
     return this.modelHealth.get(publicId);
   }
 
-  // ─── Persistence (best-effort) ───────────────────────────────────────────
-
-  private async persistProviderHealth(
-    providerId: string,
-    result: HealthResult,
-  ): Promise<void> {
-    try {
-      await db.provider.update({
-        where: { id: providerId },
-        data: {
-          status: result.status,
-          latencyMs: result.latencyMs ?? null,
-          lastHealthCheckAt: new Date(result.lastChecked),
-          successRate: result.successRate ?? null,
-          errorRate: result.errorRate ?? null,
-        },
-      });
-    } catch (err) {
-      // Provider row may not exist yet (e.g. before first discovery). Tolerate.
-      console.error(`[gateway.health] provider update ${providerId}:`, err);
-    }
-  }
-
-  private async persistModelHealth(
-    publicId: string,
-    entry: ModelHealthInternal,
-  ): Promise<void> {
-    try {
-      // ModelHealth.modelId references ProviderModel.id (cuid), not publicId.
-      const row = await db.providerModel.findUnique({
-        where: { publicId },
-      });
-      if (!row) return;
-      await db.modelHealth.upsert({
-        where: { modelId: row.id },
-        create: {
-          modelId: row.id,
-          status: entry.status,
-          failureCount: entry.failureCount,
-          lastFailure: entry.lastFailure ? new Date(entry.lastFailure) : null,
-          lastSuccess: entry.lastSuccess ? new Date(entry.lastSuccess) : null,
-          lastChecked: new Date(),
-          latencyMs: entry.latencyMs ?? null,
-        },
-        update: {
-          status: entry.status,
-          failureCount: entry.failureCount,
-          lastFailure: entry.lastFailure ? new Date(entry.lastFailure) : null,
-          lastSuccess: entry.lastSuccess ? new Date(entry.lastSuccess) : null,
-          lastChecked: new Date(),
-          latencyMs: entry.latencyMs ?? null,
-        },
-      });
-    } catch (err) {
-      console.error(`[gateway.health] model health ${publicId}:`, err);
-    }
-  }
 }
 
 // globalThis-backed singleton (see catalog.ts / registry.ts for the pattern).

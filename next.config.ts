@@ -4,8 +4,9 @@ const nextConfig: NextConfig = {
   // Use standalone output for Docker/self-hosted, skip for Vercel
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   /* config options here */
+  // Typecheck is clean — the build must fail on type errors.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   reactStrictMode: false,
   // NOTE (2026-08-31): the dev script runs `next dev --webpack` (see

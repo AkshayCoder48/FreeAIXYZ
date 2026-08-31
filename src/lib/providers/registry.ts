@@ -21,7 +21,6 @@ export type ProviderId =
   | "surfsense"
   | "jollygen"
   | "unlimitedai"
-  | "pollinations"
   | "kilocode"
   | "llm7"
   | "spicywriter"
@@ -108,9 +107,6 @@ export const MODELS: readonly GatewayModel[] = [
   // ─── UnlimitedAI.chat provider: uncensored reasoning, NDJSON streaming ───
   uai("unlimited-lustre-reasoning", "chat-model-reasoning", "Uncensored reasoning model — no content filters, real token streaming, deep thinking", "unrestricted", 128000),
   uai("unlimited-lustre-search", "chat-model-reasoning-with-search", "Uncensored reasoning + web search — browses live results, no content filters", "unrestricted", 128000, true),
-
-  // ─── Pollinations.ai provider: free, no-auth, OpenAI-compatible SSE ──────
-  pol("openai-fast", "openai-fast", "GPT-OSS 20B Reasoning — fast, no signup, real token streaming with reasoning", "reasoning", 128000, true),
 
   // ─── Kilo Code provider: 16 free models, no key, real SSE (tested OK) ───
   kc("tencent-hy3", "tencent/hy3:free", "Tencent Hy3 — large-scale Chinese/English model", "professional", 262144),
@@ -400,33 +396,6 @@ function uai(
       multiTurn: true,
       vision: false,
       webSearch,
-    },
-  };
-}
-
-/** Pollinations.ai model helper. Free, no-auth, real OpenAI SSE streaming. */
-function pol(
-  id: string,
-  upstream: string,
-  description: string,
-  category: GatewayModel["category"],
-  contextWindow: number,
-  reasoning = false,
-): GatewayModel {
-  return {
-    id,
-    provider: "pollinations",
-    upstream,
-    description,
-    category,
-    contextWindow,
-    capabilities: {
-      streaming: true,
-      tools: true,
-      systemPrompt: true,
-      multiTurn: true,
-      vision: false,
-      webSearch: false,
     },
   };
 }
@@ -811,7 +780,7 @@ export const PROVIDER_INFO: Record<
   },
   "vexa": {
     name: "Vexa AI",
-    description: "15+ free models via multi-provider routing (DeepAI, Pollinations, AIFree, TalkAI, Toolbaz) — no account, no API key, SSE streaming",
+    description: "15+ free models via multi-provider routing (DeepAI, AIFree, TalkAI, Toolbaz) — no account, no API key, SSE streaming",
   },
   "uncloseai": {
     name: "UncloseAI",
@@ -824,10 +793,6 @@ export const PROVIDER_INFO: Record<
   "auroraai": {
     name: "AuroraAI",
     description: "Uncensored LLaMA-3 roleplay engine with real token streaming",
-  },
-  "pollinations": {
-    name: "Pollinations",
-    description: "Free no-auth OpenAI-compatible API with real token streaming and reasoning",
   },
   "spicywriter": {
     name: "SpicyWriter",

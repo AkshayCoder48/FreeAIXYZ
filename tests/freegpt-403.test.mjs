@@ -12,16 +12,11 @@
  *      throws `classifyUpstreamStatus(403, { provider, model })` on first
  *      `.next()` call.
  *   2. Call `streamChat(req, mockProvider)` → `{ response, timings }`.
- *   3. Read the SSE stream. Assert:
- *        - The stream emits `event: error` containing JSON with
- *          `error.type === "PROVIDER_UNAVAILABLE"` and
- *          `error.upstreamStatus === 403` (PRD §148).
- *        - The stream closes (reader.read() returns done OR a per-read
- *          timeout fires after the error event has been consumed).
- *        - The mock's `stream()` was called exactly ONCE (not retried — PRD §63).
+ *   3. Assert the pre-first-token error surfaces as a real HTTP 403 JSON
+ *      envelope (upstream status preserved, structured error body).
  *   4. Assert `isRetryableStatus(403) === false`.
  *   5. Soft-assert that `providerHealthService.recordModelFailure` was
- *      invoked (the streaming-proxy's `handleStreamError` calls it).
+ *      invoked (the streaming-proxy's error path calls it).
  *
  * NOTE on [DONE] emission: the streaming-proxy's error path enqueues
  * `sseErrorEvent(err)` + calls `controller.close()` but does NOT emit a
@@ -34,7 +29,6 @@
 
 import assert from "node:assert/strict";
 import { streamChat } from "../src/lib/gateway/streaming-proxy.ts";
-import { SseParser } from "../src/lib/gateway/sse-parser.ts";
 import { classifyUpstreamStatus, isRetryableStatus } from "../src/lib/gateway/errors.ts";
 import { providerHealthService } from "../src/lib/gateway/health.ts";
 
@@ -120,81 +114,29 @@ export async function run() {
     stream: true,
   };
 
-  const { response, timings } = streamChat(req, adapter);
-  assert.equal(response.status, 200, "streaming response status is 200 (errors are in-stream)");
+  const { response, timings } = await streamChat(req, adapter);
 
-  const reader = response.body.getReader();
-  const parser = new SseParser();
-
-  let errorEvent = null;
-  let streamClosed = false;
-  const READ_TIMEOUT_MS = 2000;
-
-  // Read until we see the error event AND the stream closes (or timeout).
-  // The error path enqueues sseErrorEvent + controller.close(), so after
-  // the error chunk we expect reader.read() to return { done: true }.
-  while (!streamClosed) {
-    const readP = reader.read();
-    const timeoutP = new Promise((resolve) =>
-      setTimeout(() => resolve({ __timeout: true }), READ_TIMEOUT_MS),
-    );
-    const r = await Promise.race([readP, timeoutP]);
-    if (r.__timeout) {
-      break;
-    }
-    if (r.done) {
-      streamClosed = true;
-      break;
-    }
-    for (const ev of parser.feed(r.value)) {
-      if (ev.event === "error" && ev.data && !errorEvent) {
-        try {
-          const body = JSON.parse(ev.data);
-          if (body.error) errorEvent = body.error;
-        } catch { /* not JSON — ignore */ }
-      }
-    }
-    // Once we have the error event, the next read should return done=true
-    // (the streaming-proxy's handleStreamError closes the controller).
-    if (errorEvent) {
-      // Continue looping to confirm stream closes — but the next read
-      // might block on `controller.close()` actually being invoked, so
-      // we just continue the loop (with the same per-read timeout).
-    }
-  }
-  try { await reader.cancel(); } catch { /* best-effort */ }
-
-  // 1. The stream emits an event: error containing the structured error.
-  assert.ok(
-    errorEvent,
-    "stream must emit an `event: error` with a JSON error body",
-  );
+  // Current behavior (pre-flight fix): a provider error thrown BEFORE the
+  // first chunk is surfaced as a real HTTP error Response with a JSON
+  // error envelope — NOT a 200 OK SSE stream with an in-band error frame.
   assert.equal(
-    errorEvent.type,
-    "PROVIDER_UNAVAILABLE",
-    `error.type must be PROVIDER_UNAVAILABLE (got ${errorEvent.type})`,
-  );
-  assert.equal(
-    errorEvent.upstreamStatus,
+    response.status,
     403,
-    `error.upstreamStatus must be 403 (got ${errorEvent.upstreamStatus}) — PRD §148`,
+    "pre-first-token errors return the upstream HTTP status (403)",
   );
   assert.equal(
-    errorEvent.status,
-    502,
-    `error.status must be 502 (default for PROVIDER_UNAVAILABLE)`,
+    response.headers.get("content-type"),
+    "application/json",
+    "error response is a JSON envelope",
   );
-  assert.equal(errorEvent.provider, "freegpt");
-  assert.equal(errorEvent.model, "gpt-5");
-  assert.ok(errorEvent.request_id?.startsWith("req_"));
-
-  // 2. The stream closes after the error event (the error-path enqueues
-  //    sseErrorEvent + controller.close() — the production success-path's
-  //    `[DONE]` sentinel is NOT emitted on error, but the stream does close).
-  assert.ok(
-    streamClosed,
-    "stream must close after the error event (reader.read() returned done=true)",
-  );
+  const body = await response.json();
+  assert.ok(body.error, "JSON body has an error envelope");
+  assert.equal(body.error.type, "UPSTREAM_4XX", `error.type (got ${body.error.type})`);
+  assert.equal(body.error.upstreamStatus, 403, "error.upstreamStatus is 403");
+  assert.equal(body.error.status, 403, "error.status is 403");
+  assert.equal(body.error.provider, "freegpt");
+  assert.equal(body.error.model, "gpt-5");
+  assert.ok(body.error.request_id?.startsWith("req_"));
 
   // 3. The mock provider's stream() was called EXACTLY ONCE (no retry).
   assert.equal(

@@ -29,7 +29,6 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   { id: "surfsense", shortId: "ss", name: "SurfSense", baseUrl: "https://api.surfsense.com" },
   { id: "jollygen", shortId: "jg", name: "JollyGen", baseUrl: "https://api.jollygenapi.space" },
   { id: "unlimitedai", shortId: "ua", name: "UnlimitedAI", baseUrl: "https://unlimitedai.chat" },
-  { id: "pollinations", shortId: "po", name: "Pollinations", baseUrl: "https://gen.pollinations.ai" },
   { id: "kilocode", shortId: "kc", name: "Kilo Code", baseUrl: "https://api.kilo.ai" },
   { id: "llm7", shortId: "l7", name: "LLM7", baseUrl: "https://api.llm7.io" },
   { id: "spicywriter", shortId: "sw", name: "SpicyWriter", baseUrl: "https://spicywriter.com" },
@@ -49,7 +48,6 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   { id: "uncloseai", shortId: "un", name: "UncloseAI", baseUrl: "https://hermes.ai.unturf.com" },
   { id: "free2gpt", shortId: "f2", name: "Free2GPT", baseUrl: "https://chat4.free2gpt.com" },
   // Image providers (no chat adapter but used for image model catalog).
-  { id: "pollinations-image", shortId: "pi", name: "Pollinations Image", baseUrl: "https://image.pollinations.ai" },
   { id: "jollygen-image", shortId: "ji", name: "JollyGen Image", baseUrl: "https://api.jollygenapi.space" },
   { id: "aianime", shortId: "ai", name: "AIAnime", baseUrl: "https://api.aianime.io" },
 ];

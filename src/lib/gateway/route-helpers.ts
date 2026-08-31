@@ -33,7 +33,7 @@ export async function ensureGateway(): Promise<void> {
  * catalog (route returns 404 MODEL_NOT_FOUND) or its provider has no
  * registered adapter (route returns 404 PROVIDER_NOT_FOUND).
  *
- * Accepts both canonical ids (`fg/gpt-5.5`, `po/flux`) and bare upstream ids
+ * Accepts both canonical ids (`fg/gpt-5.5`, `tb/gpt-5`) and bare upstream ids
  * that resolve within a known provider namespace (graceful fallback during
  * migration — catalogStore.resolveModel handles that).
  */
