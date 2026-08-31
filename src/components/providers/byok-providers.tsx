@@ -795,6 +795,15 @@ export function ByokProviders() {
   // OAuth redemption flow: when we land on /providers?connect=ok&redeem=<opaque>,
   // swap the opaque key for the token at /api/v1/byok/pollinations/redeem,
   // write the token to localStorage, and clean the URL.
+  //
+  // ROBUSTNESS FIXES (2026-08-31): the previous version (a) cleaned the URL
+  // BEFORE the async fetch resolved (so a re-render mid-flight lost the
+  // redeem param if a retry was needed), (b) had no retry on transient
+  // failures (dev server cold-compile could make the first fetch hit a
+  // 404/500 and the user saw "not connected"), and (c) swallowed the
+  // actual server error message. Now we: move URL cleanup into the IIFE's
+  // finally block, retry once after 1.5s on 404/network error, and
+  // console.error the real response for debugging.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
@@ -804,19 +813,44 @@ export function ByokProviders() {
     const reason = url.searchParams.get("reason");
     const warning = url.searchParams.get("warning");
 
+    let cancelled = false;
+
+    const cleanUrl = () => {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("connect");
+      u.searchParams.delete("provider");
+      u.searchParams.delete("redeem");
+      u.searchParams.delete("reason");
+      u.searchParams.delete("warning");
+      window.history.replaceState({}, "", u.toString());
+    };
+
     if (status === "ok" && provider === "pollinations" && redeem) {
       setRedeeming(true);
       (async () => {
-        try {
+        const attempt = async (): Promise<{ ok: boolean; token?: string; masked?: string; error?: string }> => {
           const res = await fetch(
             `/api/v1/byok/pollinations/redeem?k=${encodeURIComponent(redeem)}`,
             { credentials: "include", cache: "no-store" },
           );
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (res.ok && data.ok && data.token) {
+            return { ok: true, token: data.token, masked: data.masked };
+          }
+          return { ok: false, error: data?.error ?? `HTTP ${res.status}` };
+        };
+        try {
+          let result = await attempt();
+          // Retry once on 404 (dev cold-compile race / transient KV lag).
+          if (!result.ok && /404|not found|expired/i.test(result.error ?? "")) {
+            await new Promise((r) => setTimeout(r, 1500));
+            if (!cancelled) result = await attempt();
+          }
+          if (cancelled) return;
+          if (result.ok && result.token) {
             const entry: StoredByok = {
-              raw: data.token as string,
-              masked: (data.masked as string) ?? "",
+              raw: result.token,
+              masked: result.masked ?? "",
               addedAt: new Date().toISOString(),
               lastValidatedAt: new Date().toISOString(),
               lastValidationOk: true,
@@ -826,37 +860,41 @@ export function ByokProviders() {
             toast.success("Pollinations connected (token stored in your browser)");
             if (warning) toast.warning(warning);
           } else {
-            toast.error(data?.error ?? "Failed to redeem Pollinations token");
+            console.error("[pollinations redeem] failed:", result.error);
+            toast.error(result.error ?? "Failed to redeem Pollinations token");
           }
-        } catch {
+        } catch (err) {
+          if (cancelled) return;
+          console.error("[pollinations redeem] network error:", err);
           toast.error("Network error during Pollinations redemption");
         } finally {
-          setRedeeming(false);
+          if (!cancelled) {
+            setRedeeming(false);
+            cleanUrl();
+          }
         }
       })();
     } else if (status === "ok" && provider) {
       toast.success(`${provider[0].toUpperCase()}${provider.slice(1)} connected`);
       reloadStored();
+      cleanUrl();
     } else if (status === "error" && provider) {
       toast.error(
         reason
           ? `${provider[0].toUpperCase()}${provider.slice(1)} connect failed: ${reason}`
           : `${provider[0].toUpperCase()}${provider.slice(1)} connect failed`,
       );
-    }
-    // Clean the query so a later refresh doesn't re-fire the toast.
-    if (status || provider || redeem || reason || warning) {
-      url.searchParams.delete("connect");
-      url.searchParams.delete("provider");
-      url.searchParams.delete("redeem");
-      url.searchParams.delete("reason");
-      url.searchParams.delete("warning");
-      window.history.replaceState({}, "", url.toString());
+      cleanUrl();
+    } else if (status || provider || redeem || reason || warning) {
+      cleanUrl();
     }
 
     const onFocus = () => reloadStored();
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
   }, [reloadStored]);
 
   const refresh = useCallback(async () => {

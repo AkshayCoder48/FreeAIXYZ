@@ -52,11 +52,10 @@
  * an error so they can sign in first.
  */
 
-import { onyxSet, onyxGet, onyxDelete } from "@/lib/xyz/onyxbase";
+import { onyxSet } from "@/lib/xyz/onyxbase";
 import {
   exchangePollinationsCodeForToken,
   getPollinationsAppKey,
-  validatePollinationsKey,
 } from "@/lib/xyz/pollinations";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
@@ -247,25 +246,19 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  // Optional: best-effort validation round-trip — surface a soft warning
-  // if the token fails our userinfo check, but still hand it to the
-  // browser (the user can decide whether to keep it). We never persist
-  // the validation result server-side.
-  try {
-    const validation = await validatePollinationsKey(token);
-    if (!validation.ok) {
-      // Still redeem — the user can remove the token from localStorage if
-      // they don't want it. Add a reason so the UI surfaces a soft warning.
-      const target = new URL(PROVIDERS_PAGE, fallbackOrigin);
-      target.searchParams.set("connect", "ok");
-      target.searchParams.set("provider", "pollinations");
-      target.searchParams.set("redeem", redeemKey);
-      target.searchParams.set("warning", `Token saved but failed validation: ${validation.error ?? "unknown"}`);
-      return buildRedirect(target, true);
-    }
-  } catch {
-    // Validation best-effort — don't fail the OAuth flow.
-  }
+  // NOTE (2026-08-31): we NO LONGER call validatePollinationsKey() here
+  // before redirecting. That call hit gen.pollinations.ai/account/profile +
+  // /models with up to a 15s timeout, which BLOCKED the 303 redirect for
+  // up to 15s. The user saw a blank /api/v1/byok/pollinations/connect page
+  // hanging during that window ("the app is reloaded and even if not
+  // reloaded it's not connected at fetching of credentials correctly").
+  //
+  // The redeem KV entry is already stashed (above) — the browser can
+  // redeem it immediately. Validation is now deferred to the client-side
+  // "Test" button on the Providers page (POST /api/v1/byok/pollinations/test),
+  // which is opt-in and non-blocking. The token is written to localStorage
+  // regardless; if it later turns out to be invalid, the user can remove
+  // it and the chat playground surfaces an "invalid token" badge.
 
   return redirectWithSuccess(redeemKey, fallbackOrigin);
 }

@@ -516,6 +516,19 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   // even when the upstream call routes through Gratisfy (gratisfy:pollinations:*
   // models are pollen-denominated and thus gated behind the user's
   // Pollinations OAuth token in addition to the Gratisfy BYOK key).
+  // BYOK / wallet gating state (PRIVACY-MODE: read from localStorage).
+  //
+  // User directive (2026-08-31): "free pollen models no longer require a
+  // wallet; only pollen-priced + access:'paid' models do."
+  //
+  // So the gating rules are:
+  //   - gratisfy:*                         → ALWAYS needs a Gratisfy BYOK key.
+  //   - pollinations:* + free              → NO credential needed (anonymous
+  //                                          fallback via native gateway).
+  //   - pollinations:* + pollen-priced paid → needs a Pollinations wallet
+  //                                          (OAuth) token.
+  //   - gratisfy:pollinations:* (pollen)    → needs BOTH the Gratisfy key AND
+  //                                          the Pollinations wallet token.
   const byokState = React.useMemo<{
     state: "ready" | "invalid" | "needs-key" | "needs-auth" | "needs-pollen" | "n/a";
     label: string;
@@ -525,43 +538,65 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     if (!selectedByokProvider) {
       return { state: "n/a", label: "Open", panelKind: "none" };
     }
-    if (!user) {
-      return { state: "needs-auth", label: "Sign in", panelKind: "sign-in" };
-    }
-    const local = byokLocal[selectedByokProvider];
-    if (!local || !local.connected) {
-      return {
-        state: "needs-key",
-        label: "Configure",
-        panelKind:
-          selectedByokProvider === "gratisfy"
-            ? "configure-gratisfy"
-            : "configure-pollinations",
-      };
-    }
-    if (local.lastValidationOk === false) {
-      return {
-        state: "invalid",
-        label: "Invalid key",
-        panelKind: "invalid",
-        maskedKey: local.masked,
-      };
-    }
-    // Pollen gate: pollen-priced models require a Pollinations wallet.
-    // Applies to gratisfy:pollinations:* models (pollen-denominated, routed
-    // via Gratisfy) — they need the Gratisfy BYOK key above AND a
-    // Pollinations connection here.
-    const isPollen =
+    // Determine whether this model is pollen-priced + paid (the ONLY case
+    // where a Pollinations wallet is required). Free pollen models and
+    // non-pollen models never need a wallet.
+    const isPollenPaid =
       selectedModel?.pricing?.currency === "pollen" &&
       selectedModel.pricing.status !== "free";
-    if (isPollen && !byokLocal.pollinations?.connected) {
-      return {
-        state: "needs-pollen",
-        label: "Connect Pollinations",
-        panelKind: "configure-pollinations",
-      };
+
+    // Gate 1: Gratisfy BYOK key. Applies to ALL gratisfy:* models (they
+    // route through the user's Gratisfy upstream key — no anonymous
+    // fallback). Pollinations models skip this gate entirely.
+    if (selectedByokProvider === "gratisfy") {
+      if (!user) {
+        return { state: "needs-auth", label: "Sign in", panelKind: "sign-in" };
+      }
+      const local = byokLocal.gratisfy;
+      if (!local || !local.connected) {
+        return {
+          state: "needs-key",
+          label: "Configure",
+          panelKind: "configure-gratisfy",
+        };
+      }
+      if (local.lastValidationOk === false) {
+        return {
+          state: "invalid",
+          label: "Invalid key",
+          panelKind: "invalid",
+          maskedKey: local.masked,
+        };
+      }
     }
-    return { state: "ready", label: "Ready", panelKind: "none", maskedKey: local.masked };
+
+    // Gate 2: Pollinations wallet (OAuth) token. Applies ONLY to
+    // pollen-priced + paid models — both `pollinations:*` (direct) and
+    // `gratisfy:pollinations:*` (routed via Gratisfy). Free pollinations
+    // models pass through with NO wallet required (anonymous tier).
+    if (isPollenPaid) {
+      if (!user) {
+        return { state: "needs-auth", label: "Sign in", panelKind: "sign-in" };
+      }
+      const pollen = byokLocal.pollinations;
+      if (!pollen || !pollen.connected) {
+        return {
+          state: "needs-pollen",
+          label: "Connect Pollinations",
+          panelKind: "configure-pollinations",
+        };
+      }
+      if (pollen.lastValidationOk === false) {
+        return {
+          state: "invalid",
+          label: "Invalid token",
+          panelKind: "invalid",
+          maskedKey: pollen.masked,
+        };
+      }
+    }
+
+    return { state: "ready", label: "Ready", panelKind: "none" };
   }, [selectedByokProvider, user, byokLocal, selectedModel]);
 
   // ─── Actions ────────────────────────────────────────────────────────────
@@ -610,68 +645,60 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       setXyzCost(null);
       setStreamTokens(null);
 
-      // PRD §54 — BYOK gate (PRIVACY-MODE: read from localStorage, not from
-      // server-hydrated `byok` prop). Only `gratisfy:*` is a true BYOK model
-      // here — pollinations:* is routed through the native gateway with the
-      // user's token as an optional X-Pollinations-API-Key header.
+      // PRD §54 + user directive (2026-08-31): "free pollen models no longer
+      // require a wallet; only pollen-priced + access:'paid' models do."
+      //
+      // Credential attachment rules:
+      //   - gratisfy:*                          → ALWAYS needs X-Gratisfy-API-Key.
+      //   - pollinations:* + free               → NO header (anonymous tier via
+      //                                           the native gateway adapter).
+      //   - pollinations:* + pollen-priced paid → needs X-Pollinations-API-Key.
+      //   - gratisfy:pollinations:* (pollen)     → needs BOTH X-Gratisfy-API-Key
+      //                                           AND X-Pollinations-API-Key.
       const byokP = byokProviderFor(selectedModelRef.current);
+      const selModel = models.find((m) => m.id === selectedModelRef.current);
+      const isPollenPaid =
+        selModel?.pricing?.currency === "pollen" &&
+        selModel.pricing.status !== "free";
+
+      // Does this model need ANY credential header?
+      //   - gratisfy:* always (no anonymous fallback).
+      //   - pollinations:* only when pollen-priced + paid (free = anonymous).
+      const needsGratisfyKey = byokP === "gratisfy";
+      const needsPollenWallet = isPollenPaid; // covers both pollinations:* and gratisfy:pollinations:*
+
       let byokHeader: Record<string, string> = {};
-      if (byokP) {
+      if (needsGratisfyKey || needsPollenWallet) {
         if (!user) {
           setPhase("error");
-          setErrorMessage("Sign in to use BYOK models.");
-          toast.error("Sign in to use BYOK models.");
+          setErrorMessage("Sign in to use this model.");
+          toast.error("Sign in to use this model.");
           return;
         }
-        // Pull the user's key from localStorage on the client.
-        let storedRaw = "";
+        // Pull the user's keys from localStorage on the client (PRIVACY-MODE).
+        let storedGratisfy = "";
+        let storedPollen = "";
         try {
           const raw = window.localStorage.getItem("fxz:byok");
           if (raw) {
-            const parsed = JSON.parse(raw) as Record<string, { raw?: string } | null>;
-            storedRaw = (parsed[byokP]?.raw ?? "").trim();
+            const parsed = JSON.parse(raw) as Record<
+              "gratisfy" | "pollinations",
+              { raw?: string } | null
+            >;
+            storedGratisfy = (parsed.gratisfy?.raw ?? "").trim();
+            storedPollen = (parsed.pollinations?.raw ?? "").trim();
           }
         } catch {
           // ignore — leaves storedRaw empty, falls through to the gate
         }
-        if (!storedRaw) {
+
+        if (needsGratisfyKey && !storedGratisfy) {
           setPhase("error");
-          setErrorMessage(
-            `This model requires your ${byokP === "gratisfy" ? "Gratisfy" : "Pollinations"} API key.`,
-          );
-          toast.error(
-            `Connect your ${byokP === "gratisfy" ? "Gratisfy" : "Pollinations"} key on the Providers page.`,
-          );
+          setErrorMessage("This model requires your Gratisfy API key.");
+          toast.error("Connect your Gratisfy key on the Providers page.");
           return;
         }
-        // Send as a request header. The server reads it from the request
-        // and never persists it (PRIVACY-MODE).
-        const headerName =
-          byokP === "gratisfy" ? "X-Gratisfy-API-Key" : "X-Pollinations-API-Key";
-        byokHeader = { [headerName]: storedRaw };
-      }
-
-      // Pollen gate (user directive: "pollen models required pollination
-      // connection"). Pollen-priced models require a connected Pollinations
-      // wallet token in localStorage, in addition to the BYOK key above.
-      // The token is sent as X-Pollinations-API-Key so the server can
-      // attribute the pollen-denominated usage to the user's wallet.
-      const selModel = models.find((m) => m.id === selectedModelRef.current);
-      const isPollen =
-        selModel?.pricing?.currency === "pollen" &&
-        selModel.pricing.status !== "free";
-      if (isPollen) {
-        let pollenToken = "";
-        try {
-          const raw = window.localStorage.getItem("fxz:byok");
-          if (raw) {
-            const parsed = JSON.parse(raw) as Record<string, { raw?: string } | null>;
-            pollenToken = (parsed.pollinations?.raw ?? "").trim();
-          }
-        } catch {
-          /* ignore */
-        }
-        if (!pollenToken) {
+        if (needsPollenWallet && !storedPollen) {
           setPhase("error");
           setErrorMessage(
             "This pollen-priced model requires a connected Pollinations wallet. Connect yours on the Providers page (OAuth Connect-wallet).",
@@ -679,9 +706,14 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
           toast.error("Connect your Pollinations wallet to use pollen-priced models.");
           return;
         }
-        // Attach the Pollinations token even when the upstream route is
-        // Gratisfy, so the gateway can attribute pollen usage.
-        byokHeader["X-Pollinations-API-Key"] = pollenToken;
+
+        // Attach the headers (only the ones this model needs).
+        if (needsGratisfyKey) {
+          byokHeader["X-Gratisfy-API-Key"] = storedGratisfy;
+        }
+        if (needsPollenWallet) {
+          byokHeader["X-Pollinations-API-Key"] = storedPollen;
+        }
       }
 
       // Build the message list — prior turns + new user turn.

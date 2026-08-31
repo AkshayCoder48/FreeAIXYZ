@@ -35,8 +35,107 @@ function baseUrl(): string {
   return url.replace(/\/+$/, "");
 }
 
-/** Resolve the Bearer token; throws if unset in production. */
+// ─── Auto key recovery ───────────────────────────────────────────────────────
+// The OnyxBase instance (onyxbase-phi.vercel.app) is a VERCEL PREVIEW that
+// gets recycled periodically — each recycle WIPES the account database, so
+// the key in ONYXBASE_API_KEY stops working (401 on every call). This caused
+// "Could not start a session (persistence backend unreachable)" lockouts.
+//
+// Self-healing strategy: on the first 401, the client logs in (or, if the
+// instance was wiped, re-registers) with a DETERMINISTIC recovery account
+// and swaps the fresh key into a module-level cache. The deterministic
+// email+password means concurrent server instances converge on the SAME
+// account: the first one to hit the 401 re-registers it; the rest log in.
+//
+// The recovered key is also persisted back to .env.local in dev so the next
+// dev-server restart starts from a working key (best-effort; on Vercel the
+// filesystem is read-only, so recovery re-runs per cold instance).
+
+let cachedKey: string | null = null;
+let recoveryInFlight: Promise<string | null> | null = null;
+
+function recoveryCredentials(): { email: string; password: string } {
+  return {
+    email: process.env.ONYXBASE_RECOVERY_EMAIL || "freeaixyz.phi@gmail.com",
+    password: process.env.ONYXBASE_RECOVERY_PASSWORD || "freeaixyz-phi-2026",
+  };
+}
+
+/** Best-effort: write the recovered key back into .env.local (dev only). */
+async function persistKeyToLocalEnv(key: string): Promise<void> {
+  if (process.env.NODE_ENV === "production") return;
+  if (process.env.VERCEL) return;
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const envPath = path.join(process.cwd(), ".env.local");
+    if (!fs.existsSync(envPath)) return;
+    const cur = fs.readFileSync(envPath, "utf8");
+    const next = cur.replace(
+      /^(#.*\n)*^ONYXBASE_API_KEY="[^"]*"/m,
+      `ONYXBASE_API_KEY="${key}"`,
+    );
+    if (next !== cur) fs.writeFileSync(envPath, next);
+  } catch {
+    // Read-only FS or missing file — in-process cache is enough.
+  }
+}
+
+/** Recover a working API key via login (account intact) or register (wiped).
+ * Single-flight: concurrent callers share one recovery attempt. */
+async function recoverApiKey(): Promise<string | null> {
+  if (recoveryInFlight) return recoveryInFlight;
+  recoveryInFlight = (async () => {
+    const { email, password } = recoveryCredentials();
+    const base = baseUrl();
+    try {
+      // 1) Login first — retrieves the existing account's key without
+      //    creating duplicates when the account still exists.
+      const loginRes = await fetch(`${base}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (loginRes.ok) {
+        const d = (await loginRes.json()) as { apiKey?: string };
+        if (d.apiKey) {
+          cachedKey = d.apiKey;
+          await persistKeyToLocalEnv(d.apiKey);
+          console.warn(`[onyxbase] key recovered via login (${email}) — apiKeyPrefix=${d.apiKey.slice(0, 16)}`);
+          return d.apiKey;
+        }
+      }
+      // 2) Register — the instance was wiped (or the account never existed).
+      const regRes = await fetch(`${base}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (regRes.ok) {
+        const d = (await regRes.json()) as { apiKey?: string };
+        if (d.apiKey) {
+          cachedKey = d.apiKey;
+          await persistKeyToLocalEnv(d.apiKey);
+          console.warn(`[onyxbase] key recovered via re-register (${email}) — apiKeyPrefix=${d.apiKey.slice(0, 16)}`);
+          return d.apiKey;
+        }
+      }
+      console.error(`[onyxbase] key recovery failed: login=${loginRes.status} register=${regRes.status}`);
+      return null;
+    } catch (err) {
+      console.error("[onyxbase] key recovery network error:", err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      // Allow a future recovery if this one ends up failing later again.
+      setTimeout(() => { recoveryInFlight = null; }, 30_000);
+    }
+  })();
+  return recoveryInFlight;
+}
+
+/** Resolve the Bearer token. Uses the recovered key when present. */
 function apiKey(): string {
+  if (cachedKey) return cachedKey;
   const key = process.env.ONYXBASE_API_KEY;
   if (!key) {
     if (process.env.NODE_ENV === "production") {
@@ -73,7 +172,8 @@ export interface OnyxWhoami {
   isAdmin?: boolean;
 }
 
-async function call(
+/** Raw fetch against OnyxBase with the current key + timeout. */
+async function rawCall(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
@@ -94,6 +194,22 @@ async function call(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Call with auto key recovery: on 401, recover the key once and retry. */
+async function call(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  let res = await rawCall(path, init);
+  if (res.status === 401) {
+    // The key was revoked (instance recycled). Try to recover + retry once.
+    const fresh = await recoverApiKey();
+    if (fresh) {
+      res = await rawCall(path, init);
+    }
+  }
+  return res;
 }
 
 /** SET a value (upsert). Auto-typed — pass any JSON-serializable value.
@@ -120,11 +236,14 @@ export async function onyxSet<T>(
       cache: "no-store",
     } as RequestInit);
     if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[onyxSet] ${baseUrl()}/v1/set → HTTP ${res.status} for key "${key}": ${body.slice(0, 200)}`);
       return { ok: false };
     }
     const data = (await res.json()) as OnyxSetResult;
     return data;
-  } catch {
+  } catch (err) {
+    console.error(`[onyxSet] network/throw for key "${key}" at ${baseUrl()}:`, err instanceof Error ? err.message : err);
     return { ok: false };
   }
 }
