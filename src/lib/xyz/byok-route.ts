@@ -1,28 +1,32 @@
 /**
  * BYOK chat-completions handler (PRD §17, §36, §38, §39, §54, §61, §62).
  *
- * Handles source-aware model ids `gratisfy:<provider>:<model>` and
- * `g4f:<provider>:<model>`. The existing native chat route delegates here for
- * those ids.
+ * PRIVACY-MODE BYOK (2026-08-30): the user's private BYOK credentials
+ * (Gratisfy gxyz-…, Pollinations token) are NEVER persisted server-side.
+ * They live in the user's browser localStorage and are sent per-request
+ * via the `X-Gratisfy-API-Key` (or `X-API-Key` + `X-Provider: gratisfy`)
+ * header. The server reads from the header ONLY — never from a server-side
+ * credential store. This means a FreeAIXYZ server compromise cannot leak
+ * the user's upstream provider keys.
+ *
+ * Handles source-aware model ids `gratisfy:<provider>:<model>`. The
+ * existing native chat route delegates here for those ids.
  *
  * Flow (PRD §61, §91):
- *   session → userId → resolve model → resolve BYOK key (header > stored)
+ *   session → userId → resolve model → resolve BYOK key from request header
  *   → stream from upstream (OpenAI SSE) → collect usage → record usage
  *   → BYOK platform XYZ charge = 0 (marketEquivalentCost recorded for display)
  *
- * No provider fallback (PRD §17): a Gratisfy request stays on Gratisfy; a G4F
- * request stays on G4F. Credentials are never logged (PRD §65).
+ * No provider fallback (PRD §17): a Gratisfy request stays on Gratisfy.
+ * Credentials are never logged (PRD §65).
  */
 
 import {
   ByokUpstreamError,
   buildClearCookie,
   buildSessionCookie,
-  completeG4fChat,
   completeGratisfyChat,
   getSessionUserId,
-  loadBYOKKey,
-  streamG4fChat,
   streamGratisfyChat,
   tallyUsage,
 } from "@/lib/xyz";
@@ -62,36 +66,7 @@ function envErrorEnvelope(message: string, requestId: string) {
   );
 }
 
-// ─── Gratisfy bridges (W2-A) ─────────────────────────────────────────────────
-// The rebuilt gratisfy adapter (PRD §15, §16, §17) now exposes a normalized
-// StreamEvent / {content, usage} API. byok-route.ts internally still treats
-// the chat adapter as a string-yielding async generator (for usage capture)
-// and a {text, usage:{inputTokens, outputTokens, ...}} result. These bridges
-// re-shape the new API back to the shape this route was already written
-// against, so the existing iteration + tallyUsage + recordByokUsage plumbing
-// is unchanged. (Sampling params temperature/maxTokens/topP are dropped for
-// Gratisfy per the new adapter's PRD §15 contract; G4F keeps them.)
-//
-// MODEL ID ROUTING (the "Invalid model or alias" 400 fix — 2026-08-30):
-// The unified registry emits Gratisfy model ids as
-// `gratisfy:<upstreamProvider>:<upstreamId>` where `upstreamId` is the
-// catalog's bare id (e.g. "tomdacatto/claude-opus-5", "glm-4-flashx:free",
-// "inclusionai/ling-3.0-flash-fin:free"). The upstream chat endpoint
-// `https://api.gratisfy.xyz/v1/chat/completions` expects ids in the form
-// `<upstreamProvider>/<upstreamId>` (verified live: upstream /v1/models
-// lists `unorouter/glm-4-search:free`, `crax-gpt/gpt-5-6-luna`,
-// `pollinations/<model>` — all prefixed with the upstream provider slug).
-//
-// The catalog's `id` field is the BARE form (no provider prefix). So we must
-// reconstruct the upstream chat-routable id as `<provider>/<upstreamId>`
-// before posting to the chat endpoint — otherwise upstream returns
-// HTTP 400 "Invalid model or alias: '<upstreamId>'. Must be a valid model
-// name or alias." (which is exactly the error the user reported on
-// `gratisfy:pollinations:tomdacatto/claude-opus-5`).
-//
-// The reconstruction is idempotent: if `upstreamId` already starts with
-// `<provider>/` (rare — happens when the catalog id happens to include the
-// provider prefix), we leave it alone. Otherwise we prepend `<provider>/`.
+// ─── Gratisfy bridges ─────────────────────────────────────────────────────────
 
 type UpstreamUsage = {
   prompt_tokens?: number;
@@ -103,12 +78,6 @@ type UpstreamUsage = {
  *
  * - If `upstreamId` already starts with `${provider}/` → return as-is.
  * - Otherwise → return `${provider}/${upstreamId}`.
- *
- * The Gratisfy chat endpoint (`api.gratisfy.xyz/v1/chat/completions`)
- * expects the prefixed form `<providerSlug>/<modelId>` (verified live
- * 2026-08-30 against /v1/models — all 185 routable ids are prefixed).
- * The public catalog (`gratisfy.xyz/api/models/all`) strips the prefix
- * into a separate `provider` field, so we must reconstruct it here.
  */
 function buildUpstreamModelId(provider: string, upstreamId: string): string {
   const p = (provider ?? "").trim();
@@ -120,15 +89,11 @@ function buildUpstreamModelId(provider: string, upstreamId: string): string {
 
 async function* bridgeGratisfyStream(args: {
   apiKey: string;
-  /** Routing provider slug (e.g. "pollinations", "unorouter", "crax-gpt"). */
   provider: string;
   model: string;
   messages: Array<{ role: string; content: string }>;
   signal?: AbortSignal;
 }): AsyncGenerator<string, UpstreamUsage | undefined, unknown> {
-  // Reconstruct the upstream chat-routable id from the bare catalog id.
-  // Without this, Gratisfy returns 400 "Invalid model or alias" for any
-  // catalog id that doesn't include the provider prefix.
   const upstreamModel = buildUpstreamModelId(args.provider, args.model);
   const stream = await streamGratisfyChat({
     apiKey: args.apiKey,
@@ -151,7 +116,6 @@ async function* bridgeGratisfyStream(args: {
 
 async function bridgeGratisfyComplete(args: {
   apiKey: string;
-  /** Routing provider slug (e.g. "pollinations", "unorouter", "crax-gpt"). */
   provider: string;
   model: string;
   messages: Array<{ role: string; content: string }>;
@@ -181,67 +145,15 @@ async function bridgeGratisfyComplete(args: {
   };
 }
 
-// ─── G4F bridges (W2-B) ───────────────────────────────────────────────────────
-// The rebuilt G4F adapter exposes the same StreamEvent / {content, usage} API
-// as Gratisfy. Bridge it to the shape this route uses internally.
-
-async function* bridgeG4fStream(args: {
-  apiKey: string;
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-  signal?: AbortSignal;
-}): AsyncGenerator<string, UpstreamUsage | undefined, unknown> {
-  const stream = await streamG4fChat({
-    apiKey: args.apiKey,
-    model: args.model,
-    messages: args.messages,
-    signal: args.signal,
-  });
-  let usage: UpstreamUsage | undefined;
-  for await (const ev of stream) {
-    if (ev.type === "delta") {
-      yield ev.content;
-    } else if (ev.type === "usage") {
-      usage = ev.usage;
-    } else if (ev.type === "done") {
-      break;
-    }
-  }
-  return usage;
-}
-
-async function bridgeG4fComplete(args: {
-  apiKey: string;
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-}): Promise<{
-  text: string;
-  usage?: {
-    inputTokens: number;
-    outputTokens: number;
-    cacheTokens: number;
-    estimated: boolean;
-  };
-}> {
-  const r = await completeG4fChat({
-    apiKey: args.apiKey,
-    model: args.model,
-    messages: args.messages,
-  });
-  return {
-    text: r.content,
-    usage: {
-      inputTokens: r.usage.prompt_tokens,
-      outputTokens: r.usage.completion_tokens,
-      cacheTokens: 0,
-      estimated: false,
-    },
-  };
-}
-
 /**
  * Entry point — called from /api/v1/chat/completions when the model id is a
- * BYOK source-aware id. Returns the OpenAI-shaped Response.
+ * BYOK source-aware id (`gratisfy:<provider>:<model>`). Returns the OpenAI-
+ * shaped Response.
+ *
+ * PRIVACY-MODE: the BYOK key is read ONLY from the request header
+ * (`X-Gratisfy-API-Key` or the generic `X-API-Key` + `X-Provider: gratisfy`).
+ * The server does NOT consult any server-side credential store — the user's
+ * private key lives in their browser localStorage (PRD §66 — privacy).
  */
 export async function handleByokChatCompletion(
   body: {
@@ -258,8 +170,8 @@ export async function handleByokChatCompletion(
   const requestId = generateRequestId();
   const secure = isSecure(request);
 
-  // 1. Authenticate (PRD §91). BYOK requires a session — the user's stored
-  //    credential is keyed by userId, and usage is recorded per-user.
+  // 1. Authenticate (PRD §91). BYOK requires a session — usage is recorded
+  //    per-user (XYZ cost = 0 for BYOK but still tracked for analytics).
   const userId = await getSessionUserId(request);
   if (!userId) {
     return new Response(
@@ -285,27 +197,29 @@ export async function handleByokChatCompletion(
   }
   const { source, provider, model } = parsed;
 
-  // 3. Resolve the BYOK key (header > stored — PRD §7).
-  const headerName =
-    source === "gratisfy" ? "x-gratisfy-api-key" : "x-g4f-api-key";
-  // Also support the generic X-API-Key + X-Provider compatibility (PRD §7).
+  // 3. Resolve the BYOK key (HEADER ONLY — never server-side storage).
+  //    The client sends the user's private key from localStorage via one of:
+  //      X-Gratisfy-API-Key: gxyz-…
+  //      X-API-Key: gxyz-… + X-Provider: gratisfy
+  //    Both shapes are accepted for OpenAI-client compatibility.
   const genericKey = request.headers.get("x-api-key");
   const genericProvider = request.headers.get("x-provider");
   let headerKey: string | null = null;
   if (genericKey && genericProvider?.toLowerCase() === source) {
     headerKey = genericKey;
   } else {
+    const headerName =
+      source === "gratisfy" ? "x-gratisfy-api-key" : `x-${source}-api-key`;
     headerKey = request.headers.get(headerName);
   }
-  const storedKey = await loadBYOKKey(userId, source === "gratisfy" ? "gratisfy" : "g4f");
-  const apiKey = (headerKey ?? storedKey ?? "").trim();
+  const apiKey = (headerKey ?? "").trim();
   if (!apiKey) {
     return new Response(
       JSON.stringify({
         error: {
           type: "authentication_error",
           code: "BYOK_KEY_REQUIRED",
-          message: `This model requires a ${source === "gratisfy" ? "Gratisfy" : "G4F"} BYOK key. Connect one in Settings → Providers.`,
+          message: `This model requires a ${source === "gratisfy" ? "Gratisfy" : source} BYOK key. Connect one in Providers → ${source}.`,
           provider: source,
           model: body.model,
           request_id: requestId,
@@ -318,8 +232,7 @@ export async function handleByokChatCompletion(
     );
   }
 
-  // 4. Normalize messages (reuse the vision-optional normalizer — image parts
-  //    stripped for non-vision upstreams, string-only content forwarded).
+  // 4. Normalize messages.
   const { normalizeMessageContent } = await import("@/lib/gateway/content-normalize");
   const messages = body.messages
     .map((m) => {
@@ -384,7 +297,7 @@ function parseSourceModel(
   const parts = id.split(":");
   if (parts.length < 3) return null;
   const [source, provider, ...rest] = parts;
-  if (source !== "gratisfy" && source !== "g4f") return null;
+  if (source !== "gratisfy") return null;
   return { source, provider, model: rest.join(":") };
 }
 
@@ -402,21 +315,13 @@ async function streamByokResponse(args: {
   pricing: ReturnType<typeof resolveSuppliedPricing>;
   secure: boolean;
 }): Promise<Response> {
-  const gen =
-    args.source === "gratisfy"
-      ? bridgeGratisfyStream({
-          apiKey: args.apiKey,
-          provider: args.provider,
-          model: args.model,
-          messages: args.messages,
-          signal: args.sampling.signal,
-        })
-      : bridgeG4fStream({
-          apiKey: args.apiKey,
-          model: args.model,
-          messages: args.messages,
-          signal: args.sampling.signal,
-        });
+  const gen = bridgeGratisfyStream({
+    apiKey: args.apiKey,
+    provider: args.provider,
+    model: args.model,
+    messages: args.messages,
+    signal: args.sampling.signal,
+  });
 
   const created = Math.floor(Date.now() / 1000);
   const completionId = `chatcmpl-${args.requestId}`;
@@ -427,16 +332,9 @@ async function streamByokResponse(args: {
     async start(controller) {
       let accumulated = "";
       let upstreamUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
-      let first = true;
       const enqueue = (obj: Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
-      const enqueueHeader = () => {
-        if (first) {
-          first = false;
-        }
-      };
-      enqueueHeader();
       try {
         while (true) {
           const { value, done } = await gen.next();
@@ -455,7 +353,6 @@ async function streamByokResponse(args: {
             });
           }
         }
-        // Final chunk with finish_reason + usage (PRD §39 — charge ONCE).
         const usage = tallyUsage(
           args.model,
           args.source,
@@ -476,10 +373,8 @@ async function streamByokResponse(args: {
           },
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        // Record usage + charge (BYOK: platform charge 0, market equiv recorded).
         await recordByokUsage(args, accumulated, promptText, usage, upstreamUsage);
       } catch (err) {
-        // In-stream error → OpenAI-shaped terminal error chunk (PRD §62).
         enqueue({
           error: {
             type: "provider_error",
@@ -491,7 +386,6 @@ async function streamByokResponse(args: {
           },
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        // Partial output + actual usage → record partial (PRD §42).
         const usage = tallyUsage(args.model, args.source, accumulated, promptText);
         await recordByokUsage(args, accumulated, promptText, usage);
       } finally {
@@ -503,8 +397,7 @@ async function streamByokResponse(args: {
       }
     },
     cancel() {
-      // User pressed Stop (PRD §42): abort upstream; partial usage already
-      // being recorded in the stream's finally block above via tallyUsage.
+      // User pressed Stop.
     },
   });
 
@@ -532,19 +425,12 @@ async function completeByokResponse(args: {
   pricing: ReturnType<typeof resolveSuppliedPricing>;
   secure: boolean;
 }): Promise<Response> {
-  const result =
-    args.source === "gratisfy"
-      ? await bridgeGratisfyComplete({
-          apiKey: args.apiKey,
-          provider: args.provider,
-          model: args.model,
-          messages: args.messages,
-        })
-      : await bridgeG4fComplete({
-          apiKey: args.apiKey,
-          model: args.model,
-          messages: args.messages,
-        });
+  const result = await bridgeGratisfyComplete({
+    apiKey: args.apiKey,
+    provider: args.provider,
+    model: args.model,
+    messages: args.messages,
+  });
 
   const promptText = args.messages.map((m) => m.content).join("\n");
   const usage = tallyUsage(
@@ -596,7 +482,6 @@ async function recordByokUsage(
   usage: { inputTokens: number; outputTokens: number; cacheTokens: number; estimated: boolean },
   upstreamUsage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cost?: number },
 ): Promise<void> {
-  // Market-equivalent cost (display only — BYOK upstream bills the user's key).
   const breakdown = calculateCost(
     args.model,
     usage.inputTokens,
@@ -604,13 +489,24 @@ async function recordByokUsage(
     usage.cacheTokens,
     args.pricing,
   );
+  // Currency-aware market-equivalent cost (user directive: 1 pollen = 1 XYZ).
+  // For pollen-priced models (Gratisfy catalog / Pollinations metadata),
+  // breakdown.usdCost is intentionally 0 (pollen is not USD — PRD §26). The
+  // meaningful market-equivalent figure is breakdown.xyzCost, which already
+  // reflects the 1:1 pollen→XYZ peg. For USD-priced models, usdCost is the
+  // market-equivalent as before. If the upstream provider reports its own
+  // cost, that takes precedence.
+  const isPollen = breakdown.pricing.currency === "pollen";
   const marketEquivalentCost =
     upstreamUsage?.cost != null
       ? upstreamUsage.cost
-      : breakdown.usdCost;
+      : isPollen
+        ? breakdown.xyzCost
+        : breakdown.usdCost;
+  const marketEquivalentLabel = isPollen
+    ? `${marketEquivalentCost.toFixed(6)} XYZ`
+    : `$${marketEquivalentCost.toFixed(6)}`;
 
-  // BYOK: platform XYZ charge = 0 (PRD §36). Record at 0 cost so analytics
-  // still captures the generation + tokens.
   await spendXYZ(args.userId, 0, {
     requestId: args.requestId,
     source: args.source,
@@ -622,7 +518,7 @@ async function recordByokUsage(
     cacheTokens: usage.cacheTokens,
     usdCost: 0,
     marketEquivalentCost,
-    note: `BYOK ${args.source} (market-equivalent $${marketEquivalentCost.toFixed(6)}, ${usage.estimated ? "estimated" : "reported"} tokens)`,
+    note: `BYOK ${args.source} (market-equivalent ${marketEquivalentLabel}, ${usage.estimated ? "estimated" : "reported"} tokens)`,
   });
 }
 
@@ -632,24 +528,11 @@ function byokErrorResponse(
   err: unknown,
   model: string,
   source: Source,
-  /** Upstream routing provider slug (e.g. "pollinations", "unorouter",
-   *  "crax-gpt"). Surfaced in the error envelope so the user can see which
-   *  specific upstream provider the request was routed to (and, for
-   *  400 "Invalid model or alias" errors on routed models like
-   *  `gratisfy:pollinations:tomdacatto/claude-opus-5`, which BYOK
-   *  sub-provider key they need to connect on the Gratisfy dashboard). */
   provider: string,
   requestId: string,
 ): Response {
-  // Never leak credentials (PRD §65). Strip any Authorization/key headers.
   if (err instanceof ByokUpstreamError) {
     const status = err.status >= 400 && err.status < 500 ? err.status : 502;
-    // Detect the "Invalid model or alias" 400 from upstream Gratisfy — this
-    // happens when the user's Gratisfy BYOK key doesn't have a per-provider
-    // sub-key connected for the routed provider (e.g. Pollinations-routed
-    // `tomdacatto/claude-opus-5` requires a Pollinations BYOK sub-key on the
-    // user's Gratisfy account). Surface a clearer actionable message rather
-    // than the opaque upstream blob.
     const bodyLower = err.body.toLowerCase();
     const isInvalidModel400 =
       status === 400 &&

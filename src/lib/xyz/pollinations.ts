@@ -37,7 +37,10 @@
  *   - `flat_rate`(true|false) — image/video models charged per-image, not per-token
  *
  * Pricing: every model carries a `pricing` object with `currency:"pollen"`
- * (Pollinations internal token, NOT USD — 1 pollen ≠ $1) and per-token rates:
+ * (Pollinations internal token, NOT USD — 1 pollen ≠ $1) and per-token rates.
+ * The FreeAIXYZ gateway pegs 1 pollen = 1 XYZ (see POLLEN_XYZ_PEG in
+ * ./pricing-board.ts), so pollen-denominated prices are billed + displayed
+ * in the gateway's XYZ currency at par.
  *   {
  *     "currency": "pollen",
  *     "promptTextTokens":          "0.00000015",
@@ -51,7 +54,7 @@
  *     "completionAudioTokens":     "0.0001"
  *   }
  *
- * The catalog UI shows pollen pricing with a "Pollen" currency badge rather
+ * The catalog UI shows pollen pricing as XYZ (1 pollen = 1 XYZ peg) rather
  * than mislabeling it as USD (PRD §26 — never confuse $0 with "not
  * documented"; never present a different currency's price as USD).
  */

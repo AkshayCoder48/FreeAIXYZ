@@ -78,7 +78,7 @@ interface ModelPricing {
   verifiedAt?: string;
 }
 
-type Source = "native" | "gratisfy" | "g4f" | "pollinations";
+type Source = "native" | "gratisfy" | "pollinations";
 
 interface UnifiedModelEntry {
   id: string; // publicId, e.g. "native:tb:gpt-5"
@@ -111,21 +111,21 @@ interface PricingResponse {
 
 function sourceLabel(source: Source): string {
   if (source === "gratisfy") return "Gratisfy";
-  if (source === "g4f") return "G4F";
+  if (source === "pollinations") return "Pollinations";
   return "Native";
 }
 
 /**
- * Section id — collapses all g4f sub-providers into a single "g4f" section
- * and all gratisfy sub-providers into a single "gratisfy" section (so we
- * don't end up with 280+ tabs). Native providers stay per-provider since
- * each short code (tb / au / fx / …) is a distinct upstream.
+ * Section id — collapses all gratisfy sub-providers into a single
+ * "gratisfy" section and all pollinations into "pollinations" (so we
+ * don't end up with 280+ tabs). Native providers stay per-provider
+ * since each short code (tb / au / fx / …) is a distinct upstream.
  *
- * Matches the user's example: `All | Gratisfy | G4F | Provider X | Y`.
+ * Matches the user's example: `All | Gratisfy | Pollinations | Provider X | Y`.
  */
 function sectionId(m: UnifiedModelEntry): string {
   if (m.source === "native") return `native:${m.provider}`;
-  return m.source; // "gratisfy" or "g4f"
+  return m.source; // "gratisfy" or "pollinations"
 }
 
 /**
@@ -142,8 +142,8 @@ function providerSubLabel(m: UnifiedModelEntry): string {
   // Small label under the model name on the card. For native, show the
   // raw provider code; for BYOK sources, show the source label + sub-id.
   if (m.source === "native") return `Native · ${m.provider}`;
-  if (m.source === "g4f") {
-    return `G4F · ${m.provider}`;
+  if (m.source === "pollinations") {
+    return `Pollinations · ${m.provider}`;
   }
   return sourceLabel(m.source);
 }
@@ -211,17 +211,17 @@ interface SourceBadgeMeta {
 }
 
 function sourceBadge(m: UnifiedModelEntry): SourceBadgeMeta {
-  // BYOK=violet, G4F=orange, Native=slate. NO indigo or blue anywhere.
+  // Gratisfy=violet, Pollinations=rose, Native=slate. NO indigo or blue.
   if (m.source === "gratisfy") {
     return {
       label: "BYOK",
       cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
     };
   }
-  if (m.source === "g4f") {
+  if (m.source === "pollinations") {
     return {
-      label: "G4F",
-      cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+      label: "Pollinations",
+      cls: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
     };
   }
   return {
@@ -252,11 +252,13 @@ function isPricingDocumented(p: ModelPricing | undefined | null): boolean {
 
 function formatPrice(v: number | null | undefined, currency: "USD" | "pollen" = "USD"): string {
   if (v == null) return "—";
-  if (v === 0) return currency === "pollen" ? "0 pollen" : "$0";
+  // 1 pollen = 1 XYZ (gateway peg). Pollen-denominated upstream prices are
+  // displayed in the gateway's XYZ currency at par.
+  if (v === 0) return currency === "pollen" ? "0 XYZ" : "$0";
   if (currency === "pollen") {
-    if (v < 0.01) return `${v.toFixed(4)} pollen`;
-    if (v < 1) return `${v.toFixed(3)} pollen`;
-    return `${v.toFixed(2)} pollen`;
+    if (v < 0.01) return `${v.toFixed(4)} XYZ`;
+    if (v < 1) return `${v.toFixed(3)} XYZ`;
+    return `${v.toFixed(2)} XYZ`;
   }
   if (v < 0.01) return `$${v.toFixed(4)}`;
   if (v < 1) return `$${v.toFixed(3)}`;

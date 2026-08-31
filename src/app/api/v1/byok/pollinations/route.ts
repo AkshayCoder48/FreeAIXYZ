@@ -1,23 +1,19 @@
 /**
- * POST   /api/v1/byok/pollinations — save (masked) Pollinations token, validate.
- * DELETE /api/v1/byok/pollinations — remove the token.
+ * POST   /api/v1/byok/pollinations — validate a Pollinations token (PRIVACY-MODE).
+ * DELETE /api/v1/byok/pollinations — no-op (token lives in localStorage).
  *
- * Requires a signed-in user. Stored in OnyxBase keyed by userId — persists
- * across refresh / tab changes / devices. Never returns the raw token.
+ * PRIVACY-MODE BYOK (2026-08-30): the user's private Pollinations token is
+ * NEVER persisted server-side. The POST handler validates the token against
+ * the upstream and returns the masked metadata + validation result so the
+ * client can store the token in localStorage and surface the connected
+ * state in the UI.
  *
- * For the OAuth "Connect" flow (Pollinations BYOP with commission), the
- * callback URI registered in the Pollinations dashboard for app key
- * pk_EGCSwhDRDNf7HtvK is:
- *   https://freeaixyz4all.vercel.app/api/v1/byok/pollinations/connect
- * That path is implemented at ./connect/route.ts (GET handler) — it
- * exchanges the OAuth code (+ PKCE verifier from a cookie) for a Bearer
- * token via exchangePollinationsCodeForToken, then saveBYOK + validate.
- * Manual key entry via the POST handler below is the fallback when the
- * OAuth round-trip isn't available.
+ * For the OAuth "Connect wallet" flow, see ./connect/route.ts (it stashes
+ * the token in a 60s-TTL KV entry, the browser redeems via ./redeem/).
  */
 
-import { saveBYOK, removeBYOK, setBYOKValidation } from "@/lib/xyz";
 import { validatePollinationsKey } from "@/lib/xyz/pollinations";
+import { maskKey } from "@/lib/xyz/crypto";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
@@ -36,24 +32,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBYOK(auth.userId, "pollinations", key);
-
-    // Validate against the upstream — no fake "Connected".
+    // PRIVACY-MODE: validate only — NEVER save to OnyxBase.
     const validation = await validatePollinationsKey(key);
-    await setBYOKValidation(
-      auth.userId,
-      "pollinations",
-      validation.ok,
-      validation.ok ? undefined : validation.error,
-    );
+    const masked = maskKey(key);
+    const addedAt = new Date().toISOString();
 
     if (!validation.ok) {
       return Response.json(
         {
           ok: false,
           error: validation.error ?? "Validation failed",
-          meta,
+          meta: {
+            provider: "pollinations",
+            connected: false,
+            masked,
+            addedAt,
+            lastValidatedAt: addedAt,
+            lastValidationOk: false,
+          },
         },
         { status: 400 },
       );
@@ -61,7 +57,14 @@ export async function POST(request: Request) {
 
     return Response.json({
       ok: true,
-      meta,
+      meta: {
+        provider: "pollinations",
+        connected: true,
+        masked,
+        addedAt,
+        lastValidatedAt: addedAt,
+        lastValidationOk: true,
+      },
       validation: { ok: true, modelCount: validation.modelCount ?? 0 },
       modelsDiscovered: validation.modelCount ?? 0,
     });
@@ -74,9 +77,10 @@ export async function POST(request: Request) {
   }
 }
 
+/** DELETE — no-op in privacy-mode. The client deletes the token from
+ *  localStorage; there's nothing server-side to clear. */
 export async function DELETE(request: Request) {
   const auth = await requireAuth(request);
   if ("response" in auth) return auth.response;
-  await removeBYOK(auth.userId, "pollinations");
   return Response.json({ ok: true });
 }

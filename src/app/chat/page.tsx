@@ -1,14 +1,19 @@
 /**
  * /chat — Live Models Playground (W4-F, PRD §53, §54, §77).
  *
- * RSC. Server-side auth + parallel fetch of the unified model catalog, the
- * user's BYOK connection state, and the XYZ→USD multiplier. Serializes a
- * JSON-safe `ChatPlaygroundData` shape to the client island, which owns the
- * interactive chat surface (state machine, SSE streaming, markdown render).
+ * RSC. Server-side auth + parallel fetch of the unified model catalog and
+ * the XYZ→USD multiplier. Serializes a JSON-safe `ChatPlaygroundData`
+ * shape to the client island, which owns the interactive chat surface
+ * (state machine, SSE streaming, markdown render).
  *
- * Auth is OPTIONAL here — anonymous users land on native models. Picking a
- * BYOK (`gratisfy:*` / `g4f:*`) model surfaces a "Sign in" or "Configure"
- * prompt rather than bouncing them off the page.
+ * Auth is OPTIONAL here — anonymous users land on native models. Picking
+ * a BYOK (`gratisfy:*` / `pollinations:*`) model surfaces a "Sign in" or
+ * "Connect" prompt rather than bouncing them off the page.
+ *
+ * PRIVACY-MODE BYOK (2026-08-30): the `byok` field on the serialized
+ * data shape is left empty (`{ connected: false }`) — the BYOK keys live
+ * in the user's browser localStorage and are read client-side by the
+ * ChatPlaygroundClient. The server never persists them.
  */
 
 import type { Metadata } from "next";
@@ -22,7 +27,6 @@ import {
 } from "@/components/playground/chat-playground-client";
 import {
   getUnifiedModels,
-  getBYOKMeta,
   getAccount,
   getSessionUserId,
   XYZ_USD_MULTIPLIER,
@@ -43,16 +47,16 @@ export const metadata: Metadata = {
 };
 
 // Empty record so the client always has a defined shape for both BYOK
-// providers (matches the Settings page's pattern).
+// providers. The actual connected state is read from localStorage on
+// the client (PRIVACY-MODE) — this is just a placeholder so the type
+// contract holds.
 const EMPTY_BYOK: Record<BYOKProvider, BYOKCredentialMeta> = {
   gratisfy: { provider: "gratisfy", connected: false, masked: "", addedAt: "" },
-  g4f: { provider: "g4f", connected: false, masked: "", addedAt: "" },
+  pollinations: { provider: "pollinations", connected: false, masked: "", addedAt: "" },
 };
 
 export default async function ChatPage() {
-  // Resolve the session server-side (RSC) — same pattern as /settings + /pricing.
-  // Best-effort; failures degrade to safe defaults rather than crashing the
-  // page (PRD §25 — graceful degradation).
+  // Resolve the session server-side (RSC).
   const headerStore = await headers();
   const cookieStore = await cookies();
   const url = headerStore.get("x-url") || "http://localhost:3000/chat";
@@ -61,28 +65,19 @@ export default async function ChatPage() {
   });
   const userId = await getSessionUserId(request);
 
-  // Parallel fetch — everything the playground needs is resolved at request
-  // time so the user lands on a fully populated catalog.
-  const [unifiedRes, byokRes, accountRes] = await Promise.all([
+  // Parallel fetch — model catalog + user account (BYOK state lives
+  // client-side now).
+  const [unifiedRes, accountRes] = await Promise.all([
     getUnifiedModels(userId ?? undefined).catch(() => ({
       models: [] as UnifiedModel[],
       providers: [] as UnifiedProvider[],
       stale: false,
     })),
     userId
-      ? getBYOKMeta(userId).catch(() => EMPTY_BYOK)
-      : Promise.resolve(EMPTY_BYOK),
-    userId
       ? getAccount(userId).catch(() => null as UserAccount | null)
       : Promise.resolve(null as UserAccount | null),
   ]);
 
-  const byok: Record<BYOKProvider, BYOKCredentialMeta> = byokRes ?? EMPTY_BYOK;
-
-  // Serialize the account to a plain JSON-safe shape (no Date objects, no
-  // undefined — RSCs only pass serializable props to client components).
-  // NOTE: `getAccount()` returns the public subset of UserAccount (omits
-  // `status`), so we don't propagate it here either.
   const user: {
     id: string;
     email: string;
@@ -117,7 +112,7 @@ export default async function ChatPage() {
 
   const data: ChatPlaygroundData = {
     models,
-    byok,
+    byok: EMPTY_BYOK,
     user,
     multiplier: XYZ_USD_MULTIPLIER || 1,
     catalogStale: unifiedRes.stale,

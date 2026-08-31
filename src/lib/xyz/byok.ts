@@ -32,7 +32,7 @@ import {
   removeByokFromOnyx,
 } from "./onyxbase";
 
-const PROVIDERS: BYOKProvider[] = ["gratisfy", "g4f", "pollinations"];
+const PROVIDERS: BYOKProvider[] = ["gratisfy", "pollinations"];
 
 /** Mask a key for display: show prefix + dots + last 4. */
 export function maskKeyPublic(key: string): string {

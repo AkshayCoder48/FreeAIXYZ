@@ -11,6 +11,14 @@
  *  The previous /callback path returned redirect_uri_mismatch → "This
  *  redirect URL is not registered for this app. Authorization blocked.")
  *
+ * PRIVACY-MODE BYOK (2026-08-30): the OAuth'd Pollinations token is NEVER
+ * persisted server-side. Instead, the callback stashes it in OnyxBase KV
+ * under a single-use opaque redemption key (`fxz:byok:redeem:<32-hex>`)
+ * with a 60-second TTL, then redirects to /providers with ?redeem=<opaque>.
+ * The browser fetches GET /api/v1/byok/pollinations/redeem?k=<opaque>,
+ * gets the token, deletes the KV entry, and stores the token in
+ * localStorage. The server never holds the token past the 60s window.
+ *
  * Flow (PKCE / S256, mandatory since 2026-08-30 — the Pollinations
  * authorize server returns "PKCE code_challenge is required for the
  * authorization code flow" without it):
@@ -26,24 +34,25 @@
  *   3. We re-check state (CSRF) and exchange the code + code_verifier
  *      for a Bearer token via exchangePollinationsCodeForToken
  *      (POST enter.pollinations.ai/api/token — authorization_code grant).
- *   4. We persist the token to OnyxBase under the user's account by
- *      re-using the same saveBYOK + setBYOKValidation flow the manual
- *      POST /api/v1/byok/pollinations route uses, after a final
- *      validatePollinationsKey round-trip so the masked state stays
- *      consistent.
+ *   4. We stash the token in OnyxBase under fxz:byok:redeem:<opaque>
+ *      with a 60s TTL. We do NOT call saveBYOK — the token never lands
+ *      in the per-user persistent KV namespace.
  *   5. We clear the PKCE + state cookies (Max-Age=0) and redirect back
- *      to /providers with ?connect=ok so the BYOK card surfaces a
- *      "Connected" message. On failure we redirect with
- *      ?connect=error&reason=… so the card surfaces the error inline
- *      (PRD §82 — never fake "Connected").
+ *      to /providers with ?connect=ok&provider=pollinations&redeem=<opaque>.
+ *   6. The browser's ByokProviders component reads the ?redeem= param,
+ *      fetches GET /api/v1/byok/pollinations/redeem?k=<opaque> (which
+ *      returns + deletes the stashed token), and writes the token to
+ *      localStorage under the `fxz:byok:pollinations` key. The server's
+ *      copy is destroyed in the same request.
  *
  * Requires a signed-in user — the OAuth flow is per-account, and the
- * OnyxBase key is scoped to the userId. If the user is not signed in
+ * redemption entry is scoped to the userId so a different user can't
+ * redeem someone else's OAuth token. If the user is not signed in
  * (cookie missing or session expired), we redirect to /providers with
  * an error so they can sign in first.
  */
 
-import { saveBYOK, setBYOKValidation } from "@/lib/xyz";
+import { onyxSet, onyxGet, onyxDelete } from "@/lib/xyz/onyxbase";
 import {
   exchangePollinationsCodeForToken,
   getPollinationsAppKey,
@@ -96,10 +105,14 @@ function redirectWithError(
   return buildRedirect(target, clearCookies);
 }
 
-function redirectWithSuccess(fallbackOrigin = "http://localhost:3000"): Response {
+function redirectWithSuccess(
+  redeemKey: string,
+  fallbackOrigin = "http://localhost:3000",
+): Response {
   const target = new URL(PROVIDERS_PAGE, fallbackOrigin);
   target.searchParams.set("connect", "ok");
   target.searchParams.set("provider", "pollinations");
+  target.searchParams.set("redeem", redeemKey);
   // Always clear PKCE cookies on success — they're single-use.
   return buildRedirect(target, true);
 }
@@ -205,21 +218,22 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  // Persist + validate, mirroring the manual POST /api/v1/byok/pollinations route.
+  // Stash the token in OnyxBase KV under a single-use opaque redemption
+  // key (60-second TTL). The browser redeems it via GET
+  // /api/v1/byok/pollinations/redeem?k=<opaque> and stores the token in
+  // localStorage. The server never persists the token past the 60s window.
+  // PRIVACY-MODE: no saveBYOK call, no per-user persistent KV namespace.
+  let redeemKey: string;
   try {
-    await saveBYOK(auth.userId, "pollinations", token);
-    const validation = await validatePollinationsKey(token);
-    await setBYOKValidation(
-      auth.userId,
-      "pollinations",
-      validation.ok,
-      validation.ok ? undefined : validation.error,
-    );
-    if (!validation.ok) {
-      // The token came back from OAuth but failed our userinfo check — surface
-      // it as a soft error so the user can still see the masked key + try Remove.
+    redeemKey = generateRedeemKey();
+    const stashed = await onyxSet(`fxz:byok:redeem:${redeemKey}`, {
+      token,
+      userId: auth.userId,
+      createdAt: new Date().toISOString(),
+    });
+    if (!stashed.ok) {
       return redirectWithError(
-        `Pollinations token saved but failed validation: ${validation.error ?? "unknown"}`,
+        `Failed to stash Pollinations token for redemption. Paste the token manually instead.`,
         fallbackOrigin,
         true,
       );
@@ -227,11 +241,43 @@ export async function GET(request: Request): Promise<Response> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return redirectWithError(
-      `Failed to save Pollinations token: ${msg}`,
+      `Failed to stash Pollinations token: ${msg}`,
       fallbackOrigin,
       true,
     );
   }
 
-  return redirectWithSuccess(fallbackOrigin);
+  // Optional: best-effort validation round-trip — surface a soft warning
+  // if the token fails our userinfo check, but still hand it to the
+  // browser (the user can decide whether to keep it). We never persist
+  // the validation result server-side.
+  try {
+    const validation = await validatePollinationsKey(token);
+    if (!validation.ok) {
+      // Still redeem — the user can remove the token from localStorage if
+      // they don't want it. Add a reason so the UI surfaces a soft warning.
+      const target = new URL(PROVIDERS_PAGE, fallbackOrigin);
+      target.searchParams.set("connect", "ok");
+      target.searchParams.set("provider", "pollinations");
+      target.searchParams.set("redeem", redeemKey);
+      target.searchParams.set("warning", `Token saved but failed validation: ${validation.error ?? "unknown"}`);
+      return buildRedirect(target, true);
+    }
+  } catch {
+    // Validation best-effort — don't fail the OAuth flow.
+  }
+
+  return redirectWithSuccess(redeemKey, fallbackOrigin);
+}
+
+/** Generate a 32-byte hex opaque redemption key. Used once, then deleted
+ *  from OnyxBase by the /redeem endpoint. */
+function generateRedeemKey(): string {
+  const bytes = new Uint8Array(32);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }

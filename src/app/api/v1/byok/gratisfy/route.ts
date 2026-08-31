@@ -1,15 +1,22 @@
 /**
- * POST   /api/v1/byok/gratisfy — save (masked) BYOK key, validate.
- * DELETE /api/v1/byok/gratisfy — remove the key.
+ * POST   /api/v1/byok/gratisfy — validate a Gratisfy key (PRIVACY-MODE).
+ * DELETE /api/v1/byok/gratisfy — no-op (the key lives in the user's
+ *                                localStorage; the client deletes it
+ *                                locally — no server-side state to clear).
  *
- * Requires a signed-in user (session cookie). The key is stored in OnyxBase
- * keyed by userId — persists across refresh / tab changes / devices.
- * Never returns the raw key. Marks validation state on the stored
- * credential.
+ * PRIVACY-MODE BYOK (2026-08-30): the user's private BYOK credentials
+ * (Gratisfy gxyz-… keys) are NEVER persisted server-side. The POST
+ * handler validates the key against the upstream and returns the masked
+ * metadata + validation result so the client can store the key in
+ * localStorage and surface the connected state in the UI.
+ *
+ * Requires a signed-in user — even though we don't store the key, the
+ * validation round-trip is rate-limited per-user (the upstream has its
+ * own rate limit too).
  */
 
-import { saveBYOK, removeBYOK, setBYOKValidation } from "@/lib/xyz";
 import { validateGratisfyKey } from "@/lib/xyz/gratisfy";
+import { maskKey } from "@/lib/xyz/crypto";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
 export const runtime = "nodejs";
@@ -28,24 +35,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Save first (encrypted) — we'll update validation state next.
-    const meta = await saveBYOK(auth.userId, "gratisfy", key);
-
-    // Validate against the upstream — no fake "Connected".
+    // PRIVACY-MODE: validate only — NEVER save to OnyxBase.
     const validation = await validateGratisfyKey(key);
-    await setBYOKValidation(
-      auth.userId,
-      "gratisfy",
-      validation.ok,
-      validation.ok ? undefined : validation.error,
-    );
+    const masked = maskKey(key);
+    const addedAt = new Date().toISOString();
 
     if (!validation.ok) {
       return Response.json(
         {
           ok: false,
           error: validation.error ?? "Validation failed",
-          meta,
+          meta: {
+            provider: "gratisfy",
+            connected: false,
+            masked,
+            addedAt,
+            lastValidatedAt: addedAt,
+            lastValidationOk: false,
+          },
         },
         { status: 400 },
       );
@@ -53,7 +60,14 @@ export async function POST(request: Request) {
 
     return Response.json({
       ok: true,
-      meta,
+      meta: {
+        provider: "gratisfy",
+        connected: true,
+        masked,
+        addedAt,
+        lastValidatedAt: addedAt,
+        lastValidationOk: true,
+      },
       validation: { ok: true, modelCount: validation.modelCount ?? 0 },
       modelsDiscovered: validation.modelCount ?? 0,
     });
@@ -66,9 +80,11 @@ export async function POST(request: Request) {
   }
 }
 
+/** DELETE — no-op in privacy-mode. The client deletes the key from
+ *  localStorage; there's nothing server-side to clear. Returns ok:true
+ *  so the existing UI's remove flow works without changes. */
 export async function DELETE(request: Request) {
   const auth = await requireAuth(request);
   if ("response" in auth) return auth.response;
-  await removeBYOK(auth.userId, "gratisfy");
   return Response.json({ ok: true });
 }

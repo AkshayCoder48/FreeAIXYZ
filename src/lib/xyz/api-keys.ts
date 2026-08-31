@@ -1,6 +1,12 @@
 /**
  * FreeAIXYZ API Key System (PRD §12, §13, §14, §66).
  *
+ * MIGRATED TO OnyxBase (2026-08-30): previously persisted via Prisma, which
+ * broke on Vercel serverless (no schema sync) AND on local dev (the parent
+ * project's Prisma client doesn't have the apiKey model). OnyxBase-backed
+ * storage works on both because there's no DB schema to sync — the KV
+ * entries are created on first write.
+ *
  * Users can create/manage their FreeAIXYZ application API keys (`fx_live_*`).
  * Keys are securely generated, hashed at rest (sha256), revocable,
  * independently identifiable, shown only at creation time.
@@ -9,9 +15,15 @@
  *
  * The full key is returned to the caller ONCE at creation time. After that,
  * only the prefix + name + last-used timestamp is returned.
+ *
+ * OnyxBase storage shape:
+ *   fxz:apikey:<keyHash>           → { id, userId, name, keyPrefix, scopes, lastUsedAt, revokedAt, createdAt }
+ *   fxz:apikeylist:<userId>        → string[] (ids of all keys for the user)
+ *   fxz:apikey:id:<id>             → same record (lookup by id for revoke/list)
+ *   fxz:apikey:userbykeyhash:<keyHash> → { id, userId, scopes, revokedAt }  (auth lookup)
  */
 
-import { db } from "@/lib/db";
+import { onyxGet, onyxSet, onyxDelete, onyxList } from "./onyxbase";
 import { randomToken, sha256Hex, timingSafeEqual } from "./crypto";
 
 const KEY_PREFIX = "fx_live_";
@@ -28,8 +40,31 @@ export interface ApiKeyInfo {
 }
 
 export interface CreatedApiKey extends ApiKeyInfo {
-  /** The full key. Returned ONLY at creation time. Never again. */
+  /** The full key. Returned ONLY at creation. Never again. */
   key: string;
+}
+
+/** Internal record stored in OnyxBase. */
+interface ApiKeyRecord {
+  id: string;
+  userId: string;
+  name: string;
+  keyPrefix: string;
+  keyHash: string;
+  scopes: string[];
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+function keyHashKey(hash: string): string {
+  return `fxz:apikey:${hash}`;
+}
+function recordByIdKey(id: string): string {
+  return `fxz:apikey:id:${id}`;
+}
+function listKey(userId: string): string {
+  return `fxz:apikeylist:${userId}`;
 }
 
 /** Generate a new fx_live_* key with 256 bits of entropy. */
@@ -46,54 +81,79 @@ export async function createApiKey(
   const key = generateApiKey();
   const keyHash = await sha256Hex(key);
   const keyPrefix = key.slice(0, 12);
-  const row = await db.apiKey.create({
-    data: {
-      userId,
-      keyHash,
-      keyPrefix,
-      name,
-      scopes: scopes.join(","),
-    },
-  });
-  return {
-    id: row.id,
-    name: row.name,
-    keyPrefix: row.keyPrefix,
-    scopes: scopes,
+  const id = `key_${randomToken(12)}`;
+  const now = new Date().toISOString();
+
+  const record: ApiKeyRecord = {
+    id,
+    userId,
+    name,
+    keyPrefix,
+    keyHash,
+    scopes,
     lastUsedAt: null,
     revokedAt: null,
-    createdAt: row.createdAt.toISOString(),
+    createdAt: now,
+  };
+
+  // Write the record under both the keyHash key (for auth lookup) and the
+  // id key (for list/revoke). Also append to the user's key list.
+  await onyxSet(keyHashKey(keyHash), record);
+  await onyxSet(recordByIdKey(id), record);
+
+  // Update the user's key list (atomic-ish: load → append → save).
+  const existingList = (await onyxGet<string[]>(listKey(userId))) ?? [];
+  existingList.push(id);
+  await onyxSet(listKey(userId), existingList);
+
+  return {
+    id,
+    name,
+    keyPrefix,
+    scopes,
+    lastUsedAt: null,
+    revokedAt: null,
+    createdAt: now,
     key,
   };
 }
 
 /** List a user's API keys (masked — never the full key). */
 export async function listApiKeys(userId: string): Promise<ApiKeyInfo[]> {
-  const rows = await db.apiKey.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.map((r) => ({
+  const ids = (await onyxGet<string[]>(listKey(userId))) ?? [];
+  const records: ApiKeyRecord[] = [];
+  for (const id of ids) {
+    const rec = await onyxGet<ApiKeyRecord>(recordByIdKey(id));
+    if (rec) records.push(rec);
+  }
+  // Sort by createdAt desc.
+  records.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+  return records.map((r) => ({
     id: r.id,
     name: r.name,
     keyPrefix: r.keyPrefix,
-    scopes: r.scopes.split(",").filter(Boolean),
-    lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
-    revokedAt: r.revokedAt?.toISOString() ?? null,
-    createdAt: r.createdAt.toISOString(),
+    scopes: r.scopes,
+    lastUsedAt: r.lastUsedAt,
+    revokedAt: r.revokedAt,
+    createdAt: r.createdAt,
   }));
 }
 
-/** Revoke an API key (soft-delete — keeps the row for audit). */
+/** Revoke an API key (soft-delete — keeps the record for audit). */
 export async function revokeApiKey(
   userId: string,
   keyId: string,
 ): Promise<boolean> {
-  const result = await db.apiKey.updateMany({
-    where: { id: keyId, userId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-  return result.count > 0;
+  const rec = await onyxGet<ApiKeyRecord>(recordByIdKey(keyId));
+  if (!rec || rec.userId !== userId) return false;
+  if (rec.revokedAt) return true; // already revoked — idempotent
+  const updated: ApiKeyRecord = {
+    ...rec,
+    revokedAt: new Date().toISOString(),
+  };
+  await onyxSet(recordByIdKey(keyId), updated);
+  await onyxSet(keyHashKey(rec.keyHash), updated);
+  return true;
 }
 
 /**
@@ -110,18 +170,19 @@ export async function getApiKeyUserId(
   const raw = extractBearerToken(authHeader) ?? xApiKeyHeader?.trim();
   if (!raw || !raw.startsWith(KEY_PREFIX)) return null;
   const keyHash = await sha256Hex(raw);
-  const row = await db.apiKey.findUnique({
-    where: { keyHash },
-  });
-  if (!row) return null;
-  if (row.revokedAt) return null;
+  const rec = await onyxGet<ApiKeyRecord>(keyHashKey(keyHash));
+  if (!rec) return null;
+  if (rec.revokedAt) return null;
   // Best-effort touch lastUsedAt — never block on it.
-  await db.apiKey
-    .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
-    .catch(() => {});
+  const updated: ApiKeyRecord = {
+    ...rec,
+    lastUsedAt: new Date().toISOString(),
+  };
+  await onyxSet(recordByIdKey(rec.id), updated).catch(() => {});
+  await onyxSet(keyHashKey(keyHash), updated).catch(() => {});
   return {
-    userId: row.userId,
-    scopes: row.scopes.split(",").filter(Boolean),
+    userId: rec.userId,
+    scopes: rec.scopes,
   };
 }
 

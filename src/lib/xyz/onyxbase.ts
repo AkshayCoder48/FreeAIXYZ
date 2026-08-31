@@ -96,7 +96,15 @@ async function call(
   }
 }
 
-/** SET a value (upsert). Auto-typed — pass any JSON-serializable value. */
+/** SET a value (upsert). Auto-typed — pass any JSON-serializable value.
+ *
+ * NOTE (2026-08-30): we pass `cache: "no-store"` on the underlying fetch
+ * because Next.js dev mode (Turbopack) was observed silently caching POST
+ * requests — `set` returned `{ ok: true }` but the key never persisted to
+ * OnyxBase. Forcing no-store guarantees the actual network round-trip on
+ * every call. This is a no-op on Vercel serverless (each cold instance
+ * starts fresh).
+ */
 export async function onyxSet<T>(
   key: string,
   value: T,
@@ -106,7 +114,11 @@ export async function onyxSet<T>(
     const res = await call("/v1/set", {
       method: "POST",
       body: JSON.stringify({ key, value, collection }),
-    });
+      // Force no-store — see NOTE above.
+      // @ts-expect-error: 'cache' is valid on RequestInit but TS lib defs
+      //   vary across Next.js versions.
+      cache: "no-store",
+    } as RequestInit);
     if (!res.ok) {
       return { ok: false };
     }
@@ -117,7 +129,13 @@ export async function onyxSet<T>(
   }
 }
 
-/** GET a value. Returns null if not found or unreachable. */
+/** GET a value. Returns null if not found or unreachable.
+ *
+ * NOTE (2026-08-30): we pass `cache: "no-store"` on the underlying fetch
+ * because Next.js dev mode (Turbopack) was observed silently caching GET
+ * responses — a freshly-set key wouldn't be visible to a subsequent GET
+ * without no-store. Same caveat as onyxSet for Vercel serverless.
+ */
 export async function onyxGet<T = unknown>(
   key: string,
   collection: string = DEFAULT_COLLECTION,
@@ -125,7 +143,12 @@ export async function onyxGet<T = unknown>(
   try {
     const res = await call(
       `/v1/get/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
-      { method: "GET" },
+      {
+        method: "GET",
+        // @ts-expect-error: 'cache' is valid on RequestInit but TS lib defs
+        //   vary across Next.js versions.
+        cache: "no-store",
+      } as RequestInit,
     );
     if (res.status === 404) return null;
     if (!res.ok) return null;
@@ -144,7 +167,12 @@ export async function onyxDelete(
   try {
     const res = await call(
       `/v1/delete/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        // @ts-expect-error: 'cache' is valid on RequestInit but TS lib defs
+        //   vary across Next.js versions.
+        cache: "no-store",
+      } as RequestInit,
     );
     return res.ok;
   } catch {

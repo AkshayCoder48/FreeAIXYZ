@@ -21,6 +21,7 @@
 import { db } from "@/lib/db";
 import {
   XYZ_USD_MULTIPLIER,
+  POLLEN_XYZ_PEG,
   REFERENCE_REQUEST,
   resolveSuppliedPricing,
   PRICING_BOARD_VERSION,
@@ -73,6 +74,19 @@ export interface CostBreakdown {
  * Calculate the USD + XYZ cost of a generation from token usage + the pricing
  * board. Centralized here so no provider adapter invents its own math
  * (PRD §23, §32).
+ *
+ * CURRENCY-AWARE (user directive: "1 pollen = 1 XYZ"):
+ *   - When `pricing.currency === "pollen"` (Gratisfy catalog / Pollinations
+ *     metadata), the per-million numbers are POLLEN, not USD. We never present
+ *     pollen as USD (PRD §26). Instead:
+ *       pollenCost = (in/1e6)*inputPollen + (out/1e6)*outputPollen + ...
+ *       xyzCost   = pollenCost * POLLEN_XYZ_PEG   (1:1 by default)
+ *       usdCost   = 0   (pollen is not USD; the USD figure is intentionally
+ *     left at 0 so the ledger never falsely claims a USD market value for
+ *     pollen-denominated usage).
+ *   - When `pricing.currency === "USD"`, the existing path applies:
+ *       usdCost  = (in/1e6)*inputUsd + ...
+ *       xyzCost  = usdCost * XYZ_USD_MULTIPLIER
  */
 export function calculateCost(
   modelId: string,
@@ -97,6 +111,30 @@ export function calculateCost(
     };
   }
 
+  // POLLEN currency path (user directive: 1 pollen = 1 XYZ).
+  // Per-million numbers are pollen; we charge XYZ at the configured peg
+  // (default 1:1). usdCost stays 0 — pollen is not USD (PRD §26).
+  if (pricing.currency === "pollen") {
+    const inPollen = (inputTokens / 1_000_000) * pricing.inputPerMillion;
+    const outPollen = (outputTokens / 1_000_000) * (pricing.outputPerMillion ?? 0);
+    const cachePollen = (cacheTokens / 1_000_000) * (pricing.cachePerMillion ?? 0);
+    const pollenCost = fromMicroXyz(
+      toMicroXyz(inPollen) + toMicroXyz(outPollen) + toMicroXyz(cachePollen),
+    );
+    const xyzCost = fromMicroXyz(toMicroXyz(pollenCost) * BigInt(POLLEN_XYZ_PEG));
+    return {
+      inputTokens,
+      outputTokens,
+      cacheTokens,
+      usdCost: 0,
+      xyzCost,
+      pricingVersion: PRICING_BOARD_VERSION,
+      estimated: false,
+      pricing,
+    };
+  }
+
+  // USD currency path (default).
   const inUsd = (inputTokens / 1_000_000) * pricing.inputPerMillion;
   const outUsd = (outputTokens / 1_000_000) * (pricing.outputPerMillion ?? 0);
   const cacheUsd = (cacheTokens / 1_000_000) * (pricing.cachePerMillion ?? 0);

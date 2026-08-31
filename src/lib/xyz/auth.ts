@@ -158,12 +158,21 @@ export async function signInWithEmail(
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
-  await saveSession(tokenHash, {
+  const sessionSaved = await saveSession(tokenHash, {
     userId: user.id,
     email: user.email,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
   });
+  if (!sessionSaved) {
+    // OnyxBase save failed (network / API key / rate-limit). Surface the
+    // failure so the login route can return a 5xx instead of misleading
+    // the user with ok:true + a session cookie that points to nothing.
+    return {
+      ok: false,
+      message: "Could not start a session (persistence backend unreachable). Please try again.",
+    };
+  }
 
   return {
     ok: true,

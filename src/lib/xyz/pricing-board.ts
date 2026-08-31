@@ -133,6 +133,26 @@ export const XYZ_USD_MULTIPLIER = Number(
   process.env.XYZ_USD_MULTIPLIER ?? "1",
 );
 
+/**
+ * POLLEN → XYZ peg (user directive: "1 pollen = 1 XYZ").
+ *
+ * Gratisfy's public catalog (`https://gratisfy.xyz/api/models/all`) and
+ * Pollinations's model metadata both publish prices in their internal
+ * "pollen" currency (e.g. `"5 pollen/M"`, `"25 pollen/M"`). The FreeAIXYZ
+ * gateway bills its users in XYZ. To bridge the two, we peg pollen to XYZ
+ * at a 1:1 rate by default: a model priced at 5 pollen/M input is charged
+ * as 5 XYZ/M input. This is the single knob to tune if the peg changes.
+ *
+ * Why 1:1: the gateway earns by passing upstream pollen-denominated usage
+ * through to the user's XYZ balance at par. The platform BYOK charge is
+ * still 0 (PRD §48 — the upstream provider bills the user's own key
+ * directly); this peg only governs how the market-equivalent cost is
+ * expressed in the ledger and how pollen prices are displayed.
+ */
+export const POLLEN_XYZ_PEG = Number(
+  process.env.POLLEN_XYZ_PEG ?? "1",
+);
+
 /** Reference request for the "responses per XYZ" estimate (PRD §33, §34). */
 export const REFERENCE_REQUEST = {
   inputTokens: Number(process.env.REFERENCE_INPUT_TOKENS ?? "1200"),

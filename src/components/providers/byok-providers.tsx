@@ -1,22 +1,37 @@
 "use client";
 
 /**
- * ByokProviders — BYOK management surface.
+ * ByokProviders — BYOK + API-key management surface (PRIVACY-MODE).
  *
- * GATED BEHIND SIGN-IN: API key inputs are only shown after the user
- * signs in (direct email login — no verification code). Saved keys live
- * in OnyxBase keyed by the authenticated userId, so they persist across
- * refresh / tab changes / devices.
+ * PRIVACY-MODE BYOK (2026-08-30):
+ *   The user's private BYOK credentials (Gratisfy gxyz-…, Pollinations
+ *   token) live in their browser localStorage. They are NEVER sent to
+ *   the server for persistence. The server only validates them on a
+ *   one-shot POST /api/v1/byok/<provider> call (returns masked metadata
+ *   + validation result), and the client immediately writes the key to
+ *   localStorage + surfaces the connected state in the UI.
  *
- * On mount (when signed in) we fetch GET /api/v1/byok to load the masked
- * metadata for every saved key — this is the fix for "key getting deleted
- * after tab change or refresh": the key is never in localStorage, it lives
- * server-side with the account.
+ *   OAuth "Connect wallet" flow (Pollinations only): the /connect
+ *   callback stashes the token in a 60s-TTL KV entry under a single-use
+ *   opaque key. The browser reads ?redeem=<opaque> from the redirect
+ *   URL, fetches GET /api/v1/byok/pollinations/redeem?k=<opaque> (which
+ *   returns + deletes the stashed token), and writes the token to
+ *   localStorage. The server never persists the token past the 60s
+ *   window — even a server compromise cannot leak the user's Pollinations
+ *   token once the redemption completes.
  *
- * Three cards: Gratisfy, G4F, Pollinations. Each card:
- *   - Input (password) + Save (POST /api/v1/byok/<src>)
- *   - Test  (POST /api/v1/byok/<src>/test) — shows "{count} models visible"
- *   - Remove(DELETE /api/v1/byok/<src>)
+ * FreeAIXYZ API keys (`fx_live_*`) are SEPARATE — those ARE persisted
+ *   server-side (hashed at rest with sha256). They're the user's gateway
+ *   credentials for programmatic API access (curl/SDK). The full key is
+ *   returned to the client ONCE at creation time + never again. See the
+ *   ApiKeysPanel below.
+ *
+ * Two cards (Gratisfy, Pollinations):
+ *   - Input (password) + Save (POST /api/v1/byok/<src>) — validates and
+ *     returns masked metadata; the actual key is written to localStorage
+ *     on the client.
+ *   - Test (POST /api/v1/byok/<src>/test) — re-validates against upstream.
+ *   - Remove — deletes from localStorage (no server call).
  *
  * ERROR HANDLING: server returns `{ error: { type, code, message } }` on
  * failure. We always extract `.message` before passing to toast — never
@@ -36,6 +51,10 @@ import {
   Search,
   Boxes,
   Cpu,
+  Copy,
+  Plus,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -59,7 +78,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type ByokSource = "gratisfy" | "g4f" | "pollinations";
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type ByokSource = "gratisfy" | "pollinations";
 
 interface SaveMeta {
   provider: string;
@@ -69,8 +90,6 @@ interface SaveMeta {
   lastValidatedAt?: string;
   lastValidationOk?: boolean;
 }
-
-type ByokMetaMap = Record<ByokSource, SaveMeta>;
 
 interface SaveResponse {
   ok: boolean;
@@ -88,7 +107,7 @@ interface TestResponse {
 interface ProviderEntry {
   id: string;
   name: string;
-  source: "native" | "gratisfy" | "g4f" | "pollinations";
+  source: "native" | "gratisfy" | "pollinations";
   requiresApiKey: boolean;
   supportsModelDiscovery: boolean;
   supportsStreaming: boolean;
@@ -102,7 +121,71 @@ interface ProvidersResponse {
   stale: boolean;
 }
 
-/** Extract a string message from an error response. */
+// FreeAIXYZ API keys (server-persisted, hashed at rest).
+interface ApiKeyInfo {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+interface CreatedApiKey extends ApiKeyInfo {
+  key: string;
+}
+
+// ─── localStorage helpers ────────────────────────────────────────────────────
+
+const STORAGE_KEY = "fxz:byok";
+
+interface StoredByok {
+  // We store the raw key + the masked metadata returned from the server
+  // after the last successful validation. The raw key is needed for the
+  // chat completions request header (X-Gratisfy-API-Key / X-Pollinations-API-Key).
+  // The masked form is what the UI surfaces.
+  raw: string;
+  masked: string;
+  addedAt: string;
+  lastValidatedAt?: string;
+  lastValidationOk?: boolean;
+}
+
+function loadStored(): Record<ByokSource, StoredByok | null> {
+  if (typeof window === "undefined") {
+    return { gratisfy: null, pollinations: null };
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { gratisfy: null, pollinations: null };
+    const parsed = JSON.parse(raw) as Partial<Record<ByokSource, StoredByok>>;
+    return {
+      gratisfy: parsed.gratisfy ?? null,
+      pollinations: parsed.pollinations ?? null,
+    };
+  } catch {
+    return { gratisfy: null, pollinations: null };
+  }
+}
+
+function saveStored(map: Record<ByokSource, StoredByok | null>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // localStorage may be full or disabled — fail silently. The chat
+    // playground will just see no BYOK key (the user has to re-enter it).
+  }
+}
+
+function updateStoredEntry(source: ByokSource, entry: StoredByok | null) {
+  const cur = loadStored();
+  cur[source] = entry;
+  saveStored(cur);
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
 function errorMessage(err: unknown, fallback: string): string {
   if (typeof err === "string") return err || fallback;
   if (err && typeof err === "object") {
@@ -114,21 +197,19 @@ function errorMessage(err: unknown, fallback: string): string {
 
 const PROVIDER_LABEL: Record<ByokSource, string> = {
   gratisfy: "Gratisfy",
-  g4f: "G4F",
   pollinations: "Pollinations",
 };
 
 const PROVIDER_PLACEHOLDER: Record<ByokSource, string> = {
   gratisfy: "gxyz-…",
-  g4f: "g4f_…",
   pollinations: "your Pollinations token",
 };
 
 const PROVIDER_DESC: Record<ByokSource, string> = {
-  gratisfy: "Bring your own gxyz-… key from Gratisfy. Stored encrypted in OnyxBase.",
-  g4f: "Bring your own g4f_… key from g4f.dev. Stored encrypted in OnyxBase.",
+  gratisfy:
+    "Bring your own gxyz-… key from Gratisfy. Stored only in your browser (localStorage) — never on our server.",
   pollinations:
-    "Bring your own Pollinations token, or click Connect wallet to sign in with Pollinations and we'll fetch one for you. Stored encrypted in OnyxBase.",
+    "Bring your own Pollinations token, or click Connect wallet to sign in with Pollinations and we'll fetch one for you. Stored only in your browser (localStorage).",
 };
 
 function SourceBadge({ source }: { source: ProviderEntry["source"] }) {
@@ -136,45 +217,42 @@ function SourceBadge({ source }: { source: ProviderEntry["source"] }) {
   const className =
     source === "gratisfy"
       ? "border-transparent bg-violet-500/15 text-violet-700 dark:text-violet-300"
-      : source === "g4f"
-        ? "border-transparent bg-orange-500/15 text-orange-700 dark:text-orange-300"
-        : source === "pollinations"
-          ? "border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300"
-          : "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300";
+      : source === "pollinations"
+        ? "border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300"
+        : "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300";
   return <Badge className={className}>{label}</Badge>;
 }
 
+// ─── BYOK card ───────────────────────────────────────────────────────────────
+
 interface ByokCardProps {
   source: ByokSource;
-  meta: SaveMeta | null;
+  stored: StoredByok | null;
   onMutated: () => void;
 }
 
-function ByokCard({ source, meta, onMutated }: ByokCardProps) {
+function ByokCard({ source, stored, onMutated }: ByokCardProps) {
   const label = PROVIDER_LABEL[source];
   const base = `/api/v1/byok/${source}`;
   const testEndpoint = `${base}/test`;
 
   const [keyInput, setKeyInput] = useState("");
-  const [masked, setMasked] = useState<string | null>(meta?.masked ?? null);
-  const [connected, setConnected] = useState<boolean | null>(
-    meta ? meta.connected : null,
-  );
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
 
-  // Sync local state when the parent refetches meta (e.g. after refresh).
+  // Sync local display state when stored changes (e.g. after OAuth
+  // redemption, after refresh).
   useEffect(() => {
-    if (meta) {
-      setMasked(meta.masked || null);
-      setConnected(meta.connected);
-    } else {
-      setMasked(null);
-      setConnected(null);
-    }
-  }, [meta]);
+    setKeyInput("");
+  }, [stored]);
+
+  const masked = stored?.masked ?? null;
+  const connected = stored?.connected ?? false;
+  const addedAt = stored?.addedAt ?? "";
+  const lastValidatedAt = stored?.lastValidatedAt ?? "";
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -193,10 +271,17 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
       });
       const data: SaveResponse = await res.json();
       if (res.ok && data.ok && data.meta) {
-        setMasked(data.meta.masked);
-        setConnected(data.meta.connected);
+        // PRIVACY-MODE: write the key to localStorage on the client.
+        // The server only validated it.
+        updateStoredEntry(source, {
+          raw: trimmed,
+          masked: data.meta.masked,
+          addedAt: data.meta.addedAt,
+          lastValidatedAt: data.meta.lastValidatedAt ?? new Date().toISOString(),
+          lastValidationOk: data.meta.lastValidationOk ?? true,
+        });
         setKeyInput("");
-        toast.success(`${label} key saved (masked: ${data.meta.masked})`);
+        toast.success(`${label} key saved (in your browser only)`);
         onMutated();
       } else {
         toast.error(errorMessage(data.error, `Failed to save ${label} key`));
@@ -211,24 +296,36 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
   async function handleTest() {
     setTesting(true);
     try {
+      // Test against either the input (if present) or the stored key.
+      const raw = keyInput.trim() || stored?.raw || "";
+      if (!raw) {
+        toast.error("No key to test");
+        return;
+      }
       const res = await fetch(testEndpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(keyInput.trim() ? { key: keyInput.trim() } : {}),
+        body: JSON.stringify({ key: raw }),
       });
       const data: TestResponse = await res.json();
       if (res.ok && data.ok) {
-        setConnected(true);
         const count = typeof data.count === "number" ? data.count : data.modelCount;
         if (typeof count === "number") {
           toast.success(`${count} models visible`);
         } else {
           toast.success(`${label} key valid`);
         }
+        // Update validation timestamp on the stored entry (if it's the same key).
+        if (stored && raw === stored.raw) {
+          updateStoredEntry(source, {
+            ...stored,
+            lastValidatedAt: new Date().toISOString(),
+            lastValidationOk: true,
+          });
+        }
         onMutated();
       } else {
-        setConnected(false);
         toast.error(errorMessage(data.error, `${label} key invalid`));
       }
     } catch {
@@ -238,24 +335,14 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
     }
   }
 
-  async function handleRemove() {
+  function handleRemove() {
     setRemoving(true);
     try {
-      const res = await fetch(base, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (res.ok) {
-        setMasked(null);
-        setConnected(false);
-        setKeyInput("");
-        toast.success(`${label} key removed`);
-        onMutated();
-      } else {
-        toast.error(`Failed to remove ${label} key`);
-      }
-    } catch {
-      toast.error("Network error — try again");
+      // PRIVACY-MODE: delete from localStorage only — no server call.
+      updateStoredEntry(source, null);
+      setKeyInput("");
+      toast.success(`${label} key removed (from your browser)`);
+      onMutated();
     } finally {
       setRemoving(false);
     }
@@ -266,14 +353,15 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
    * only). Generates a code_verifier + code_challenge (S256) pair in the
    * browser, persists them in two SameSite=Lax cookies so the
    * /api/v1/byok/pollinations/connect handler can replay the verifier
-   * against the token endpoint, then navigates (same tab — top-level
-   * navigation, so the cookies ride along on the redirect back from
-   * enter.pollinations.ai) to the authorize URL with code_challenge +
-   * code_challenge_method=S256.
+   * against the token endpoint, then navigates to the authorize URL with
+   * code_challenge + code_challenge_method=S256.
    *
-   * Why same-tab instead of target=_blank: an async handler (await
-   * crypto.subtle.digest) before window.open risks popup-blocker false
-   * positives, and the OAuth round-trip is cleaner in a single tab.
+   * The /connect callback stashes the resulting token in a 60s-TTL KV
+   * entry under a single-use opaque key, and redirects back to /providers
+   * with ?connect=ok&provider=pollinations&redeem=<opaque>. The
+   * ByokProviders parent component reads the redeem param + fetches
+   * GET /api/v1/byok/pollinations/redeem?k=<opaque> to swap it for the
+   * token, then writes the token to localStorage (PRIVACY-MODE).
    */
   async function handlePollinationsConnect() {
     if (typeof window === "undefined") return;
@@ -302,9 +390,6 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
       window.crypto.getRandomValues(stateBytes);
       const state = Array.from(stateBytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
-      // Persist verifier + state in cookies (SameSite=Lax → sent on the
-      // top-level redirect back from enter.pollinations.ai). Max-Age=600s
-      // is plenty for a sign-in round-trip.
       const secure = window.location.protocol === "https:" ? "; Secure" : "";
       document.cookie = `pollinations_pkce_verifier=${codeVerifier}; Path=/; SameSite=Lax${secure}; Max-Age=600`;
       document.cookie = `pollinations_oauth_state=${state}; Path=/; SameSite=Lax${secure}; Max-Age=600`;
@@ -334,34 +419,35 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
           <Badge className="border-transparent bg-violet-500/15 text-violet-700 dark:text-violet-300">
             BYOK
           </Badge>
-          {connected === true ? (
+          {connected ? (
             <Badge className="border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="h-3 w-3" /> Connected
             </Badge>
-          ) : connected === false ? (
+          ) : (
             <Badge className="border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300">
               <XCircle className="h-3 w-3" /> Not connected
             </Badge>
-          ) : null}
+          )}
         </div>
         <CardDescription>{PROVIDER_DESC[source]}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {masked && (
-          <div className="text-xs text-muted-foreground">
-            Stored key:{" "}
-            <span className="font-mono text-foreground">{masked}</span>
+          <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+            <span>Stored key:</span>
+            <code className="font-mono text-foreground">{masked}</code>
+            {addedAt && (
+              <span className="text-[10px]">
+                added {new Date(addedAt).toLocaleDateString()}
+              </span>
+            )}
+            {lastValidatedAt && (
+              <span className="text-[10px]">
+                validated {new Date(lastValidatedAt).toLocaleString()}
+              </span>
+            )}
           </div>
         )}
-        {/* "Connect wallet" button — only for Pollinations. Generates a PKCE
-            (S256) pair, stores the code_verifier + state in two SameSite=Lax
-            cookies so the /api/v1/byok/pollinations/connect handler can
-            replay the verifier against the token endpoint, then navigates
-            to enter.pollinations.ai/authorize. The publishable app key is
-            exposed to the browser via NEXT_PUBLIC_POLLINATIONS_APP_KEY.
-            PKCE is MANDATORY since 2026-08-30 — the authorize server returns
-            "PKCE code_challenge is required for the authorization code flow"
-            without it. */}
         {source === "pollinations" &&
           process.env.NEXT_PUBLIC_POLLINATIONS_APP_KEY && (
             <Button
@@ -380,15 +466,28 @@ function ByokCard({ source, meta, onMutated }: ByokCardProps) {
           <Label htmlFor={`byok-${source}-key`} className="text-xs">
             {label} API key
           </Label>
-          <Input
-            id={`byok-${source}-key`}
-            type="password"
-            autoComplete="off"
-            placeholder={PROVIDER_PLACEHOLDER[source]}
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            disabled={saving}
-          />
+          <div className="relative">
+            <Input
+              id={`byok-${source}-key`}
+              type={showKey ? "text" : "password"}
+              autoComplete="off"
+              placeholder={PROVIDER_PLACEHOLDER[source]}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              disabled={saving}
+              className="pr-10"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowKey((v) => !v)}
+              className="absolute right-0 top-0 h-full px-3"
+              tabIndex={-1}
+            >
+              {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" disabled={saving}>
               <KeyRound className="h-4 w-4" />
@@ -431,15 +530,245 @@ function base64UrlEncode(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// ─── FreeAIXYZ API keys panel (server-persisted) ────────────────────────────
+
+function ApiKeysPanel() {
+  const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/api-keys", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        setKeys([]);
+        return;
+      }
+      const data = await res.json();
+      setKeys(data.keys ?? []);
+    } catch {
+      setKeys([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/v1/api-keys", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() || "default" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.key) {
+        setCreatedKey(data.key as CreatedApiKey);
+        setName("");
+        toast.success("API key created — copy it now, you won't see it again");
+        void load();
+      } else {
+        toast.error(data?.error?.message ?? "Failed to create key");
+      }
+    } catch {
+      toast.error("Network error — try again");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    if (!confirm("Revoke this API key? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/v1/api-keys/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        toast.success("API key revoked");
+        void load();
+      } else {
+        toast.error("Failed to revoke key");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy — select and copy manually");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <KeyRound className="h-4 w-4" /> FreeAIXYZ API keys
+        </CardTitle>
+        <CardDescription>
+          Programmatic gateway credentials (<code className="font-mono text-[11px]">fx_live_…</code>)
+          for curl / SDK access. Stored hashed on the server (sha256). The
+          full key is shown ONCE at creation — copy it before closing this panel.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form onSubmit={handleCreate} className="flex flex-col gap-2">
+          <Label htmlFor="apikey-name" className="text-xs">
+            Key name (optional)
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="apikey-name"
+              type="text"
+              placeholder="e.g. My SDK"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={creating}
+              className="max-w-xs"
+              maxLength={64}
+            />
+            <Button type="submit" size="sm" disabled={creating}>
+              <Plus className="h-4 w-4" />
+              {creating ? "Creating…" : "Create key"}
+            </Button>
+          </div>
+        </form>
+
+        {createdKey && (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 flex flex-col gap-2">
+            <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+              New key — copy now, you won&apos;t see it again
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-xs break-all flex-1 bg-background/50 p-2 rounded">
+                {createdKey.key}
+              </code>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void copyToClipboard(createdKey.key)}
+              >
+                {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="self-end"
+              onClick={() => setCreatedKey(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Prefix</TableHead>
+                <TableHead>Scopes</TableHead>
+                <TableHead>Last used</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && keys && keys.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">
+                    No API keys yet. Create one above to start using the gateway programmatically.
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && keys && keys.length > 0 && keys.map((k) => (
+                <TableRow key={k.id}>
+                  <TableCell className="font-medium">{k.name}</TableCell>
+                  <TableCell>
+                    <code className="font-mono text-xs">{k.keyPrefix}…</code>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {k.scopes.map((s) => (
+                        <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(k.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    {k.revokedAt ? (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        revoked
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void handleRevoke(k.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Revoke
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Top-level component ─────────────────────────────────────────────────────
 
 export function ByokProviders() {
   const { user, loading: authLoading } = useAuth();
-  const [meta, setMeta] = useState<ByokMetaMap | null>(null);
+  const [stored, setStored] = useState<Record<ByokSource, StoredByok | null>>({
+    gratisfy: null,
+    pollinations: null,
+  });
   const [providers, setProviders] = useState<ProviderEntry[] | null>(null);
   const [stale, setStale] = useState(false);
-  const [loadingMeta, setLoadingMeta] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [providerFilter, setProviderFilter] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
 
   const filteredProviders = useMemo(() => {
     if (!providers) return [];
@@ -453,67 +782,82 @@ export function ByokProviders() {
     );
   }, [providers, providerFilter]);
 
-  // Load saved (masked) BYOK keys on mount — the fix for "key deleted on
-  // refresh": keys live in OnyxBase keyed by userId, fetched fresh here.
-  const loadMeta = useCallback(async () => {
-    if (!user) return;
-    setLoadingMeta(true);
-    try {
-      const res = await fetch("/api/v1/byok", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { ok: boolean; meta: ByokMetaMap };
-        if (data.meta) setMeta(data.meta);
-      }
-    } catch {
-      // ignore — meta stays null
-    } finally {
-      setLoadingMeta(false);
-    }
-  }, [user]);
+  // Load BYOK state from localStorage on mount + whenever focus returns to
+  // the tab (e.g. after the OAuth round-trip).
+  const reloadStored = useCallback(() => {
+    setStored(loadStored());
+  }, []);
 
   useEffect(() => {
-    void loadMeta();
-  }, [loadMeta]);
+    reloadStored();
+  }, [reloadStored]);
 
-  // OAuth callback redirect toast — when the user returns from Pollinations'
-  // authorize page, the callback bounces them back to /providers with
-  // ?connect=ok|error&provider=pollinations&reason=… . We surface the
-  // outcome as a toast, refresh the masked-key meta so the "Connected"
-  // badge updates, then strip the query so a later refresh doesn't re-fire
-  // the toast. We also listen for the browser focus event so a returning
-  // tab (from the OAuth round-trip) re-fetches meta.
+  // OAuth redemption flow: when we land on /providers?connect=ok&redeem=<opaque>,
+  // swap the opaque key for the token at /api/v1/byok/pollinations/redeem,
+  // write the token to localStorage, and clean the URL.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     const status = url.searchParams.get("connect");
     const provider = url.searchParams.get("provider");
+    const redeem = url.searchParams.get("redeem");
     const reason = url.searchParams.get("reason");
-    if (status && provider) {
-      if (status === "ok") {
-        toast.success(`${provider[0].toUpperCase()}${provider.slice(1)} connected`);
-        void loadMeta();
-      } else if (status === "error") {
-        toast.error(
-          reason
-            ? `${provider[0].toUpperCase()}${provider.slice(1)} connect failed: ${reason}`
-            : `${provider[0].toUpperCase()}${provider.slice(1)} connect failed`,
-        );
-      }
-      // Clean the query so a later refresh doesn't re-fire the toast.
+    const warning = url.searchParams.get("warning");
+
+    if (status === "ok" && provider === "pollinations" && redeem) {
+      setRedeeming(true);
+      (async () => {
+        try {
+          const res = await fetch(
+            `/api/v1/byok/pollinations/redeem?k=${encodeURIComponent(redeem)}`,
+            { credentials: "include", cache: "no-store" },
+          );
+          const data = await res.json();
+          if (res.ok && data.ok && data.token) {
+            const entry: StoredByok = {
+              raw: data.token as string,
+              masked: (data.masked as string) ?? "",
+              addedAt: new Date().toISOString(),
+              lastValidatedAt: new Date().toISOString(),
+              lastValidationOk: true,
+            };
+            updateStoredEntry("pollinations", entry);
+            setStored(loadStored());
+            toast.success("Pollinations connected (token stored in your browser)");
+            if (warning) toast.warning(warning);
+          } else {
+            toast.error(data?.error ?? "Failed to redeem Pollinations token");
+          }
+        } catch {
+          toast.error("Network error during Pollinations redemption");
+        } finally {
+          setRedeeming(false);
+        }
+      })();
+    } else if (status === "ok" && provider) {
+      toast.success(`${provider[0].toUpperCase()}${provider.slice(1)} connected`);
+      reloadStored();
+    } else if (status === "error" && provider) {
+      toast.error(
+        reason
+          ? `${provider[0].toUpperCase()}${provider.slice(1)} connect failed: ${reason}`
+          : `${provider[0].toUpperCase()}${provider.slice(1)} connect failed`,
+      );
+    }
+    // Clean the query so a later refresh doesn't re-fire the toast.
+    if (status || provider || redeem || reason || warning) {
       url.searchParams.delete("connect");
       url.searchParams.delete("provider");
+      url.searchParams.delete("redeem");
       url.searchParams.delete("reason");
+      url.searchParams.delete("warning");
       window.history.replaceState({}, "", url.toString());
     }
-    // Re-fetch meta when the window regains focus (e.g. user came back
-    // from the OAuth tab without us seeing a redirect query — defensive).
-    const onFocus = () => void loadMeta();
+
+    const onFocus = () => reloadStored();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [loadMeta]);
+  }, [reloadStored]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -570,8 +914,8 @@ export function ByokProviders() {
             </CardTitle>
             <CardDescription>
               BYOK API key inputs are only available after you sign in. Your
-              keys are saved to your account and persist across refresh and
-              devices. Sign in with just your email — no password, no
+              keys are saved to your browser (localStorage) — never on our
+              server. Sign in with just your email — no password, no
               verification code.
             </CardDescription>
           </CardHeader>
@@ -595,7 +939,7 @@ export function ByokProviders() {
           <p className="text-sm text-muted-foreground mt-1">
             Signed in as{" "}
             <span className="font-medium text-foreground">{user.email}</span>.
-            Keys are stored in OnyxBase with your account.
+            BYOK keys live in your browser (localStorage) — never on our server.
           </p>
         </div>
         <Button onClick={refresh} disabled={refreshing} variant="outline">
@@ -609,42 +953,43 @@ export function ByokProviders() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ByokCard
           source="gratisfy"
-          meta={meta?.gratisfy ?? null}
-          onMutated={loadMeta}
+          stored={stored.gratisfy}
+          onMutated={reloadStored}
         />
-        <ByokCard source="g4f" meta={meta?.g4f ?? null} onMutated={loadMeta} />
         <ByokCard
           source="pollinations"
-          meta={meta?.pollinations ?? null}
-          onMutated={loadMeta}
+          stored={stored.pollinations}
+          onMutated={reloadStored}
         />
       </div>
 
+      {redeeming && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          <span>Redeeming Pollinations token from OAuth callback…</span>
+        </div>
+      )}
+
       <Separator />
 
-      {/* Sources overview — the user explicitly asked to make gratisfy,
-          pollinations, g4f "available in the main menu providers section".
-          The unified catalog table below used to slice(0, 100) which CUT
-          OFF the pollinations providers entirely (they sort last: native →
-          g4f → gratisfy → pollinations, so 14+61+36 = 111 before
-          pollinations starts, and slice(0, 100) hid everything from
-          index 100 onward). The 4-card grid here surfaces every source's
-          totals up-front so all four are visibly present even before the
-          user scrolls the table. */}
+      <ApiKeysPanel />
+
+      <Separator />
+
+      {/* Sources overview */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Boxes className="h-4 w-4" />
           <h2 className="text-lg font-semibold">Sources</h2>
           <span className="text-xs text-muted-foreground">
-            4 sources aggregated into one OpenAI-compatible gateway
+            3 sources aggregated into one OpenAI-compatible gateway
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {(
             [
               { key: "native", label: "Native", desc: "Built-in free providers" },
               { key: "gratisfy", label: "Gratisfy", desc: "BYOK gxyz-… key" },
-              { key: "g4f", label: "G4F", desc: "BYOK g4f_… key" },
               { key: "pollinations", label: "Pollinations", desc: "BYOK or anon" },
             ] as const
           ).map((s) => {
@@ -690,11 +1035,9 @@ export function ByokProviders() {
           <div>
             <h2 className="text-lg font-semibold">Unified catalog</h2>
             <p className="text-xs text-muted-foreground">
-              {loadingMeta
-                ? "Loading providers…"
-                : providers
-                  ? `Showing all ${providers.length} providers across 4 sources${stale ? " (catalog stale)" : ""}.`
-                  : "No providers loaded."}
+              {providers
+                ? `Showing all ${providers.length} providers across 3 sources${stale ? " (catalog stale)" : ""}.`
+                : "No providers loaded."}
             </p>
           </div>
           <div className="relative w-full sm:w-72">

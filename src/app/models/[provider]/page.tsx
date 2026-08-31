@@ -30,9 +30,10 @@ export const maxDuration = 30;
  * Native providers are short codes ("tb", "au", "fx"…) → uppercased.
  * BYOK sources use their friendly source name. The "provider" segment
  * from the URL can be either an actual provider code (e.g. "openai"
- * under g4f) OR a source name ("g4f", "gratisfy", "native"). The
- * catalog collapses g4f sub-providers into a single "g4f" section, so
- * we try the source-name match first; otherwise we match by m.provider.
+ * under gratisfy) OR a source name ("gratisfy", "native"). The
+ * catalog collapses gratisfy sub-providers into a single "gratisfy"
+ * section, so we try the source-name match first; otherwise we match
+ * by m.provider.
  */
 function resolveProviderLabel(
   providerSeg: string,
@@ -42,8 +43,8 @@ function resolveProviderLabel(
   if (matchedSource === "native") {
     return (matchedProvider ?? providerSeg).toUpperCase();
   }
-  if (matchedSource === "g4f") {
-    if (providerSeg.toLowerCase() === "g4f") return "G4F";
+  if (matchedSource === "pollinations") {
+    if (providerSeg.toLowerCase() === "pollinations") return "Pollinations";
     return providerSeg;
   }
   if (matchedSource === "gratisfy") return "Gratisfy";
@@ -100,8 +101,8 @@ export default async function ProviderModelsPage({ params }: PageProps) {
   const lower = providerSeg.toLowerCase();
 
   // Match strategy:
-  //   1. Exact source-name match ("g4f" / "gratisfy" / "native") — used by
-  //      the catalog's sectionId collapsed tabs.
+  //   1. Exact source-name match ("gratisfy" / "pollinations" / "native") —
+  //      used by the catalog's sectionId collapsed tabs.
   //   2. Otherwise, match by m.provider code (e.g. "tb", "openai").
   // If both turn up empty, 404.
   let matchedSource: Source | null = null;
@@ -109,8 +110,8 @@ export default async function ProviderModelsPage({ params }: PageProps) {
   let matched: UnifiedModel[] = [];
 
   if (
-    lower === "g4f" ||
     lower === "gratisfy" ||
+    lower === "pollinations" ||
     lower === "native"
   ) {
     const src = lower as Source;

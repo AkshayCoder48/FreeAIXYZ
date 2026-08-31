@@ -173,8 +173,8 @@ function ProviderPageCard({
   const subLabel =
     model.source === "native"
       ? `Native · ${model.provider}`
-      : model.source === "g4f"
-        ? `G4F · ${model.provider}`
+      : model.source === "pollinations"
+        ? `Pollinations · ${model.provider}`
         : sourceLabel(model.source);
 
   const href = `/models/${encodeURIComponent(model.provider)}/${encodeURIComponent(
@@ -325,7 +325,7 @@ function ProviderPageCard({
 
 function sourceLabel(source: Source): string {
   if (source === "gratisfy") return "Gratisfy";
-  if (source === "g4f") return "G4F";
+  if (source === "pollinations") return "Pollinations";
   return "Native";
 }
 
@@ -361,10 +361,10 @@ function sourceBadge(source: Source) {
       cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
     };
   }
-  if (source === "g4f") {
+  if (source === "pollinations") {
     return {
-      label: "G4F",
-      cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+      label: "Pollinations",
+      cls: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
     };
   }
   return {
@@ -395,11 +395,13 @@ function isPricingDocumented(p: ModelPricing | undefined | null): boolean {
 
 function formatPrice(v: number | null | undefined, currency: "USD" | "pollen" = "USD"): string {
   if (v == null) return "—";
-  if (v === 0) return currency === "pollen" ? "0 pollen" : "$0";
+  // 1 pollen = 1 XYZ (gateway peg). Pollen-denominated upstream prices are
+  // displayed in the gateway's XYZ currency at par.
+  if (v === 0) return currency === "pollen" ? "0 XYZ" : "$0";
   if (currency === "pollen") {
-    if (v < 0.01) return `${v.toFixed(4)} pollen`;
-    if (v < 1) return `${v.toFixed(3)} pollen`;
-    return `${v.toFixed(2)} pollen`;
+    if (v < 0.01) return `${v.toFixed(4)} XYZ`;
+    if (v < 1) return `${v.toFixed(3)} XYZ`;
+    return `${v.toFixed(2)} XYZ`;
   }
   if (v < 0.01) return `$${v.toFixed(4)}`;
   if (v < 1) return `$${v.toFixed(3)}`;

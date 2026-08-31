@@ -470,15 +470,17 @@ export async function POST(request: Request) {
     const wantsStream = body.stream === true;
     const useTools = hasTools(body.tools);
 
-    // ─── BYOK SOURCE-AWARE PATH (PRD §17, §61) ──────────────────────────────
-    // Model ids of the form `gratisfy:<provider>:<model>` or `g4f:<provider>:
-    // <model>` are routed to the BYOK handler. The user's BYOK key is read
-    // from the X-Gratisfy-API-Key / X-G4F-API-Key header (priority) or the
-    // authenticated account's stored credential. NO provider fallback (a
+    // ─── BYOK SOURCE-AWARE PATH (PRD §17, §61, PRIVACY-MODE) ──────────────
+    // Model ids of the form `gratisfy:<provider>:<model>` are routed to
+    // the BYOK handler. The user's BYOK key is read ONLY from the
+    // X-Gratisfy-API-Key header (or the generic X-API-Key + X-Provider:
+    // gratisfy header) — never from a server-side credential store.
+    // PRIVACY-MODE: the user's private BYOK keys live in their browser
+    // localStorage and are sent per-request. NO provider fallback (a
     // Gratisfy request stays on Gratisfy — PRD §17).
     if (
       typeof body.model === "string" &&
-      (body.model.startsWith("gratisfy:") || body.model.startsWith("g4f:"))
+      body.model.startsWith("gratisfy:")
     ) {
       const { handleByokChatCompletion } = await import("@/lib/xyz/byok-route");
       return handleByokChatCompletion(body, request);
@@ -486,14 +488,19 @@ export async function POST(request: Request) {
 
     // ─── POLLINATIONS SOURCE-AWARE TRANSLATION ───────────────────────────────
     // The unified registry emits Pollinations model ids as
-    // `pollinations:pollinations:<name>` (the source-prefixed form used by
+    // `pollinations:<provider>:<name>` (the source-prefixed form used by
     // the catalog + playground dropdown). The gateway's native Pollinations
     // adapter (registered in src/providers/pollinations/ + the legacy
     // adapter shim in src/lib/gateway/adapters/legacy.ts) consumes the
     // canonical short-id form `po/<name>` — so translate here and let the
-    // canonical-path resolver + legacy fallback take over. NO BYOK key is
-    // required for Pollinations anonymous-tier chat (the gateway adapter
-    // calls text.pollinations.ai directly with no Authorization header).
+    // canonical-path resolver + legacy fallback take over.
+    //
+    // If the user has connected a Pollinations token (via Connect-wallet
+    // OAuth → localStorage), the client sends it as the
+    // X-Pollinations-API-Key header. We forward that header to the gateway
+    // adapter so it can use the authenticated tier (paid models, higher
+    // rate limits). If no header is present, the gateway adapter falls
+    // back to anonymous-tier chat (PRD §82 — never fake "Connected").
     if (typeof body.model === "string" && body.model.startsWith("pollinations:")) {
       const parts = body.model.split(":");
       // pollinations:<provider>:<model...> → po/<model...>

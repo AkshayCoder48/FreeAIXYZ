@@ -244,7 +244,7 @@ function Section({
 const SOURCE_BADGES: Record<string, { label: string; className: string }> = {
   native: { label: "native", className: "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30" },
   gratisfy: { label: "gratisfy", className: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30" },
-  g4f: { label: "g4f", className: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30" },
+  pollinations: { label: "pollinations", className: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30" },
 };
 
 function SourceBadge({ source }: { source: string }) {
@@ -660,14 +660,15 @@ X-API-Key: fx_live_xxxxxxxxxxxx`}
                     catalog (multi-model, multi-provider).
                   </p>
                 </div>
-                <div className="rounded-md border border-orange-300/50 dark:border-orange-700/40 bg-orange-50 dark:bg-orange-950/20 p-3">
+                <div className="rounded-md border border-rose-300/50 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-950/20 p-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <SourceBadge source="g4f" />
-                    <span className="text-[13px] font-semibold text-foreground">G4F</span>
+                    <SourceBadge source="pollinations" />
+                    <span className="text-[13px] font-semibold text-foreground">Pollinations</span>
                   </div>
                   <p className="text-[12px] text-muted-foreground leading-relaxed">
-                    Aggregator (multiple upstream providers per key). BYOK key
-                    unlocks the G4F catalog.
+                    Multi-model gateway. Anonymous chat works; OAuth Connect
+                    wallet unlocks the paid tier + per-token pollen pricing
+                    (billed as XYZ at 1 pollen = 1 XYZ).
                   </p>
                 </div>
               </div>
@@ -869,12 +870,11 @@ native:tb:gpt-5
 native:po:gpt-4o
 native:oc:big-pickle
 
-# G4F BYOK — unlocks after POST /api/v1/byok/g4f
-g4f:Airforce:gpt-4
-g4f:Blackbox:llama-3.1-70b
-
 # Gratisfy BYOK — unlocks after POST /api/v1/byok/gratisfy
-gratisfy:gratisfy:gemini-2.5-flash`}
+gratisfy:gratisfy:gemini-2.5-flash
+
+# Pollinations — anonymous chat works; OAuth Connect for paid tier
+pollinations:OpenAI:gpt-5.4`}
                   filename="model-ids.txt"
                 />
               </div>
@@ -896,9 +896,10 @@ gratisfy:gratisfy:gemini-2.5-flash`}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <SourceBadge source="g4f" />
+                  <SourceBadge source="pollinations" />
                   <span className="text-muted-foreground">
-                    — aggregator. Requires a saved BYOK key.
+                    — multi-model gateway. Anonymous chat works; OAuth
+                    Connect wallet unlocks the paid tier.
                   </span>
                 </div>
               </div>

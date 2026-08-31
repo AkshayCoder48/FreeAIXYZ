@@ -41,7 +41,7 @@ export interface PricingSourceLegendEntry {
 export interface PricingCardEntry {
   id: string;
   displayName: string;
-  source: "native" | "gratisfy" | "g4f";
+  source: "native" | "gratisfy" | "pollinations";
   provider: string;
   originalModelId: string;
   capabilities: {
@@ -155,10 +155,10 @@ function sourceBadgeCls(source: string): { label: string; cls: string } {
       cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
     };
   }
-  if (source === "g4f") {
+  if (source === "pollinations") {
     return {
-      label: "G4F",
-      cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+      label: "Pollinations",
+      cls: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
     };
   }
   return {
@@ -180,11 +180,13 @@ function isFree(p: ModelPricingLite | null | undefined): boolean {
 
 function formatPrice(v: number | null | undefined, currency: "USD" | "pollen" = "USD"): string {
   if (v == null) return "—";
-  if (v === 0) return currency === "pollen" ? "0 pollen" : "$0";
+  // 1 pollen = 1 XYZ (gateway peg). Pollen-denominated upstream prices are
+  // displayed in the gateway's XYZ currency at par.
+  if (v === 0) return currency === "pollen" ? "0 XYZ" : "$0";
   if (currency === "pollen") {
-    if (v < 0.01) return `${v.toFixed(4)} pollen`;
-    if (v < 1) return `${v.toFixed(3)} pollen`;
-    return `${v.toFixed(2)} pollen`;
+    if (v < 0.01) return `${v.toFixed(4)} XYZ`;
+    if (v < 1) return `${v.toFixed(3)} XYZ`;
+    return `${v.toFixed(2)} XYZ`;
   }
   if (v < 0.01) return `$${v.toFixed(4)}`;
   if (v < 1) return `$${v.toFixed(3)}`;
@@ -216,7 +218,7 @@ function responsesPerXYZ(
 /**
  * Heuristic capability detection from the model id. The registry currently
  * returns default capabilities (text=true, all others=false) for native +
- * g4f + gratisfy models, so without this the Reasoning / Coding / Search
+ * gratisfy + pollinations models, so without this the Reasoning / Coding / Search
  * / Vision filter chips would surface ~0 models. The heuristics below
  * pattern-match against well-known model family names that DO have those
  * capabilities. When the registry is later enriched with real per-model
@@ -269,7 +271,7 @@ function shortModelName(entry: PricingCardEntry): string {
 
 function providerSubLabel(entry: PricingCardEntry): string {
   if (entry.source === "native") return `Native · ${entry.provider}`;
-  if (entry.source === "g4f") return `G4F · ${entry.provider}`;
+  if (entry.source === "pollinations") return `Pollinations · ${entry.provider}`;
   return `Gratisfy · ${entry.provider}`;
 }
 
@@ -306,7 +308,7 @@ export function PricingBoardClient({
   const [filter, setFilter] = React.useState<FilterKey>("all");
   const [query, setQuery] = React.useState("");
   // Per-page pagination so the grid doesn't render thousands of cards at
-  // once when the g4f aggregate is live (same pattern as the catalog).
+  // once when the gratisfy aggregate is live (same pattern as the catalog).
   const [visibleCount, setVisibleCount] = React.useState(48);
 
   // Filtered + searched entries for the current state.

@@ -5,7 +5,7 @@
  *
  * Server-side data is hydrated via the `data` prop (RSC-serialized):
  *   - models: every currently-available entry in the unified catalog
- *     (native + g4f + gratisfy when BYOK key present), grouped by
+ *     (native + gratisfy when BYOK key present), grouped by
  *     (source, provider) in the dropdown.
  *   - byok:   the user's BYOK credential meta (connected + lastValidationOk).
  *   - user:   the authed account (null for anonymous).
@@ -15,9 +15,15 @@
  *   source-coloured headers. The selected model's provider / model / status /
  *   pricing / estimated XYZ surface in a card next to the dropdown.
  *
- * PRD §54 — BYOK in playground: `gratisfy:*` / `g4f:*` models show a warning
+ * PRD §54 — BYOK in playground: `gratisfy:*` models show a warning
  *   panel when the user has no saved key (or is anonymous), with a link to
- *   /settings. A valid key shows a "● Ready" badge.
+ *   /providers. A valid key shows a "● Ready" badge.
+ *
+ * PRIVACY-MODE BYOK (2026-08-30): the user's BYOK keys live in their
+ *   browser localStorage (key `fxz:byok`). The playground reads them
+ *   on mount + on focus regain, and sends them as request headers on
+ *   the chat completions call (X-Gratisfy-API-Key). The server never
+ *   persists them.
  *
  * PRD §77 — state machine:
  *   idle → preparing → routing → generating → completed
@@ -82,7 +88,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Source = "native" | "gratisfy" | "g4f" | "pollinations";
+type Source = "native" | "gratisfy" | "pollinations";
 
 interface ModelPricing {
   inputPerMillion: number | null;
@@ -119,7 +125,7 @@ export interface PlaygroundModel {
 }
 
 export interface PlaygroundByokMeta {
-  provider: "gratisfy" | "g4f";
+  provider: "gratisfy" | "pollinations";
   connected: boolean;
   masked: string;
   addedAt: string;
@@ -129,7 +135,7 @@ export interface PlaygroundByokMeta {
 
 export interface ChatPlaygroundData {
   models: PlaygroundModel[];
-  byok: Record<"gratisfy" | "g4f", PlaygroundByokMeta>;
+  byok: Record<"gratisfy" | "pollinations", PlaygroundByokMeta>;
   user: {
     id: string;
     email: string;
@@ -213,13 +219,6 @@ const SOURCE_COLORS: Record<Source, { text: string; bg: string; border: string; 
     dot: "bg-violet-500",
     label: "Gratisfy",
   },
-  g4f: {
-    text: "text-orange-700 dark:text-orange-300",
-    bg: "bg-orange-50 dark:bg-orange-950/40",
-    border: "border-orange-300 dark:border-orange-800",
-    dot: "bg-orange-500",
-    label: "G4F",
-  },
   pollinations: {
     text: "text-rose-700 dark:text-rose-300",
     bg: "bg-rose-50 dark:bg-rose-950/40",
@@ -262,7 +261,7 @@ function uid(): string {
 const MAX_ITEMS_PER_GROUP = 30;
 
 function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provider: string; items: PlaygroundModel[]; hidden: number }> {
-  const order: Source[] = ["native", "gratisfy", "g4f", "pollinations"];
+  const order: Source[] = ["native", "gratisfy", "pollinations"];
   const buckets = new Map<string, { source: Source; provider: string; items: PlaygroundModel[] }>();
   for (const m of models) {
     const key = `${m.source}::${m.provider}`;
@@ -304,8 +303,9 @@ function groupModels(models: PlaygroundModel[]): Array<{ source: Source; provide
  *
  * USD prices render as `$X.XX/1M` (or "free" for $0, "—" for null).
  * Pollen prices (Pollinations-internal currency surfaced through the
- * Gratisfy catalog) render as `X.XX pollen/1M` to make the currency
- * distinction visible — never present pollen as USD (PRD §26). */
+ * Gratisfy catalog) render as `X.XX XYZ/1M` — the gateway pegs 1 pollen =
+ * 1 XYZ and surfaces upstream pollen-denominated prices in the gateway's
+ * XYZ currency at par (never present pollen as USD — PRD §26). */
 function formatUsd(
   perMillion: number | null | undefined,
   currency: "USD" | "pollen" = "USD",
@@ -313,9 +313,9 @@ function formatUsd(
   if (perMillion == null) return "—";
   if (perMillion === 0) return "free";
   if (currency === "pollen") {
-    if (perMillion < 0.01) return `${perMillion.toFixed(4)} pollen/1M`;
-    if (perMillion < 1) return `${perMillion.toFixed(3)} pollen/1M`;
-    return `${perMillion.toFixed(2)} pollen/1M`;
+    if (perMillion < 0.01) return `${perMillion.toFixed(4)} XYZ/1M`;
+    if (perMillion < 1) return `${perMillion.toFixed(3)} XYZ/1M`;
+    return `${perMillion.toFixed(2)} XYZ/1M`;
   }
   return `$${perMillion.toFixed(2)}/1M`;
 }
@@ -325,10 +325,10 @@ function formatXyz(cost: number): string {
   return cost.toFixed(4);
 }
 
-/** Extract the BYOK provider key for a model id ("gratisfy" | "g4f" | null). */
-function byokProviderFor(modelId: string): "gratisfy" | "g4f" | null {
+/** Extract the BYOK provider key for a model id ("gratisfy" | "pollinations" | null). */
+function byokProviderFor(modelId: string): "gratisfy" | "pollinations" | null {
   if (modelId.startsWith("gratisfy:")) return "gratisfy";
-  if (modelId.startsWith("g4f:")) return "g4f";
+  if (modelId.startsWith("pollinations:")) return "pollinations";
   return null;
 }
 
@@ -347,7 +347,6 @@ function providerLabel(source: Source, provider: string): string {
     return provider || "Native";
   }
   if (source === "gratisfy") return "Gratisfy";
-  if (source === "g4f") return provider === "g4f" ? "G4F" : `G4F — ${provider}`;
   if (source === "pollinations") {
     return provider === "pollinations" ? "Pollinations" : `Pollinations — ${provider}`;
   }
@@ -467,11 +466,52 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     ? byokProviderFor(selectedModel.id)
     : null;
 
+  // PRIVACY-MODE BYOK (2026-08-30): the user's BYOK keys live in their
+  // browser localStorage under `fxz:byok`. Read them on mount + on focus
+  // regain so a freshly-connected key (via the OAuth redirect on
+  // /providers?connect=ok&redeem=…) appears here too.
+  const [byokLocal, setByokLocal] = React.useState<
+    Record<"gratisfy" | "pollinations", { connected: boolean; masked: string; raw: string; lastValidationOk?: boolean } | null>
+  >({ gratisfy: null, pollinations: null });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const load = () => {
+      try {
+        const raw = window.localStorage.getItem("fxz:byok");
+        if (!raw) {
+          setByokLocal({ gratisfy: null, pollinations: null });
+          return;
+        }
+        const parsed = JSON.parse(raw) as Partial<
+          Record<"gratisfy" | "pollinations", { raw?: string; masked?: string; lastValidationOk?: boolean; addedAt?: string } | null>
+        >;
+        setByokLocal({
+          gratisfy: parsed.gratisfy
+            ? { connected: true, masked: parsed.gratisfy.masked ?? "", raw: parsed.gratisfy.raw ?? "", lastValidationOk: parsed.gratisfy.lastValidationOk }
+            : null,
+          pollinations: parsed.pollinations
+            ? { connected: true, masked: parsed.pollinations.masked ?? "", raw: parsed.pollinations.raw ?? "", lastValidationOk: parsed.pollinations.lastValidationOk }
+            : null,
+        });
+      } catch {
+        setByokLocal({ gratisfy: null, pollinations: null });
+      }
+    };
+    load();
+    window.addEventListener("focus", load);
+    window.addEventListener("storage", load);
+    return () => {
+      window.removeEventListener("focus", load);
+      window.removeEventListener("storage", load);
+    };
+  }, []);
+
   // PRD §54 — BYOK readiness for the currently selected model.
   const byokState = React.useMemo<{
     state: "ready" | "invalid" | "needs-key" | "needs-auth" | "n/a";
     label: string;
-    panelKind: "none" | "sign-in" | "configure-gratisfy" | "configure-g4f" | "invalid";
+    panelKind: "none" | "sign-in" | "configure-gratisfy" | "configure-pollinations" | "invalid";
     maskedKey?: string;
   }>(() => {
     if (!selectedByokProvider) {
@@ -480,27 +520,27 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     if (!user) {
       return { state: "needs-auth", label: "Sign in", panelKind: "sign-in" };
     }
-    const meta = byok[selectedByokProvider];
-    if (!meta.connected) {
+    const local = byokLocal[selectedByokProvider];
+    if (!local || !local.connected) {
       return {
         state: "needs-key",
         label: "Configure",
         panelKind:
           selectedByokProvider === "gratisfy"
             ? "configure-gratisfy"
-            : "configure-g4f",
+            : "configure-pollinations",
       };
     }
-    if (meta.lastValidationOk === false) {
+    if (local.lastValidationOk === false) {
       return {
         state: "invalid",
         label: "Invalid key",
         panelKind: "invalid",
-        maskedKey: meta.masked,
+        maskedKey: local.masked,
       };
     }
-    return { state: "ready", label: "Ready", panelKind: "none", maskedKey: meta.masked };
-  }, [selectedByokProvider, user, byok]);
+    return { state: "ready", label: "Ready", panelKind: "none", maskedKey: local.masked };
+  }, [selectedByokProvider, user, byokLocal]);
 
   // ─── Actions ────────────────────────────────────────────────────────────
 
@@ -548,8 +588,12 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       setXyzCost(null);
       setStreamTokens(null);
 
-      // PRD §54 — BYOK gate.
+      // PRD §54 — BYOK gate (PRIVACY-MODE: read from localStorage, not from
+      // server-hydrated `byok` prop). Only `gratisfy:*` is a true BYOK model
+      // here — pollinations:* is routed through the native gateway with the
+      // user's token as an optional X-Pollinations-API-Key header.
       const byokP = byokProviderFor(selectedModelRef.current);
+      let byokHeader: Record<string, string> = {};
       if (byokP) {
         if (!user) {
           setPhase("error");
@@ -557,16 +601,32 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
           toast.error("Sign in to use BYOK models.");
           return;
         }
-        if (!byok[byokP].connected) {
+        // Pull the user's key from localStorage on the client.
+        let storedRaw = "";
+        try {
+          const raw = window.localStorage.getItem("fxz:byok");
+          if (raw) {
+            const parsed = JSON.parse(raw) as Record<string, { raw?: string } | null>;
+            storedRaw = (parsed[byokP]?.raw ?? "").trim();
+          }
+        } catch {
+          // ignore — leaves storedRaw empty, falls through to the gate
+        }
+        if (!storedRaw) {
           setPhase("error");
           setErrorMessage(
-            `This model requires your ${byokP === "gratisfy" ? "Gratisfy" : "G4F"} API key.`,
+            `This model requires your ${byokP === "gratisfy" ? "Gratisfy" : "Pollinations"} API key.`,
           );
           toast.error(
-            `Configure your ${byokP === "gratisfy" ? "Gratisfy" : "G4F"} key in Settings.`,
+            `Connect your ${byokP === "gratisfy" ? "Gratisfy" : "Pollinations"} key on the Providers page.`,
           );
           return;
         }
+        // Send as a request header. The server reads it from the request
+        // and never persists it (PRIVACY-MODE).
+        const headerName =
+          byokP === "gratisfy" ? "X-Gratisfy-API-Key" : "X-Pollinations-API-Key";
+        byokHeader = { [headerName]: storedRaw };
       }
 
       // Build the message list — prior turns + new user turn.
@@ -620,7 +680,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       try {
         const response = await fetch("/api/v1/chat/completions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...byokHeader },
           credentials: "include",
           body: JSON.stringify({
             model: selectedModelRef.current,
@@ -817,7 +877,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     },
     // Refs (selectedModelRef / messagesRef / systemRef) carry fresh values
     // across renders so they don't need to be in the dep array.
-    [input, selectedModel, user, byok, multiplier],
+    [input, selectedModel, user, multiplier],
   );
 
   const retry = React.useCallback(() => {
@@ -1771,7 +1831,7 @@ function ByokWarningPanel({
   kind:
     | "sign-in"
     | "configure-gratisfy"
-    | "configure-g4f"
+    | "configure-pollinations"
     | "invalid";
   maskedKey?: string;
 }) {
@@ -1804,16 +1864,16 @@ function ByokWarningPanel({
       </Alert>
     );
   }
-  if (kind === "configure-gratisfy" || kind === "configure-g4f") {
-    const providerName = kind === "configure-gratisfy" ? "Gratisfy" : "G4F";
+  if (kind === "configure-gratisfy" || kind === "configure-pollinations") {
+    const providerName = kind === "configure-gratisfy" ? "Gratisfy" : "Pollinations";
     const accent =
       kind === "configure-gratisfy"
         ? "border-violet-300 bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-200 dark:border-violet-800"
-        : "border-orange-300 bg-orange-50 text-orange-900 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-800";
+        : "border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-800";
     const buttonClass =
       kind === "configure-gratisfy"
         ? "bg-violet-600 hover:bg-violet-700 text-white"
-        : "bg-orange-600 hover:bg-orange-700 text-white";
+        : "bg-rose-600 hover:bg-rose-700 text-white";
     return (
       <Alert className={cn("rounded-none border-x-0 border-t-0 border-b", accent)}>
         <KeyRound className="h-4 w-4" />
@@ -1826,8 +1886,8 @@ function ByokWarningPanel({
             The chat endpoint will return 401 <code
               className="font-mono text-[10px] bg-white/60 dark:bg-black/40 px-1 py-0.5 rounded"
               style={{ fontFamily: "var(--font-mono), monospace" }}
-            >BYOK_KEY_REQUIRED</code> until you save one. Keys are stored
-            encrypted server-side and never travel with chat requests (PRD §10).
+            >BYOK_KEY_REQUIRED</code> until you connect one. Keys live in your
+            browser (localStorage) — never on our server (PRIVACY-MODE).
           </span>
           <div>
             <Button
@@ -1835,9 +1895,9 @@ function ByokWarningPanel({
               size="sm"
               className={cn("h-7 text-[11px]", buttonClass)}
             >
-              <Link href="/settings">
+              <Link href="/providers">
                 <KeyRound className="h-3 w-3" />
-                Configure {providerName}
+                Connect {providerName}
               </Link>
             </Button>
           </div>
@@ -1864,7 +1924,7 @@ function ByokWarningPanel({
               variant="outline"
               className="h-7 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-950/40"
             >
-              <Link href="/settings">
+              <Link href="/providers">
                 <RefreshCw className="h-3 w-3" />
                 Re-validate key
               </Link>

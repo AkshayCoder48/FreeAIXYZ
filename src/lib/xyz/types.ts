@@ -2,17 +2,17 @@
  * FreeAIXYZ Unified BYOK + XYZ Credit System — core types.
  *
  * Architecture (PRD §2): SOURCE → PROVIDER → MODEL are distinct concepts.
- *   Source: native | gratisfy | g4f
+ *   Source: native | gratisfy | pollinations
  *   Provider: the underlying upstream (Google AI Studio, Gemini, OpenAI, …)
  *   Model: the actual model id
  *
  * Source-aware canonical ids (PRD §18):
  *   native:<provider>:<model>
  *   gratisfy:<provider>:<model>
- *   g4f:<provider>:<model>
+ *   pollinations:<provider>:<model>
  */
 
-export type Source = "native" | "gratisfy" | "g4f" | "pollinations";
+export type Source = "native" | "gratisfy" | "pollinations";
 
 /** Pricing status — never confuse "$0" with "not documented" (PRD §26). */
 export type PricingStatus =
@@ -33,7 +33,9 @@ export type PricingSource =
  *  for Pollinations-internal-currency pricing surfaced through Gratisfy's
  *  catalog (the public catalog `https://gratisfy.xyz/api/models/all` lists
  *  Pollinations-routed models with pricing strings like `"5 pollen/M"` —
- *  these are NOT USD prices and must not be rendered as USD). */
+ *  these are NOT USD prices and must not be rendered as USD). The FreeAIXYZ
+ *  gateway pegs 1 pollen = 1 XYZ (see POLLEN_XYZ_PEG in ./pricing-board.ts);
+ *  pollen-denominated prices are billed + displayed in XYZ at par. */
 export interface ModelPricing {
   inputPerMillion: number | null;
   outputPerMillion: number | null;
@@ -164,7 +166,7 @@ export interface EmailCodeRecord {
 
 /** BYOK credential metadata (PRD §54). The raw key is stored separately. */
 export interface BYOKCredentialMeta {
-  provider: "gratisfy" | "g4f" | "pollinations";
+  provider: "gratisfy" | "pollinations";
   connected: boolean;
   masked: string; // never the full key
   addedAt: string;
@@ -172,7 +174,7 @@ export interface BYOKCredentialMeta {
   lastValidationOk?: boolean;
 }
 
-export type BYOKProvider = "gratisfy" | "g4f" | "pollinations";
+export type BYOKProvider = "gratisfy" | "pollinations";
 
 /** Pricing board version snapshot (PRD §30). */
 export interface PricingVersion {

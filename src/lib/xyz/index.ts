@@ -24,7 +24,6 @@ export * from "./auth";
 export * from "./api-keys";
 export * from "./openai-chat";
 export * from "./gratisfy";
-export * from "./g4f";
 export * from "./pollinations";
 export * from "./registry";
 export * from "./onyxbase";

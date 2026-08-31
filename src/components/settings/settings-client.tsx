@@ -96,7 +96,7 @@ import { SignInDialog } from "@/components/auth/sign-in-dialog";
 
 // ─── Types (mirror of the server-side types, but JSON-serializable) ─────────
 
-export type SettingsByokProvider = "gratisfy" | "g4f";
+export type SettingsByokProvider = "gratisfy" | "pollinations";
 
 export interface SettingsByokMeta {
   provider: SettingsByokProvider;
@@ -125,7 +125,7 @@ export interface SettingsBalance {
   updatedAt: string;
 }
 
-export type SettingsSource = "native" | "gratisfy" | "g4f";
+export type SettingsSource = "native" | "gratisfy" | "pollinations";
 
 export interface SettingsTransaction {
   id: string;
@@ -262,8 +262,8 @@ function SourceBadge({ source }: { source: SettingsSource }) {
   const cls =
     source === "gratisfy"
       ? "border-transparent bg-violet-500/15 text-violet-700 dark:text-violet-300"
-      : source === "g4f"
-        ? "border-transparent bg-orange-500/15 text-orange-700 dark:text-orange-300"
+      : source === "pollinations"
+        ? "border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300"
         : "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300";
   return <Badge className={cls}>{label}</Badge>;
 }
@@ -360,13 +360,13 @@ function ByokCard({
   onChanged: (next: SettingsByokMeta) => void;
 }) {
   const isGratisfy = provider === "gratisfy";
-  const label = isGratisfy ? "Gratisfy" : "G4F";
+  const label = isGratisfy ? "Gratisfy" : "Pollinations";
   const base = `/api/v1/byok/${provider}`;
   const testEndpoint = `${base}/test`;
-  const placeholder = isGratisfy ? "gxyz-…" : "g4f_…";
+  const placeholder = isGratisfy ? "gxyz-…" : "your Pollinations token";
   const help = isGratisfy
-    ? "Bring your own gxyz-… key from Gratisfy. Stored encrypted-at-rest; we never expose the raw key."
-    : "Bring your own g4f_… key from g4f.dev. Discovery is public; the key is only used at chat time.";
+    ? "Bring your own gxyz-… key from Gratisfy. Stored in your browser (localStorage) — never on our server (PRIVACY-MODE)."
+    : "Bring your own Pollinations token, or click Connect wallet on the Providers page to sign in with Pollinations and we'll fetch one for you.";
 
   const [keyInput, setKeyInput] = useState("");
   // The card's local `meta` state is the canonical source of truth once the
@@ -1280,7 +1280,7 @@ function DiagnosticsSection({
     return {
       native: m.get("native") ?? 0,
       gratisfy: m.get("gratisfy") ?? 0,
-      g4f: m.get("g4f") ?? 0,
+      pollinations: m.get("pollinations") ?? 0,
     };
   }, [providers]);
 
@@ -1349,14 +1349,14 @@ function DiagnosticsSection({
             <CardDescription className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className="border-transparent bg-orange-500/15 text-orange-700 dark:text-orange-300"
+                className="border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300"
               >
-                G4F
+                Pollinations
               </Badge>
               models
             </CardDescription>
             <CardTitle className="text-2xl font-bold">
-              {bySource.g4f.toLocaleString()}
+              {bySource.pollinations.toLocaleString()}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -1560,8 +1560,8 @@ function ByokSection({
   const onGratisfyChanged = useCallback((next: SettingsByokMeta) => {
     setByok((b) => ({ ...b, gratisfy: next }));
   }, []);
-  const onG4fChanged = useCallback((next: SettingsByokMeta) => {
-    setByok((b) => ({ ...b, g4f: next }));
+  const onPollinationsChanged = useCallback((next: SettingsByokMeta) => {
+    setByok((b) => ({ ...b, pollinations: next }));
   }, []);
 
   return (
@@ -1571,9 +1571,9 @@ function ByokSection({
         <h2 className="text-sm font-semibold">Bring-your-own-key providers</h2>
       </div>
       <p className="text-xs text-muted-foreground -mt-2">
-        Keys are encrypted-at-rest and never returned to the browser. Validation
-        hits the real upstream — no spurious &ldquo;Connected&rdquo; badge (PRD
-        §82).
+        Keys live in your browser (localStorage) — never on our server
+        (PRIVACY-MODE). Validation hits the real upstream — no spurious
+        &ldquo;Connected&rdquo; badge (PRD §82).
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
         <ByokCard
@@ -1582,9 +1582,9 @@ function ByokSection({
           onChanged={onGratisfyChanged}
         />
         <ByokCard
-          provider="g4f"
-          initial={byok.g4f}
-          onChanged={onG4fChanged}
+          provider="pollinations"
+          initial={byok.pollinations}
+          onChanged={onPollinationsChanged}
         />
       </div>
     </div>
@@ -1802,7 +1802,7 @@ export function SettingsClient({
   const [byok, setByok] = useState<Record<SettingsByokProvider, SettingsByokMeta>>(
     data?.byok ?? {
       gratisfy: { provider: "gratisfy", connected: false, masked: "", addedAt: "" },
-      g4f: { provider: "g4f", connected: false, masked: "", addedAt: "" },
+      pollinations: { provider: "pollinations", connected: false, masked: "", addedAt: "" },
     },
   );
   const [apiKeys, setApiKeys] = useState<SettingsApiKeyInfo[]>(data?.apiKeys ?? []);
@@ -1829,7 +1829,7 @@ export function SettingsClient({
   const safeData: SettingsData = data ?? {
     byok: {
       gratisfy: { provider: "gratisfy", connected: false, masked: "", addedAt: "" },
-      g4f: { provider: "g4f", connected: false, masked: "", addedAt: "" },
+      pollinations: { provider: "pollinations", connected: false, masked: "", addedAt: "" },
     },
     apiKeys: [],
     balance: null,
@@ -1939,7 +1939,7 @@ export function SettingsClient({
         <ChevronDown className="h-3 w-3" />
         <span>
           Endpoints:{" "}
-          <code className="font-mono">/api/v1/byok/{`{gratisfy,g4f}`}</code>,{" "}
+          <code className="font-mono">/api/v1/byok/{`{gratisfy,pollinations}`}</code>,{" "}
           <code className="font-mono">/api/v1/api-keys</code>,{" "}
           <code className="font-mono">/api/v1/xyz/{`{balance,transactions,usage}`}</code>,{" "}
           <code className="font-mono">/api/discovery/refresh</code>.

@@ -1,24 +1,38 @@
 /**
- * GET /api/v1/byok — masked metadata for ALL of the signed-in user's BYOK
- * keys (gratisfy, g4f, pollinations). Requires a session.
+ * GET /api/v1/byok — PRIVACY-MODE: returns empty BYOK metadata.
  *
- * This is what the Providers page calls on mount to show the user's saved
- * (masked) keys after a refresh / tab change — the keys live in OnyxBase
- * keyed by userId, so they persist with the account.
+ * PRIVACY-MODE BYOK (2026-08-30): the user's private BYOK credentials
+ * (Gratisfy gxyz-…, Pollinations token) live in their browser
+ * localStorage. They are NEVER persisted server-side. So this endpoint
+ * returns `{ connected: false }` for every provider — the client reads
+ * the real state from localStorage on mount.
  *
- * Never returns raw keys. Never 401s for missing keys — returns
- * `{ connected: false }` for each unconnected provider.
+ * The endpoint still requires a signed-in user so we know the caller is
+ * authenticated (the ByokProviders UI only shows the BYOK cards after
+ * sign-in; the client gates them too). Anonymous callers get a 401.
  */
 
-import { getBYOKMeta } from "@/lib/xyz";
 import { requireAuth } from "@/lib/xyz/route-auth";
+import type { BYOKCredentialMeta, BYOKProvider } from "@/lib/xyz/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const PROVIDERS: BYOKProvider[] = ["gratisfy", "pollinations"];
+
 export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if ("response" in auth) return auth.response;
-  const meta = await getBYOKMeta(auth.userId);
+
+  // Empty meta — the client populates this from localStorage on mount.
+  const meta = {} as Record<BYOKProvider, BYOKCredentialMeta>;
+  for (const p of PROVIDERS) {
+    meta[p] = {
+      provider: p,
+      connected: false,
+      masked: "",
+      addedAt: "",
+    };
+  }
   return Response.json({ ok: true, meta });
 }

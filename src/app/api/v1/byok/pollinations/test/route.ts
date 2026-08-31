@@ -1,10 +1,10 @@
 /**
- * POST /api/v1/byok/pollinations/test — validate a Pollinations token.
- * Body `{ key?: string }`. Requires a signed-in user. If `key` provided,
- * test THAT; else test the stored token for this user.
+ * POST /api/v1/byok/pollinations/test — validate a Pollinations token
+ * (PRIVACY-MODE). Body `{ key: string }`. Requires a signed-in user.
+ * The client MUST supply the token in the body — the server never
+ * persists it.
  */
 
-import { loadBYOKKey, setBYOKValidation } from "@/lib/xyz";
 import { validatePollinationsKey } from "@/lib/xyz/pollinations";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
@@ -18,18 +18,15 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as { key?: string };
   } catch {
-    // empty body is fine — fall through to stored token
+    // empty body — fall through to "no token"
   }
-  const bodyKey = (body.key ?? "").trim();
-  const stored = (await loadBYOKKey(auth.userId, "pollinations")) ?? "";
-  const key = bodyKey || stored;
+  const key = (body.key ?? "").trim();
   if (!key) {
     return Response.json(
-      { ok: false, error: "No token to test. Save one first." },
+      { ok: false, error: "No token to test. Provide one in the request body." },
       { status: 400 },
     );
   }
   const result = await validatePollinationsKey(key);
-  await setBYOKValidation(auth.userId, "pollinations", result.ok, result.ok ? undefined : result.error);
   return Response.json(result, { status: result.ok ? 200 : 400 });
 }

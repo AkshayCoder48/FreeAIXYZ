@@ -2,7 +2,7 @@
  * Individual model page (PRD §32, §33, §78).
  *
  * Route: /models/[provider]/[model]
- * - <provider> is the source segment ("native" | "g4f" | "gratisfy")
+ * - <provider> is the source segment ("native" | "gratisfy" | "pollinations")
  * - <model> is the URL-encoded full publicId (e.g. "native%3Atb%3Agpt-5")
  *
  * RSC — server-side. Calls `resolveUnifiedModel()` directly (no HTTP hop).
@@ -316,17 +316,17 @@ export default async function ModelDetailPage({ params }: PageProps) {
                 </Button>
                 {model.source === "gratisfy" && (
                   <Button asChild variant="outline" className="w-full">
-                    <Link href="/settings">
+                    <Link href="/providers">
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Configure Gratisfy key
                     </Link>
                   </Button>
                 )}
-                {model.source === "g4f" && (
+                {model.source === "pollinations" && (
                   <Button asChild variant="outline" className="w-full">
-                    <Link href="/settings">
+                    <Link href="/providers">
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Configure G4F key
+                      Connect Pollinations wallet
                     </Link>
                   </Button>
                 )}

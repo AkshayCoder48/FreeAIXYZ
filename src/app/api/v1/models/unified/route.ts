@@ -1,8 +1,8 @@
 /**
  * GET /api/v1/models/unified — unified model list (PRD §57).
- * Auth OPTIONAL. Returns OpenAI-shaped `data[]` across native + g4f + (if
- * authed) gratisfy sources. Same model from different sources stays
- * independent (PRD §2).
+ * Auth OPTIONAL. Returns OpenAI-shaped `data[]` across native +
+ * gratisfy + pollinations sources. Same model from different sources
+ * stays independent (PRD §2).
  */
 
 import { getUnifiedModels, getSessionUserId } from "@/lib/xyz";

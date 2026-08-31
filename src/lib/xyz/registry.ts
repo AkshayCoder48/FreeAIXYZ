@@ -3,7 +3,6 @@
  *
  * Three sources merged into one normalized view:
  *   - native:     derived from the central pricing board (in-memory, no fetch).
- *   - g4f:         live discovery from g4f.space/backend-api/v2/* (PUBLIC).
  *   - gratisfy:    live discovery from gratisfy.xyz/api/models/all (PUBLIC,
  *                  anonymous — 2084 models across 36 providers WITH pricing).
  *   - pollinations: live discovery from text.pollinations.ai/models (PUBLIC,
@@ -23,12 +22,6 @@
  * entry exists once per source, never merged.
  */
 
-import {
-  discoverG4fModels,
-  discoverG4fProviders,
-  resolveG4fPricing,
-  type DiscoveredG4fModel,
-} from "./g4f";
 import {
   discoverGratisfyModels,
   resolveGratisfyPricing,
@@ -67,8 +60,7 @@ import type {
 // (defensive — the slots will always be null/empty in practice).
 // ─────────────────────────────────────────────────────────────────────────────
 const CACHE_TTL_MS = 0;
-let g4fCache: { at: number; models: UnifiedModel[]; providers: UnifiedProvider[]; stale: boolean } | null = null;
-const gratisfyCache = new Map<string, { at: number; models: UnifiedModel[] }>();
+let gratisfyCache = new Map<string, { at: number; models: UnifiedModel[] }>();
 let pollinationsCache: { at: number; models: UnifiedModel[] } | null = null;
 
 // ─── ID parsing ──────────────────────────────────────────────────────────────
@@ -78,7 +70,7 @@ export function parseUnifiedModelId(id: string): ParsedModelId | null {
   const parts = id.split(":");
   if (parts.length < 3) return null;
   const [source, provider, ...rest] = parts;
-  if (source !== "native" && source !== "gratisfy" && source !== "g4f" && source !== "pollinations") {
+  if (source !== "native" && source !== "gratisfy" && source !== "pollinations") {
     return null;
   }
   return { source, provider, model: rest.join(":"), raw: id };
@@ -202,84 +194,6 @@ function buildCapabilities(caps: string[] | undefined): ModelCapabilities {
   };
 }
 
-// ─── G4F dynamic discovery (fresh, no persistence) ──────────────────────────
-
-/**
- * Discover G4F providers + models FRESH from upstream and return the
- * normalized view. No database read/write. On failure, returns an empty
- * list with `stale=true` (we have nothing to fall back to — there's no
- * persisted cache any more, by design: "load on every app open").
- */
-export async function getG4fModels(): Promise<{
-  models: UnifiedModel[];
-  providers: UnifiedProvider[];
-  stale: boolean;
-}> {
-  // Short cache hit?
-  if (g4fCache && Date.now() - g4fCache.at < CACHE_TTL_MS) {
-    return g4fCache;
-  }
-
-  const [providersResult, modelsResult] = await Promise.all([
-    discoverG4fProviders(),
-    discoverG4fModels(),
-  ]);
-
-  if (providersResult.ok && modelsResult.ok) {
-    const models = buildG4fModels(modelsResult.models);
-    const providers = buildProvidersFromModels(models, "g4f", true);
-    g4fCache = { at: Date.now(), models, providers, stale: false };
-    return g4fCache;
-  }
-
-  // Live discovery failed — nothing to serve (no persisted fallback).
-  g4fCache = { at: Date.now(), models: [], providers: [], stale: true };
-  return g4fCache;
-}
-
-/** Build normalized UnifiedModel[] directly from discovered G4F models.
- *
- * DEDUP (PRD §19 / playground React-key fix): the G4F /backend-api/v2/models
- * endpoint occasionally lists the same modelId more than once under the same
- * provider (verified live: LMArena lists "Max" × 2 and "botbot2" × 2;
- * PerplexityApi lists "llama-3-sonar-large-32k-online" × 2). Without dedup,
- * the chat playground's `<SelectItem key={m.id}>` rendered duplicate React
- * keys and threw "Encountered two children with the same key" console errors
- * on every catalog open, lagging the dropdown to a halt. We collapse by the
- * resulting publicId (`g4f:<providerId>:<upstreamId>`) — first occurrence
- * wins, identical duplicates are silently dropped.
- */
-function buildG4fModels(discovered: DiscoveredG4fModel[]): UnifiedModel[] {
-  const now = new Date().toISOString();
-  const seen = new Set<string>();
-  const out: UnifiedModel[] = [];
-  for (const m of discovered) {
-    // providerId is the REAL G4F upstream provider (Gemini, OpenAI, …).
-    const publicId = `g4f:${m.providerId}:${m.upstreamId}`;
-    if (seen.has(publicId)) continue; // drop upstream-listed duplicate
-    seen.add(publicId);
-    out.push({
-      id: publicId,
-      displayName: m.name || m.upstreamId,
-      source: "g4f" as Source,
-      provider: m.providerId,
-      originalModelId: m.upstreamId,
-      capabilities: buildCapabilities(m.capabilities),
-      streaming: true,
-      pricing: resolveG4fPricing(m),
-      available: true,
-      discoveredAt: now,
-      metadata: {
-        upstreamId: m.upstreamId,
-        name: m.name,
-        contextLength: m.contextLength,
-        modality: m.modality,
-      },
-    });
-  }
-  return out;
-}
-
 // ─── Gratisfy dynamic discovery (fresh, no persistence) ─────────────────────
 
 /**
@@ -357,7 +271,7 @@ export const GRATISFY_PLATFORM_KEY = GRATISFY_DEFAULT_KEY;
 
 /** Build normalized UnifiedModel[] directly from discovered Gratisfy models.
  *
- * DEDUP (parity with buildG4fModels): collapse by the resulting publicId
+ * DEDUP (parity with buildGratisfyModels): collapse by the resulting publicId
  * (`gratisfy:<upstreamProvider>:<upstreamId>`) so a duplicate listing in the
  * upstream catalog payload can never produce duplicate React keys in the
  * playground dropdown. First occurrence wins. Verified live 2026-08-30:
@@ -504,7 +418,7 @@ function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): Uni
 // ─── Unified view ────────────────────────────────────────────────────────────
 
 /**
- * The full unified model list. Native + G4F + Gratisfy + Pollinations are
+ * The full unified model list. Native + Gratisfy + Pollinations are
  * always listed (no caching — fresh fetch on every call per the user's
  * explicit "remove caching of catalog" directive).
  *
@@ -512,7 +426,8 @@ function buildPollinationsModels(discovered: DiscoveredPollinationsModel[]): Uni
  * endpoint `https://gratisfy.xyz/api/models/all` — every user (anonymous
  * OR signed-in) sees the same 2084-model / 36-provider catalog with real
  * pricing metadata. A signed-in user's BYOK key is consulted ONLY when
- * they chat (the chat route reads it from OnyxBase + posts to
+ * they chat (the chat route reads it from the request header
+ * `X-Gratisfy-API-Key` (sent from the user's localStorage) + posts to
  * `api.gratisfy.xyz/v1/chat/completions`).
  *
  * Pollinations models are fetched anonymously (no key required — the
@@ -528,7 +443,6 @@ export async function getUnifiedModels(
 ): Promise<{ models: UnifiedModel[]; providers: UnifiedProvider[]; stale: boolean }> {
   const native = getNativeModels();
   const nativeProviders = getNativeProviders();
-  const g4f = await getG4fModels();
   const gratisfy = userId
     ? await getGratisfyModelsForUser(userId)
     : await getGratisfyModelsDefault();
@@ -536,10 +450,9 @@ export async function getUnifiedModels(
   const pollinations = await getPollinationsModelsForCatalog();
   const pollinationsProviders = buildProvidersFromModels(pollinations, "pollinations", false);
   return {
-    models: [...native, ...g4f.models, ...gratisfy, ...pollinations],
-    providers: [...nativeProviders, ...g4f.providers, ...gratisfyProviders, ...pollinationsProviders],
-    // Stale when G4F live discovery was blocked.
-    stale: g4f.stale,
+    models: [...native, ...gratisfy, ...pollinations],
+    providers: [...nativeProviders, ...gratisfyProviders, ...pollinationsProviders],
+    stale: false,
   };
 }
 
@@ -614,15 +527,13 @@ export async function resolveUnifiedModel(
 
 /** Force a discovery refresh (clears the short in-memory caches). */
 export async function refreshDiscovery(userId?: string): Promise<void> {
-  g4fCache = null;
   gratisfyDefaultCache = null;
   pollinationsCache = null;
   if (userId) gratisfyCache.delete(userId);
-  await getG4fModels();
   if (userId) await getGratisfyModelsForUser(userId);
   else await getGratisfyModelsDefault();
   await getPollinationsModelsForCatalog();
 }
 
 // Re-export the per-source pricing resolvers for the registry consumers.
-export { resolveG4fPricing, resolveGratisfyPricing, resolvePollinationsPricing };
+export { resolveGratisfyPricing, resolvePollinationsPricing };

@@ -1,10 +1,9 @@
 /**
- * POST /api/v1/byok/gratisfy/test — validate a Gratisfy key.
- * Body `{ key?: string }`. Requires a signed-in user. If `key` provided,
- * test THAT; else test the stored key for this user.
+ * POST /api/v1/byok/gratisfy/test — validate a Gratisfy key (PRIVACY-MODE).
+ * Body `{ key: string }`. Requires a signed-in user. The client MUST
+ * supply the key in the body — the server never persists it.
  */
 
-import { loadBYOKKey, setBYOKValidation } from "@/lib/xyz";
 import { validateGratisfyKey } from "@/lib/xyz/gratisfy";
 import { requireAuth } from "@/lib/xyz/route-auth";
 
@@ -18,18 +17,15 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as { key?: string };
   } catch {
-    // empty body is fine — fall through to stored key
+    // empty body — fall through to "no key"
   }
-  const bodyKey = (body.key ?? "").trim();
-  const stored = (await loadBYOKKey(auth.userId, "gratisfy")) ?? "";
-  const key = bodyKey || stored;
+  const key = (body.key ?? "").trim();
   if (!key) {
     return Response.json(
-      { ok: false, error: "No key to test. Save a key first." },
+      { ok: false, error: "No key to test. Provide a key in the request body." },
       { status: 400 },
     );
   }
   const result = await validateGratisfyKey(key);
-  await setBYOKValidation(auth.userId, "gratisfy", result.ok, result.ok ? undefined : result.error);
   return Response.json(result, { status: result.ok ? 200 : 400 });
 }

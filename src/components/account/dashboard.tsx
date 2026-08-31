@@ -58,7 +58,7 @@ interface BalanceResponse {
 
 interface UsageRecord {
   requestId: string;
-  source?: "native" | "gratisfy" | "g4f";
+  source?: "native" | "gratisfy" | "pollinations";
   provider: string;
   model: string;
   inputTokens: number;
@@ -86,7 +86,7 @@ interface XYZTransaction {
   amount: number;
   balanceAfter: number;
   requestId?: string;
-  source?: "native" | "gratisfy" | "g4f";
+  source?: "native" | "gratisfy" | "pollinations";
   provider?: string;
   model?: string;
   note?: string;
