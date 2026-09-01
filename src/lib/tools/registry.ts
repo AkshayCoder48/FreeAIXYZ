@@ -271,9 +271,11 @@ let zaiPromise: Promise<ZaiClient> | null = null;
 
 /**
  * Lazily construct the ZAI client. The SDK reads `.z-ai-config` from
- * cwd / $HOME / /etc. On serverless hosts (Vercel) none of those exist at
- * build time, so we support ZAI_BASE_URL + ZAI_API_KEY env vars by writing
- * a throwaway config into the (writable) cwd before construction.
+ * cwd / $HOME / /etc. On serverless hosts (Vercel) none of those exist or
+ * are writable, so we support ZAI_BASE_URL + ZAI_API_KEY env vars by
+ * materializing a throwaway config file — trying the cwd first, then
+ * /tmp with a temporary process.chdir (the SDK resolves process.cwd()
+ * at call time; serverless roots are read-only but /tmp is writable).
  */
 async function getZai(): Promise<ZaiClient> {
   if (!zaiPromise) {
@@ -286,19 +288,49 @@ async function getZai(): Promise<ZaiClient> {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (/config/i.test(msg) && process.env.ZAI_BASE_URL && process.env.ZAI_API_KEY) {
-          // Serverless fallback: materialize a config file, then retry.
           const fs = await import("node:fs/promises");
+          const os = await import("node:os");
           const path = await import("node:path");
-          const configPath = path.join(process.cwd(), ".z-ai-config");
-          await fs.writeFile(
-            configPath,
-            JSON.stringify({
-              baseUrl: process.env.ZAI_BASE_URL,
-              apiKey: process.env.ZAI_API_KEY,
-            }),
-            "utf8",
-          );
-          return await mod.default.create();
+          const config = JSON.stringify({
+            baseUrl: process.env.ZAI_BASE_URL,
+            apiKey: process.env.ZAI_API_KEY,
+          });
+          // Writable candidates: the project cwd (sandbox/dev) then /tmp
+          // (Vercel serverless — the root filesystem is EROFS).
+          const candidates = [
+            path.join(process.cwd(), ".z-ai-config"),
+            path.join(os.tmpdir(), ".z-ai-config"),
+          ];
+          let written: string | null = null;
+          for (const p of candidates) {
+            try {
+              await fs.writeFile(p, config, "utf8");
+              written = p;
+              break;
+            } catch {
+              /* read-only fs — try the next candidate */
+            }
+          }
+          if (written) {
+            const dir = path.dirname(written);
+            const prevCwd = process.cwd();
+            let changedDir = false;
+            try {
+              if (dir !== prevCwd) {
+                process.chdir(dir);
+                changedDir = true;
+              }
+              return await mod.default.create();
+            } finally {
+              if (changedDir) {
+                try {
+                  process.chdir(prevCwd);
+                } catch {
+                  /* best-effort restore */
+                }
+              }
+            }
+          }
         }
         throw err;
       }
@@ -307,8 +339,106 @@ async function getZai(): Promise<ZaiClient> {
   return zaiPromise;
 }
 
+/** Strip HTML tags + decode common entities (for the DDG-lite fallback). */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * DuckDuckGo fallback for hosts where the ZAI SDK endpoint is unreachable
+ * (e.g. Vercel serverless → the internal API is network-blocked). Uses the
+ * keyless lite.duckduckgo.com HTML page — anchor/snippet pairs parsed in
+ * document order. Returns REAL live results so the web_search tool keeps
+ * working outside the sandbox.
+ */
+async function duckDuckGoSearch(
+  query: string,
+  num: number,
+  signal?: AbortSignal,
+): Promise<Array<{ title: string; url: string; host: string; snippet: string }>> {
+  const res = await fetch(
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+    {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        Accept: "text/html",
+      },
+      signal,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`DuckDuckGo returned HTTP ${res.status}`);
+  }
+  const html = await res.text();
+  const links: Array<{ url: string; title: string }> = [];
+  const snippets: string[] = [];
+  const linkRe = /<a[^>]+class="result-link"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const snipRe = /<td[^>]+class="result-snippet"[^>]*>([\s\S]*?)<\/td>/g;
+  let m: RegExpExecArray | null;
+  while ((m = linkRe.exec(html)) !== null) {
+    const title = htmlToText(m[2]);
+    if (title && m[1].startsWith("http")) links.push({ url: m[1], title });
+  }
+  while ((m = snipRe.exec(html)) !== null) {
+    snippets.push(htmlToText(m[1]));
+  }
+  return links.slice(0, num).map((l, i) => {
+    let host = "";
+    try {
+      host = new URL(l.url).hostname;
+    } catch {
+      host = "";
+    }
+    return { title: l.title, url: l.url, host, snippet: snippets[i] ?? "" };
+  });
+}
+
+/**
+ * Wikipedia search fallback — the MediaWiki API is keyless and reliably
+ * reachable from serverless hosts. Real live results (encyclopedic).
+ */
+async function wikipediaSearch(
+  query: string,
+  num: number,
+  signal?: AbortSignal,
+): Promise<Array<{ title: string; url: string; host: string; snippet: string }>> {
+  const res = await fetch(
+    `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=${num}`,
+    {
+      headers: {
+        "User-Agent": "FreeAIXYZ-gateway/2.0 (tool: web_search)",
+        Accept: "application/json",
+      },
+      signal,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Wikipedia returned HTTP ${res.status}`);
+  }
+  const j = (await res.json()) as {
+    query?: { search?: Array<{ title: string; snippet?: string }> };
+  };
+  return (j.query?.search ?? []).slice(0, num).map((s) => ({
+    title: s.title,
+    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(s.title.replace(/ /g, "_"))}`,
+    host: "en.wikipedia.org",
+    snippet: htmlToText(s.snippet ?? ""),
+  }));
+}
+
 async function executeWebSearch(
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const query = args.query;
   if (typeof query !== "string" || query.trim() === "") {
@@ -322,31 +452,71 @@ async function executeWebSearch(
       ? Math.floor(args.recency_days)
       : undefined;
 
-  const zai = await getZai();
-  const results = await zai.functions.invoke("web_search", {
-    query: query.trim(),
-    num,
-    ...(recencyDays !== undefined ? { recency_days: recencyDays } : {}),
-  });
+  // Primary: the ZAI search function (sandbox / hosts that can reach it).
+  try {
+    const zai = await getZai();
+    const results = await zai.functions.invoke("web_search", {
+      query: query.trim(),
+      num,
+      ...(recencyDays !== undefined ? { recency_days: recencyDays } : {}),
+    });
+    const items = (Array.isArray(results) ? results : []).slice(0, num).map((r) => ({
+      title: r.name,
+      url: r.url,
+      host: r.host_name,
+      date: r.date || undefined,
+      snippet: r.snippet,
+    }));
+    if (items.length > 0) {
+      return {
+        query: query.trim(),
+        result_count: items.length,
+        provider: "zai",
+        results: items,
+      };
+    }
+  } catch {
+    // ZAI unavailable (e.g. serverless network policy) — fall through to
+    // the public fallback chain below. Never a silent failure: if every
+    // provider fails the caller surfaces the structured error (PRD §25).
+  }
 
-  const items = (Array.isArray(results) ? results : []).slice(0, num).map((r) => ({
-    title: r.name,
-    url: r.url,
-    host: r.host_name,
-    date: r.date || undefined,
-    snippet: r.snippet,
-  }));
-
-  return {
-    query: query.trim(),
-    result_count: items.length,
-    results: items,
-  };
+  // Fallback chain: DuckDuckGo lite → Wikipedia API.
+  let ddgErr: unknown = null;
+  try {
+    const items = await duckDuckGoSearch(query.trim(), num, signal);
+    if (items.length > 0) {
+      return {
+        query: query.trim(),
+        result_count: items.length,
+        provider: "duckduckgo",
+        results: items,
+      };
+    }
+  } catch (err) {
+    ddgErr = err;
+  }
+  try {
+    const items = await wikipediaSearch(query.trim(), num, signal);
+    if (items.length > 0) {
+      return {
+        query: query.trim(),
+        result_count: items.length,
+        provider: "wikipedia",
+        results: items,
+      };
+    }
+  } catch {
+    /* fall through to the structured error */
+  }
+  throw ddgErr instanceof Error
+    ? ddgErr
+    : new Error("web_search failed: no search provider returned results.");
 }
 
 // ─── Registry ───────────────────────────────────────────────────────────────
 
-const EXECUTORS: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
+const EXECUTORS: Record<string, (args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>> = {
   calculator: executeCalculator,
   web_search: executeWebSearch,
   get_current_time: executeGetCurrentTime,
