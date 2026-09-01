@@ -259,6 +259,7 @@ function toProviderRequest(req: ChatRequest) {
     signal: req.signal,
     tools: req.tools as ProviderTool[] | undefined,
     toolChoice: req.toolChoice,
+    parallelToolCalls: req.parallelToolCalls,
     temperature: req.temperature,
     maxTokens: req.maxTokens ?? req.maxCompletionTokens,
     topP: req.topP,

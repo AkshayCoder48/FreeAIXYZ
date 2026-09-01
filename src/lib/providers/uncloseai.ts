@@ -16,6 +16,7 @@
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
+import { assertToolsForwarded } from "@/lib/tools/forwarding";
 
 const ENDPOINT = "https://hermes.ai.unturf.com/v1/chat/completions";
 
@@ -25,6 +26,12 @@ interface UncloseAiDelta {
       content?: string;
       reasoning?: string;
       role?: string;
+      /** Native tool-call deltas (Tool PRD §10) — accumulated upstream. */
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
     };
     finish_reason?: string | null;
   }[];
@@ -44,6 +51,17 @@ function parseSseLine(line: string): string | null {
     }
     const delta = json?.choices?.[0]?.delta;
     if (!delta) return null;
+    // Tool PRD §10 — NEVER parse only `content` from SSE chunks. Upstream
+    // tool-call deltas (id/name/argument fragments) are converted into the
+    // `__tool_calls` marker string; the gateway ToolCallNormalizer accumulates
+    // them into proper OpenAI-shaped `delta.tool_calls` chunks downstream.
+    if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+      const formatted = delta.tool_calls.map((tc) => ({
+        name: tc.function?.name || "",
+        arguments: tc.function?.arguments || "",
+      }));
+      return JSON.stringify({ __tool_calls: formatted });
+    }
     // Standard content delta.
     if (typeof delta.content === "string" && delta.content) return delta.content;
     // Qwen-family models sometimes emit chain-of-thought in `reasoning`.
@@ -96,8 +114,13 @@ export const uncloseAiProvider: Provider = {
     // Tools pass through natively (OpenAI-compatible endpoint).
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
-      payload.tool_choice = req.toolChoice || "auto";
+      payload.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      payload.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(payload, req.tools, "uncloseai", req.model.upstream);
 
     const res = await fetch(ENDPOINT, {
       method: "POST",

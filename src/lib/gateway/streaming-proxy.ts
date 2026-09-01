@@ -29,6 +29,7 @@ import {
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
+import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import type {
   ChatRequest,
@@ -378,6 +379,20 @@ class StreamingProxyService {
         timings.bytes,
         normalizer.didEmitToolCalls ? "tool_calls" : "stop",
       );
+      // Tool PRD §19/§27 — record the stream-side tool-call detection
+      // (names/counts only, never arguments).
+      toolDiagnostics.record({
+        id: `str-${timings.requestId}`,
+        kind: "stream",
+        at: new Date().toISOString(),
+        model: candidate.req.modelId,
+        provider: candidate.adapter.id,
+        streaming: true,
+        toolCallsDetected: normalizer.didEmitToolCalls
+          ? normalizer.snapshot().length
+          : 0,
+        finalStatus: normalizer.didEmitToolCalls ? "success" : "no_tool_calls",
+      });
       providerHealthService.recordProviderSuccess(candidate.adapter.id);
       providerHealthService.recordModelSuccess(candidate.req.modelId);
       metricsService.recordRequest({

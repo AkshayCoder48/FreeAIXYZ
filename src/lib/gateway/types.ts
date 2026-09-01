@@ -92,8 +92,12 @@ export interface ChatRequest {
   n?: number;
   /** OpenAI stream options object (audit E1, E2). */
   streamOptions?: { include_usage?: boolean };
+  /** OpenAI tools array — preserved through every transformation layer (Tool PRD §5). */
   tools?: unknown[];
-  toolChoice?: string;
+  /** tool_choice — string OR forced-function object form (Tool PRD §9). */
+  toolChoice?: string | { type: "function"; function: { name: string } };
+  /** parallel_tool_calls — forwarded when explicitly set (Tool PRD §5). */
+  parallelToolCalls?: boolean;
 }
 
 export interface ImageRequest {

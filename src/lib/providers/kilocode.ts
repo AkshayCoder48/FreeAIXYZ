@@ -12,6 +12,7 @@
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
+import { assertToolsForwarded } from "@/lib/tools/forwarding";
 
 const ENDPOINT = "https://api.kilo.ai/api/gateway/chat/completions";
 
@@ -126,8 +127,13 @@ export const kiloCodeProvider: Provider = {
     // Pass tools natively if provided (KiloCode/OpenRouter supports OpenAI tool calling)
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
-      payload.tool_choice = req.toolChoice || "auto";
+      payload.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      payload.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(payload, req.tools, "kilocode", req.model.upstream);
 
     const res = await fetchWithRetry(payload, req.signal);
     if (!res.body) {

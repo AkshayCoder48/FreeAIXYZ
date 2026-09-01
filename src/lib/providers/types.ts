@@ -24,8 +24,11 @@ export interface ProviderCompletionRequest {
   authToken?: string;
   /** Optional tools for function calling (passed through to providers that support it). */
   tools?: ProviderTool[];
-  /** Optional tool choice: "auto" | "none" | "required" */
-  toolChoice?: string;
+  /** Optional tool choice: "auto" | "none" | "required" OR the forced-function
+   *  object form { type: "function", function: { name } } (Tool PRD §9). */
+  toolChoice?: string | { type: "function"; function: { name: string } };
+  /** OpenAI parallel_tool_calls — preserved when set (Tool PRD §5). */
+  parallelToolCalls?: boolean;
   /** Sampling params (audit E1) — forwarded from the OpenAI-shaped request
    * body to OpenAI-compatible upstreams. Non-OpenAI providers silently
    * ignore them. */

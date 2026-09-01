@@ -1,288 +1,592 @@
 import Link from "next/link";
 import {
-  ArrowRight,
-  Server,
-  Plug,
-  ShieldOff,
   Zap,
+  Wrench,
   Search,
-  Code2,
+  Layers,
+  Terminal,
+  Globe,
+  ShieldOff,
   Activity,
-  BookLock,
+  ArrowRight,
+  Bot,
+  Cpu,
 } from "lucide-react";
-import { Nav } from "@/components/nav";
-import {
-  SectionLabel,
-  GradientButton,
-  GradientText,
-  FeaturedCard,
-  InvertedSection,
-  SiteFooter,
-  HeroGraphic,
-  LiveStatsBar,
-  FadeIn,
-} from "@/components/site";
-import { ProviderCards } from "@/components/dashboard/provider-cards";
-import {
-  NATIVE_PROVIDERS,
-  OFFERED_MODELS,
-} from "@/lib/native-catalog";
+import { NATIVE_PROVIDERS, OFFERED_MODELS } from "@/lib/native-catalog";
 
-const FEATURES = [
+/**
+ * Landing page — WARM AURORA hero (cinematic dark developer-tool style).
+ *
+ * The hero's signature is a LIVING animated aurora: several soft-focus
+ * diagonal light-blades (crimson #ff2f3a → coral #ff6b4a → amber #ffb347)
+ * drifting + breathing on staggered pure-CSS keyframes over the #07080a
+ * ground, layered under an SVG feTurbulence film-grain + vignette. The 0%
+ * keyframe is full bloom so a single still is the richest frame. Strictly
+ * WARM — no purple/indigo/violet.
+ *
+ * Type: ONE sans (Inter via --font-body) with hierarchy from SIZE+WEIGHT;
+ * mono (JetBrains Mono via --font-mono) ONLY for the install caption,
+ * shortcut chips, and code. Shape language: flat except two tactile
+ * exceptions — the KEYCAP-RAISED download-style buttons and the dark-glass
+ * COMMAND-BAR mockup. All other elements strictly neutral
+ * (#ffffff / #9c9c9d / #07080a).
+ */
+
+const MODEL_COUNT = OFFERED_MODELS.length;
+const PROVIDER_COUNT = NATIVE_PROVIDERS.length;
+const STREAMING_COUNT = OFFERED_MODELS.filter((m) => m.capabilities.streaming).length;
+const TOOLS_COUNT = OFFERED_MODELS.filter((m) => m.capabilities.tools).length;
+
+/** Command-bar result rows (product-real commands + shortcut chips). */
+const COMMAND_ROWS = [
   {
-    icon: Plug,
-    title: "OpenAI-Compatible",
-    desc: "Drop-in replacement for /v1/chat/completions and /v1/models. Point any OpenAI SDK at the base URL — zero code changes.",
-    wide: true,
+    icon: Search,
+    label: "web_search",
+    arg: 'query: "latest next.js release notes"',
+    kbd: "Cmd+Enter",
+    active: true,
+  },
+  {
+    icon: Bot,
+    label: "oc/gpt-5.6",
+    arg: "reasoning + tools · 61 models on OpenCode",
+    kbd: "Cmd+B",
+    active: false,
   },
   {
     icon: Zap,
-    title: "True End-to-End SSE",
-    desc: "stream:true returns real SSE deltas (upstream pacing varies). Every layer (upstream → proxy → runtime → browser → parser → UI) streams. No gateway-side re-pacing (upstream pacing preserved).",
+    label: "stream: true",
+    arg: "real SSE deltas — no gateway re-pacing",
+    kbd: "Cmd+O",
+    active: false,
+  },
+  {
+    icon: Globe,
+    label: "GET /api/v1/models",
+    arg: `${MODEL_COUNT} free models · no key required`,
+    kbd: "Cmd+K",
+    active: false,
+  },
+];
+
+/** Chat glyph (inline SVG — keycap button 1). */
+function ChatGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+        stroke="#2f3031"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+/** Grid/layers glyph (inline SVG — keycap button 2). */
+function GridGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="#2f3031" strokeWidth="2" fill="none" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="#2f3031" strokeWidth="2" fill="none" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="#2f3031" strokeWidth="2" fill="none" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="#2f3031" strokeWidth="2" fill="none" />
+    </svg>
+  );
+}
+
+/** Search glyph (inline SVG — command bar input row). */
+function SearchGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="#9c9c9d" strokeWidth="2" fill="none" />
+      <path d="m20 20-3.5-3.5" stroke="#9c9c9d" strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+const FEATURES = [
+  {
+    icon: Zap,
+    title: "True end-to-end SSE",
+    desc: "stream:true returns real upstream deltas — every layer streams, no gateway re-pacing. The [DONE] sentinel finalizes cleanly.",
+    wide: true,
+  },
+  {
+    icon: Wrench,
+    title: "Native tool calling",
+    desc: "Real OpenAI tools/tool_choice/parallel_tool_calls forwarded to every capable provider. Streamed tool-call deltas are accumulated, executed, and resumed.",
+    wide: true,
+  },
+  {
+    icon: Terminal,
+    title: "OpenAI-compatible",
+    desc: "Drop-in /api/v1/chat/completions. Point any OpenAI SDK at the base URL — zero code changes.",
   },
   {
     icon: ShieldOff,
-    title: "No Auth Required",
-    desc: "No API keys, no bearer tokens. The gateway aggregates free upstream providers behind one OpenAI-shaped surface.",
+    title: "No key. No account.",
+    desc: "No auth, no API keys, no sign-up walls. The gateway aggregates free upstreams behind one surface.",
   },
   {
-    icon: BookLock,
-    title: "Static Model Registry",
-    desc: "The model catalog is a hand-curated static registry bundled with the app — no dynamic fetching, no discovery, no stale caches. Every listed model maps to an implemented native adapter.",
-  },
-  {
-    icon: Search,
-    title: "Canonical IDs",
-    desc: "Every model is <shortProviderId>/<originalUpstreamId>, e.g. fg/gpt-5. No custom marketing names. Cross-provider duplicates stay distinct.",
+    icon: Cpu,
+    title: "Static model registry",
+    desc: "The catalog is bundled at build time — no dynamic fetching, no stale caches, every model maps to a live adapter.",
   },
   {
     icon: Activity,
-    title: "Provider Health",
-    desc: "Per-provider circuit breakers, per-model health, latency tracking, structured errors. 403s are classified, not silently retried.",
+    title: "Provider health",
+    desc: "Per-provider circuit breakers, per-model health, failover candidates, structured error envelopes.",
+  },
+  {
+    icon: Layers,
+    title: "Canonical IDs",
+    desc: "Every model is shortId/originalId — e.g. oc/gpt-5.6. Cross-provider duplicates stay distinct.",
   },
 ];
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Nav />
+    <div className="fxz-aurora-root min-h-screen flex flex-col text-white">
+      {/* ───────────────────────────────────────────────────────────────────
+          HERO — living warm aurora + floating pill nav + headline + keycaps
+          + command-bar mockup + ghost pill + product badge.
+          ─────────────────────────────────────────────────────────────────── */}
+      <section className="relative min-h-screen overflow-hidden flex flex-col">
+        {/* Aurora light-blades (pure CSS keyframes — see globals.css). */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none">
+          <div className="fxz-blade fxz-blade-1" />
+          <div className="fxz-blade fxz-blade-2" />
+          <div className="fxz-blade fxz-blade-3" />
+          <div className="fxz-blade fxz-blade-4" />
+          <div className="fxz-aurora-core" />
+        </div>
+        {/* Film grain + vignette. */}
+        <div aria-hidden className="fxz-grain absolute inset-0 pointer-events-none" />
+        <div aria-hidden className="fxz-vignette absolute inset-0 pointer-events-none" />
 
-      <main className="flex-1">
-        {/* ───────── Hero ───────── */}
-        <section className="relative overflow-hidden border-b border-border">
+        {/* ── Floating pill nav (top-center, NOT a full-width bar) ── */}
+        <header className="relative z-20 pt-6 px-4 flex justify-center">
+          <nav
+            className="w-full max-w-3xl flex items-center justify-between rounded-full border border-white/10 bg-black/55 backdrop-blur-xl px-5 py-2.5"
+            style={{ boxShadow: "0 18px 50px -18px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07)" }}
+            aria-label="Main navigation"
+          >
+            <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
+              <span
+                className="inline-block h-3.5 w-3.5 rotate-45 rounded-[3px]"
+                style={{
+                  background: "linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%)",
+                  boxShadow: "0 0 12px rgba(255,47,58,0.55)",
+                }}
+                aria-hidden="true"
+              />
+              <span
+                className="text-[15px] font-semibold tracking-tight text-white"
+                style={{ fontFamily: "var(--font-body), sans-serif" }}
+              >
+                FreeAI<span className="text-zinc-500">XYZ</span>
+              </span>
+            </Link>
+
+            <div className="hidden md:flex items-center gap-7">
+              <Link href="/chat" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
+                Playground
+              </Link>
+              <Link href="/models" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
+                Models
+              </Link>
+              <a href="#quickstart" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
+                API
+              </a>
+              <a href="#features" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
+                Features
+              </a>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                href="/models"
+                className="hidden sm:block text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+              >
+                Browse
+              </Link>
+              <Link href="/chat" className="fxz-nav-cta">
+                Open Playground
+                <ArrowRight className="h-3 w-3" strokeWidth={2.5} />
+              </Link>
+            </div>
+          </nav>
+        </header>
+
+        {/* ── Hero content ── */}
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 pt-10 pb-6 gap-4">
+          <div className="fxz-fade-up">
+            <span className="fxz-eyebrow">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff6b4a] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#ff2f3a]" />
+              </span>
+              v2.0 — now with native tool calling
+              <ArrowRight className="h-3 w-3 text-[#ff8a6b]" />
+            </span>
+          </div>
+
+          <h1
+            className="fxz-hero-title max-w-3xl fxz-fade-up"
+            style={{ fontFamily: "var(--font-body), sans-serif", animationDelay: "80ms" }}
+          >
+            Free intelligence,
+            <span className="block">
+              one <span className="fxz-gradient-word">keystroke</span> away.
+            </span>
+          </h1>
+
+          <p
+            className="max-w-[620px] text-[15px] md:text-base font-normal leading-relaxed text-[#b9b9bc] fxz-fade-up"
+            style={{ fontFamily: "var(--font-body), sans-serif", letterSpacing: "0.01em", animationDelay: "160ms" }}
+          >
+            {MODEL_COUNT} native models across {PROVIDER_COUNT} providers, streamed
+            through one OpenAI-compatible API — with real tool calling, live web
+            search, and zero keys or accounts.
+          </p>
+
+          {/* Keycap-raised tactile buttons (two, side by side). */}
           <div
-            aria-hidden
-            className="absolute inset-0 opacity-[0.4] pointer-events-none"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle 800px at 20% 20%, rgba(0, 82, 255, 0.07), transparent 60%), radial-gradient(circle 600px at 80% 80%, rgba(77, 124, 255, 0.05), transparent 60%)",
-            }}
-          />
-          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 py-16 sm:py-20 lg:py-28">
-            <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-12 items-center">
-              {/* Left: headline + CTAs */}
-              <FadeIn className="flex flex-col items-start gap-6 max-w-2xl">
-                <SectionLabel>Native models · True SSE</SectionLabel>
-                <h1 className="text-5xl sm:text-6xl lg:text-7xl font-normal tracking-tight text-foreground leading-[1.05]">
-                  The observable{" "}
-                  <GradientText>AI gateway</GradientText>
-                  <br />
-                  that streams.
-                </h1>
-                <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
-                  A lean OpenAI-compatible gateway that aggregates free
-                  native providers, preserves true end-to-end SSE streaming,
-                  classifies upstream errors, and exposes per-provider health
-                  — all behind canonical{" "}
-                  <code
-                    className="font-mono text-foreground bg-muted px-1.5 py-0.5 rounded-md text-sm"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    shortId/originalId
-                  </code>{" "}
-                  model IDs.
-                </p>
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <GradientButton asChild size="lg">
-                    <Link href="/chat">
-                      Open playground
-                      <ArrowRight className="size-4 ml-1" />
-                    </Link>
-                  </GradientButton>
-                  <GradientButton asChild size="lg" variant="outline">
-                    <Link href="/models">
-                      Explore models
-                      <Search className="size-4 ml-1" />
-                    </Link>
-                  </GradientButton>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 text-sm text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Code2 className="size-4" /> OpenAI-compatible
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Zap className="size-4" /> Real streaming
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Activity className="size-4" /> Provider health
-                  </span>
-                </div>
-              </FadeIn>
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 fxz-fade-up"
+            style={{ animationDelay: "240ms" }}
+          >
+            <Link href="/chat" className="fxz-keycap w-full sm:w-auto">
+              <ChatGlyph />
+              Open the Playground
+            </Link>
+            <Link href="/models" className="fxz-keycap w-full sm:w-auto">
+              <GridGlyph />
+              Browse {MODEL_COUNT} Models
+            </Link>
+          </div>
 
-              {/* Right: animated hero graphic */}
-              <div className="relative">
-                <HeroGraphic />
+          {/* Mono install caption. */}
+          <p
+            className="text-xs text-[#9c9c9d] fxz-fade-up"
+            style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", animationDelay: "300ms" }}
+          >
+            POST /api/v1/chat/completions — no key · no account · SSE streaming
+          </p>
+
+          {/* ── Dark-glass command-bar / launcher mockup ── */}
+          <div
+            className="w-full max-w-2xl fxz-fade-up"
+            style={{ animationDelay: "360ms" }}
+            aria-label="Command bar preview"
+          >
+            <div className="fxz-cmdbar overflow-hidden">
+              {/* Input row */}
+              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.07]">
+                <SearchGlyph />
+                <span
+                  className="text-sm text-zinc-200 truncate"
+                  style={{ fontFamily: "var(--font-body), sans-serif" }}
+                >
+                  summarize the latest next.js release
+                  <span className="fxz-caret" aria-hidden="true" />
+                </span>
+                <span
+                  className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-widest text-[#ff8a6b] border border-[#ff6b4a]/30 bg-[#ff2f3a]/10 rounded-full px-2.5 py-1"
+                >
+                  Command
+                </span>
+              </div>
+
+              {/* Result rows */}
+              <div className="py-1.5">
+                {COMMAND_ROWS.map((row) => (
+                  <div
+                    key={row.label}
+                    className={`flex items-center gap-3 mx-2 my-1 px-3 py-2 rounded-lg border border-transparent transition-colors ${
+                      row.active ? "fxz-cmd-row-active" : "hover:bg-white/[0.03]"
+                    }`}
+                  >
+                    <row.icon
+                      className={`h-4 w-4 shrink-0 ${row.active ? "text-[#ff6b4a]" : "text-[#8a8a8d]"}`}
+                      strokeWidth={1.75}
+                    />
+                    <span
+                      className="text-[13px] text-zinc-200 truncate"
+                      style={{ fontFamily: "var(--font-body), sans-serif" }}
+                    >
+                      <span className={row.active ? "text-white" : "text-zinc-300"}>
+                        {row.label}
+                      </span>
+                      <span
+                        className="text-[#8a8a8d] ml-2.5 hidden sm:inline"
+                        style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px" }}
+                      >
+                        {row.arg}
+                      </span>
+                    </span>
+                    <span className="fxz-kbd ml-auto shrink-0">{row.kbd}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer strip */}
+              <div
+                className="flex items-center justify-between px-4 py-2.5 border-t border-white/[0.07] text-[10.5px] text-[#7c7c7f]"
+                style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+              >
+                <span>up/down navigate · enter open · esc dismiss</span>
+                <span className="text-[#9c9c9d]">FreeAIXYZ</span>
               </div>
             </div>
           </div>
-        </section>
 
-        {/* ───────── Stats Bar (InvertedSection) ───────── */}
-        <InvertedSection className="border-b border-border/40">
-          <div className="relative z-10">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-10 sm:pt-12">
-              <SectionLabel className="border-white/10 bg-white/5 text-white/70">
-                Static registry
-              </SectionLabel>
-              <h2 className="mt-4 text-2xl sm:text-3xl font-normal tracking-tight text-white">
-                Every model, verified and bundled at build time.
-              </h2>
-            </div>
-            <LiveStatsBar
-              stats={{
-                providers: NATIVE_PROVIDERS.length,
-                models: OFFERED_MODELS.length,
-                streamingModels: OFFERED_MODELS.filter(
-                  (m) => m.capabilities.streaming,
-                ).length,
-              }}
-            />
+          {/* Single ghost pill (exactly one — low-emphasis secondary path). */}
+          <div className="fxz-fade-up" style={{ animationDelay: "420ms" }}>
+            <a href="#features" className="fxz-ghost-pill">
+              Learn more
+              <ArrowRight className="h-3.5 w-3.5" />
+            </a>
           </div>
-        </InvertedSection>
+        </div>
 
-        {/* ───────── Providers Grid ───────── */}
-        <section className="border-b border-border bg-muted/30">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-16">
-            <FadeIn className="flex flex-col gap-2 mb-8">
-              <SectionLabel>Providers</SectionLabel>
-              <h2 className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground mt-2">
-                Every adapter implements chat, streaming, and health.
-              </h2>
-              <p className="text-sm text-muted-foreground max-w-2xl mt-1">
-                Adding a provider requires one adapter — never touches the
-                chat UI, model selector, or router. Every model is free and
-                needs no API key.
-              </p>
-            </FadeIn>
-            <ProviderCards providers={NATIVE_PROVIDERS.map((p) => ({
-              id: p.id,
-              shortId: p.shortId,
-              name: p.name,
-              description: p.description,
-              modelCount: p.modelCount,
-              streamingCount: p.streamingCount,
-              toolsCount: p.toolsCount,
-              visionCount: p.visionCount,
-            }))} />
-          </div>
-        </section>
-
-        {/* ───────── Features ───────── */}
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-16">
-            <FadeIn className="flex flex-col gap-2 mb-8">
-              <SectionLabel>Architecture</SectionLabel>
-              <h2 className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground mt-2">
-                The transformation applied to this repository.
-              </h2>
-            </FadeIn>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {FEATURES.map((f, i) => (
-                <FadeIn
-                  key={f.title}
-                  index={i}
-                  stagger={0.08}
-                  className={
-                    f.wide
-                      ? "lg:col-span-2 group rounded-xl border border-border bg-card p-6 transition-all hover:border-accent/30 hover:shadow-accent"
-                      : "group rounded-xl border border-border bg-card p-6 transition-all hover:border-accent/30 hover:shadow-accent"
-                  }
-                >
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent mb-4 group-hover:scale-110 transition-transform">
-                    <f.icon className="h-5 w-5" strokeWidth={2} />
-                  </span>
-                  <h3 className="text-lg font-semibold text-foreground mb-1.5">
-                    {f.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {f.desc}
-                  </p>
-                </FadeIn>
-              ))}
+        {/* ── Floating product badge (bottom-right) ── */}
+        <div className="absolute bottom-6 right-6 z-10 hidden md:block">
+          <div
+            className="rounded-xl border border-white/10 bg-black/60 backdrop-blur-xl px-4 py-3 max-w-[260px]"
+            style={{ boxShadow: "0 18px 50px -18px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.06)" }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                className="inline-block h-3 w-3 rotate-45 rounded-[2.5px] shrink-0"
+                style={{
+                  background: "linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%)",
+                  boxShadow: "0 0 10px rgba(255,47,58,0.5)",
+                }}
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-[12.5px] font-semibold text-white leading-tight">
+                  {MODEL_COUNT} models · {PROVIDER_COUNT} providers
+                </p>
+                <p className="text-[10.5px] text-[#9c9c9d] leading-tight mt-0.5">
+                  no key · no account · {TOOLS_COUNT} with tool calling
+                </p>
+              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ───────── Quick Start (FeaturedCard) ───────── */}
-        <section className="bg-background">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-16">
-            <FadeIn className="flex flex-col gap-2 mb-6">
-              <SectionLabel>Quick start</SectionLabel>
-              <h2 className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground mt-2">
-                Point any OpenAI client at the gateway.
-              </h2>
-              <p className="text-sm text-muted-foreground max-w-2xl mt-1">
-                Model IDs are canonical (e.g.{" "}
-                <code
-                  className="font-mono text-accent px-1"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
+      {/* ───────────────────────────────────────────────────────────────────
+          PROVIDERS STRIP (muted, like a logo strip)
+          ─────────────────────────────────────────────────────────────────── */}
+      <section className="relative border-y border-white/[0.06] bg-white/[0.015]">
+        <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
+          <p className="text-xs font-semibold tracking-[0.18em] uppercase text-zinc-500 shrink-0">
+            Native providers
+          </p>
+          <div className="flex flex-wrap justify-center gap-x-7 gap-y-3 items-center w-full">
+            {NATIVE_PROVIDERS.slice(0, 12).map((p) => (
+              <span key={p.id} className="text-sm font-medium text-zinc-400">
+                {p.name}
+              </span>
+            ))}
+            {NATIVE_PROVIDERS.length > 12 && (
+              <span className="text-sm text-zinc-600">+{NATIVE_PROVIDERS.length - 12} more</span>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────────────
+          STATS
+          ─────────────────────────────────────────────────────────────────── */}
+      <section id="features" className="relative py-20 px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center mb-14 max-w-2xl mx-auto">
+            <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#ff6b4a] mb-4">
+              The free gateway
+            </p>
+            <h2
+              className="text-3xl md:text-[42px] font-semibold text-white tracking-tight leading-tight"
+              style={{ fontFamily: "var(--font-body), sans-serif" }}
+            >
+              Every adapter implements chat,
+              <br />
+              streaming, and <span className="fxz-gradient-word">tools</span>.
+            </h2>
+            <p className="mt-4 text-[15px] text-[#9c9c9d] leading-relaxed">
+              A lean OpenAI-compatible gateway over free native providers.
+              Canonical model IDs, structured errors, per-provider health —
+              and now a complete tool-calling pipeline.
+            </p>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-14">
+            {[
+              { value: String(MODEL_COUNT), label: "free models" },
+              { value: String(PROVIDER_COUNT), label: "native providers" },
+              { value: String(STREAMING_COUNT), label: "true streaming" },
+              { value: String(TOOLS_COUNT), label: "tool-calling models" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-6 text-center"
+              >
+                <p
+                  className="text-3xl font-semibold text-white"
+                  style={{ fontFamily: "var(--font-body), sans-serif" }}
                 >
-                  tb/gpt-5
-                </code>
-                ,{" "}
-                <code
-                  className="font-mono text-accent px-1"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
+                  {s.value}
+                </p>
+                <p className="text-xs text-[#9c9c9d] mt-1.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Bento features */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 lg:auto-rows-fr">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className={`group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] p-6 hover:border-[#ff6b4a]/30 transition-colors ${
+                  f.wide ? "md:col-span-2" : ""
+                }`}
+              >
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.05] border border-white/[0.08] text-[#ff6b4a] mb-4">
+                  <f.icon className="h-4.5 w-4.5" strokeWidth={1.75} style={{ width: 18, height: 18 }} />
+                </span>
+                <h3
+                  className="text-base font-semibold text-white mb-2 tracking-tight"
+                  style={{ fontFamily: "var(--font-body), sans-serif" }}
                 >
-                  l7/glm-5.3-flash
-                </code>
-                ).
-              </p>
-            </FadeIn>
-            <FadeIn>
-              <FeaturedCard innerClassName="p-0">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block h-3 w-3 rounded-full bg-rose-400/80" />
-                    <span className="inline-block h-3 w-3 rounded-full bg-amber-400/80" />
-                    <span className="inline-block h-3 w-3 rounded-full bg-emerald-400/80" />
-                  </div>
-                  <span
-                    className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground"
-                    style={{ fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    curl · bash
-                  </span>
-                </div>
-                <pre
-                  className="overflow-x-auto bg-[#0F172A] text-zinc-100 p-5 text-xs leading-relaxed rounded-[10px]"
-                  style={{ fontFamily: "var(--font-mono), monospace" }}
-                >
-                  <code>{`curl -N https://<gateway>/api/v1/chat/completions \\
+                  {f.title}
+                </h3>
+                <p className="text-[13px] text-[#9c9c9d] leading-relaxed">{f.desc}</p>
+                <div
+                  aria-hidden
+                  className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                  style={{
+                    background:
+                      "radial-gradient(circle at top right, rgba(255,47,58,0.09), transparent 70%)",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────────────────────────────────────────────────────
+          QUICK START (curl, mono, warm-tinted panel)
+          ─────────────────────────────────────────────────────────────────── */}
+      <section id="quickstart" className="relative py-20 px-6 border-t border-white/[0.05]">
+        <div className="mx-auto max-w-3xl">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#ff6b4a] mb-3">
+              Quick start
+            </p>
+            <h2
+              className="text-3xl font-semibold text-white tracking-tight"
+              style={{ fontFamily: "var(--font-body), sans-serif" }}
+            >
+              Point any OpenAI client at the gateway.
+            </h2>
+            <p className="mt-3 text-sm text-[#9c9c9d]">
+              Streaming + tools, exactly like the spec you already use.
+            </p>
+          </div>
+
+          <div className="fxz-cmdbar overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.07]">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff2f3a]/70" />
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff6b4a]/70" />
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ffb347]/70" />
+              </div>
+              <span
+                className="text-[10px] uppercase tracking-[0.15em] text-[#9c9c9d]"
+                style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+              >
+                curl · bash
+              </span>
+            </div>
+            <pre
+              className="overflow-x-auto px-5 py-5 text-[12px] leading-relaxed text-zinc-200"
+              style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+            >
+              <code>{`curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "tb/gpt-5",
+    "model": "oc/gpt-5.6",
     "messages": [{"role":"user","content":"Hello"}],
-    "stream": true
+    "stream": true,
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "web_search",
+        "description": "Search the live web",
+        "parameters": {"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}
+      }
+    }],
+    "tool_choice": "auto"
   }'`}</code>
-                </pre>
-              </FeaturedCard>
-            </FadeIn>
+            </pre>
           </div>
-        </section>
-      </main>
+        </div>
+      </section>
 
-      <SiteFooter />
+      {/* ───────────────────────────────────────────────────────────────────
+          CTA + FOOTER (sticky bottom via mt-auto)
+          ─────────────────────────────────────────────────────────────────── */}
+      <section className="relative py-20 px-6 text-center border-t border-white/[0.05]">
+        <div className="mx-auto max-w-2xl">
+          <h2
+            className="text-4xl md:text-5xl font-semibold tracking-tight text-white mb-5"
+            style={{ fontFamily: "var(--font-body), sans-serif" }}
+          >
+            Ready to <span className="fxz-gradient-word">build?</span>
+          </h2>
+          <p className="text-[15px] text-[#9c9c9d] mb-8">
+            {MODEL_COUNT} models are waiting. No key, no account, no setup.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link href="/chat" className="fxz-keycap">
+              <ChatGlyph />
+              Start chatting
+            </Link>
+            <a href="#quickstart" className="fxz-ghost-pill">
+              View the API
+              <ArrowRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <footer className="mt-auto border-t border-white/[0.06] bg-black/40">
+        <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#7c7c7f]">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rotate-45 rounded-[2px]"
+              style={{ background: "linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%)" }}
+              aria-hidden="true"
+            />
+            <span className="text-zinc-400">FreeAIXYZ — free AI gateway</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <Link href="/chat" className="hover:text-zinc-200 transition-colors">Playground</Link>
+            <Link href="/models" className="hover:text-zinc-200 transition-colors">Models</Link>
+            <a href="/api/v1/models" className="hover:text-zinc-200 transition-colors">API</a>
+          </div>
+          <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}>
+            GET /health · GET /ready
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

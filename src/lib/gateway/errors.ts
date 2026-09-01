@@ -25,7 +25,11 @@ export type GatewayErrorType =
   | "VERIFICATION_FAILED"
   | "RATE_LIMITED"
   | "AUTHENTICATION_REQUIRED"
-  | "EMPTY_UPSTREAM_RESPONSE";
+  | "EMPTY_UPSTREAM_RESPONSE"
+  /** Tool-calling pipeline errors (Tool PRD §22). */
+  | "TOOL_UNSUPPORTED"
+  | "TOOL_SCHEMA_INVALID"
+  | "TOOL_FORWARDING_ERROR";
 
 export interface GatewayErrorBody {
   type: GatewayErrorType;
@@ -129,6 +133,9 @@ export function defaultStatusFor(type: GatewayErrorType): number {
     case "PROVIDER_NOT_FOUND":
       return 404;
     case "INVALID_REQUEST":
+    case "TOOL_UNSUPPORTED":
+    case "TOOL_SCHEMA_INVALID":
+    case "TOOL_FORWARDING_ERROR":
       return 400;
     case "AUTHENTICATION_REQUIRED":
       return 401;

@@ -9,6 +9,7 @@
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
+import { assertToolsForwarded } from "@/lib/tools/forwarding";
 
 const ENDPOINT = "https://api.llm7.io/v1/chat/completions";
 
@@ -78,8 +79,13 @@ export const llm7Provider: Provider = {
     if (req.n !== undefined) payload.n = req.n;
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
-      payload.tool_choice = req.toolChoice || "auto";
+      payload.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      payload.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(payload, req.tools, "llm7", req.model.upstream);
 
     const res = await fetch(ENDPOINT, {
       method: "POST",

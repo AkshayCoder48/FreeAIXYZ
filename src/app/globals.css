@@ -271,3 +271,313 @@
 .border-accent-gradient {
   border-image: linear-gradient(to bottom right, #0052FF, #4D7CFF, #0052FF) 1;
 }
+
+/* ─── Warm Aurora landing hero (light-blades on #07080a) ───────────────────── */
+/* Strictly WARM: crimson #ff2f3a → coral #ff6b4a → amber #ffb347.             */
+/* No purple/indigo/violet anywhere. Pure-CSS keyframes; 0% = full bloom.      */
+
+.fxz-aurora-root {
+  background: #07080a;
+}
+
+/* Light-blades: long soft-focus diagonal gradients, screen-blended. */
+.fxz-blade {
+  position: absolute;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  border-radius: 9999px;
+}
+
+.fxz-blade-1 {
+  width: 150vw; height: 34vh; top: -6%; left: -22%;
+  background: linear-gradient(100deg,
+    transparent 0%,
+    rgba(255, 47, 58, 0) 18%,
+    rgba(255, 47, 58, 0.50) 46%,
+    rgba(255, 107, 74, 0.38) 62%,
+    rgba(255, 179, 71, 0.22) 78%,
+    transparent 100%);
+  filter: blur(70px);
+  transform: translate(-6%, -3%) rotate(-16deg);
+  animation: fxz-drift-1 18s ease-in-out infinite;
+}
+.fxz-blade-2 {
+  width: 130vw; height: 26vh; top: 26%; left: 8%;
+  background: linear-gradient(280deg,
+    transparent 0%,
+    rgba(255, 47, 58, 0) 20%,
+    rgba(255, 47, 58, 0.36) 48%,
+    rgba(255, 107, 74, 0.30) 64%,
+    rgba(255, 179, 71, 0.16) 80%,
+    transparent 100%);
+  filter: blur(80px);
+  transform: translate(4%, 2%) rotate(-11deg);
+  animation: fxz-drift-2 22s ease-in-out infinite;
+}
+.fxz-blade-3 {
+  width: 120vw; height: 22vh; bottom: 6%; left: -18%;
+  background: linear-gradient(75deg,
+    transparent 0%,
+    rgba(255, 107, 74, 0) 22%,
+    rgba(255, 107, 74, 0.34) 50%,
+    rgba(255, 179, 71, 0.26) 68%,
+    rgba(255, 179, 71, 0.10) 84%,
+    transparent 100%);
+  filter: blur(60px);
+  transform: translate(0%, 4%) rotate(-20deg);
+  animation: fxz-drift-3 16s ease-in-out infinite;
+}
+.fxz-blade-4 {
+  width: 90vw; height: 18vh; top: 46%; right: -30%;
+  background: linear-gradient(190deg,
+    transparent 0%,
+    rgba(255, 47, 58, 0) 25%,
+    rgba(255, 47, 58, 0.30) 55%,
+    rgba(255, 179, 71, 0.18) 75%,
+    transparent 100%);
+  filter: blur(64px);
+  transform: translate(-2%, -2%) rotate(-14deg);
+  animation: fxz-drift-4 20s ease-in-out infinite;
+}
+
+/* Drift + breathe; 0% keyframe = full bloom (richest single still). */
+@keyframes fxz-drift-1 {
+  0%   { transform: translate(-6%, -3%) rotate(-16deg) scale(1);    opacity: 0.95; }
+  50%  { transform: translate(5%, 4%)  rotate(-11deg) scale(1.14);  opacity: 0.55; }
+  100% { transform: translate(-6%, -3%) rotate(-16deg) scale(1);    opacity: 0.95; }
+}
+@keyframes fxz-drift-2 {
+  0%   { transform: translate(4%, 2%) rotate(-11deg) scale(1.08);   opacity: 0.9; }
+  50%  { transform: translate(-5%, -4%) rotate(-15deg) scale(1);    opacity: 0.5; }
+  100% { transform: translate(4%, 2%) rotate(-11deg) scale(1.08);   opacity: 0.9; }
+}
+@keyframes fxz-drift-3 {
+  0%   { transform: translate(0%, 4%) rotate(-20deg) scale(1);      opacity: 0.85; }
+  50%  { transform: translate(6%, -3%) rotate(-16deg) scale(1.12);  opacity: 0.45; }
+  100% { transform: translate(0%, 4%) rotate(-20deg) scale(1);      opacity: 0.85; }
+}
+@keyframes fxz-drift-4 {
+  0%   { transform: translate(-2%, -2%) rotate(-14deg) scale(1.05); opacity: 0.9; }
+  50%  { transform: translate(4%, 3%)  rotate(-18deg) scale(1);     opacity: 0.4; }
+  100% { transform: translate(-2%, -2%) rotate(-14deg) scale(1.05); opacity: 0.9; }
+}
+
+/* Warm ambient glow (deep crimson core behind the content). */
+.fxz-aurora-core {
+  position: absolute;
+  left: 50%; top: 42%;
+  width: 820px; height: 520px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center,
+    rgba(255, 47, 58, 0.14) 0%,
+    rgba(255, 107, 74, 0.07) 45%,
+    transparent 72%);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+/* Film grain — SVG feTurbulence data URI, overlaid. */
+.fxz-grain {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Vignette + bottom fade into the ground color. */
+.fxz-vignette {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 40%,
+      transparent 42%,
+      rgba(7, 8, 10, 0.5) 100%),
+    linear-gradient(to bottom,
+      rgba(7, 8, 10, 0.55) 0%,
+      transparent 18%,
+      transparent 72%,
+      #07080a 100%);
+}
+
+/* ─── Keycap-raised button (near-white tactile key) ────────────────────────── */
+.fxz-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: #e6e6e6;
+  color: #2f3031;
+  border-radius: 8px;
+  padding: 0.75rem 1.4rem;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 14px rgba(255, 255, 255, 0.19),
+    0 10px 30px -10px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.fxz-keycap:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 22px rgba(255, 255, 255, 0.3),
+    0 14px 34px -10px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+}
+.fxz-keycap:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 8px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Small near-white pill CTA (nav "Download"-style button). */
+.fxz-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f4f4f4;
+  color: #17181a;
+  border-radius: 9999px;
+  padding: 0.42rem 0.9rem;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.85),
+    0 0 10px rgba(255, 255, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.fxz-nav-cta:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.85),
+    0 0 16px rgba(255, 255, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+/* ─── Hero headline (scoped class + !important — survives host resets) ────── */
+.fxz-hero-title {
+  font-size: clamp(2.5rem, 5.2vw, 3.75rem) !important;
+  font-weight: 600 !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.02em !important;
+  color: #ffffff !important;
+}
+
+/* Warm gradient accent word (amber → coral → crimson). */
+.fxz-gradient-word {
+  background-image: linear-gradient(105deg, #ffb347 0%, #ff6b4a 55%, #ff2f3a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ─── Command-bar mockup ───────────────────────────────────────────────────── */
+.fxz-cmdbar {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 11, 13, 0.62);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 30px 90px -28px rgba(255, 47, 58, 0.28),
+    0 12px 40px -12px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Blinking warm caret. */
+.fxz-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #ff6b4a;
+  animation: fxz-caret-blink 1.1s steps(1) infinite;
+}
+@keyframes fxz-caret-blink {
+  0%, 45%  { opacity: 1; }
+  50%, 95% { opacity: 0; }
+}
+
+/* Active (selected) result row — warm aurora tint, never purple. */
+.fxz-cmd-row-active {
+  background: linear-gradient(90deg,
+    rgba(255, 47, 58, 0.16) 0%,
+    rgba(255, 107, 74, 0.10) 55%,
+    rgba(255, 179, 71, 0.05) 100%);
+  border-color: rgba(255, 107, 74, 0.35) !important;
+}
+
+/* Keyboard shortcut chip (mono). */
+.fxz-kbd {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  color: #9c9c9d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1.5px 6px;
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+/* Ghost pill (low-emphasis secondary link). */
+.fxz-ghost-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #a7a7a9;
+  border-radius: 9999px;
+  padding: 0.55rem 1.25rem;
+  font-size: 13.5px;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  background: transparent;
+}
+.fxz-ghost-pill:hover {
+  border-color: rgba(255, 107, 74, 0.5);
+  color: #f0f0f0;
+  background: rgba(255, 47, 58, 0.06);
+}
+
+/* Eyebrow chip. */
+.fxz-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  color: #ffd9cd;
+  border-radius: 9999px;
+  padding: 0.36rem 0.95rem;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Fade-up entrance for hero content. */
+@keyframes fxz-fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fxz-fade-up {
+  animation: fxz-fade-up 0.7s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fxz-blade, .fxz-caret, .fxz-fade-up { animation: none !important; }
+}

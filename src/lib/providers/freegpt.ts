@@ -29,6 +29,7 @@ import {
   classifyUpstreamStatus,
 } from "@/lib/gateway/errors";
 import { canonicalModelId } from "@/lib/gateway/ids";
+import { assertToolsForwarded } from "@/lib/tools/forwarding";
 
 const BASE_URL = "https://freegpt.tech";
 const CHALLENGE_PATH = "/api/challenge";
@@ -428,8 +429,13 @@ export const freeGptProvider: Provider = {
 
     if (req.tools && req.tools.length > 0) {
       body.tools = req.tools;
-      body.tool_choice = req.toolChoice || "auto";
+      body.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      body.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(body, req.tools, "freegpt", req.model.upstream);
 
     // POST via curl
     const url = `${BASE_URL}${COMPLETIONS_PATH}`;
@@ -562,8 +568,13 @@ export const freeGptProvider: Provider = {
 
     if (req.tools && req.tools.length > 0) {
       body.tools = req.tools;
-      body.tool_choice = req.toolChoice || "auto";
+      body.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      body.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(body, req.tools, "freegpt", req.model.upstream);
 
     // POST via curl for streaming. Add `-w "\n__HTTP_STATUS__%{http_code}"` so
     // we can detect upstream HTTP status (esp. 403 Cloudflare blocks) instead

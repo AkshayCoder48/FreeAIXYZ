@@ -22,6 +22,26 @@
  *     reader, and finalises the message as cancelled — the UI never stays
  *     stuck in "Generating".
  *
+ * TOOL-CALLING PIPELINE (Tool PRD §9-§26):
+ *   - Built-in tools (calculator / web_search / get_current_time) can be
+ *     toggled per model — the DEFINITIONS are sent in the request payload
+ *     (`tools` + `tool_choice:"auto"` + `parallel_tool_calls:true`) for
+ *     models whose capabilities.tools is true. Non-tools models never
+ *     see the toggle (and the gateway rejects tools for them).
+ *   - `delta.tool_calls` fragments are accumulated by INDEX across chunks
+ *     (§11/§12): first delta carries id+name, later deltas carry argument
+ *     fragments. Arguments are parsed ONLY after the stream completes.
+ *   - Emulated providers (no upstream tools API) stream the fenced
+ *     ```tool_call block as text — a complete fence is detected after the
+ *     round ends and converted into structured tool calls (§13).
+ *   - When a round ends with tool calls: the tools EXECUTE (via
+ *     /api/tools/execute, in parallel, §24), the results are appended to
+ *     the conversation as a proper `assistant.tool_calls` + `tool` message
+ *     sequence (§14), and the model is re-requested with the SAME tools —
+ *     the final answer continues streaming into the SAME assistant bubble.
+ *   - MAX_TOOL_ROUNDS caps the loop (§23). Tool activity renders as
+ *     compact status chips (§26): "Using web_search…" → "✓ web_search".
+ *
  * State machine:
  *   idle → preparing → routing → generating → completed
  *   (any of preparing/routing/generating) → error on failure
@@ -47,6 +67,10 @@ import {
   Brain,
   ChevronDown,
   ArrowDown,
+  Wrench,
+  Search,
+  Calculator,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,6 +96,14 @@ import type {
   NativeModel,
   NativeModelCapabilities,
 } from "@/lib/native-catalog";
+import type { OAITool, OAIToolCall } from "@/lib/openai-types";
+import {
+  BUILTIN_TOOL_DEFINITIONS,
+  BUILTIN_TOOL_META,
+  DEFAULT_TOOL_CHOICE,
+  MAX_TOOL_ROUNDS,
+} from "@/lib/tools/definitions";
+import { parseToolCalls } from "@/lib/tool-calls";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +134,16 @@ type Phase =
 
 type AssistantStatus = "streaming" | "completed" | "error" | "cancelled";
 
+/** One tool execution shown as a compact chip in the assistant message (§26). */
+interface ToolEvent {
+  /** Unique key — the tool_call id (stable across state updates). */
+  key: string;
+  name: string;
+  status: "running" | "ok" | "error";
+  ms?: number;
+  error?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -120,6 +162,8 @@ interface ChatMessage {
   errorType?: string;
   /** Final usage block (when captured from the last SSE chunk). */
   usage?: Usage;
+  /** Tool executions performed during this generation (§26). */
+  toolEvents?: ToolEvent[];
 }
 
 interface Usage {
@@ -138,13 +182,29 @@ interface SseError {
   code?: string;
 }
 
+/** One `delta.tool_calls` fragment from an SSE chunk (Tool PRD §10). */
+interface SseToolCallFragment {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
+}
+
+/** OpenAI-shaped message used when building the request payload (§14). */
+interface RequestMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: OAIToolCall[];
+  tool_call_id?: string;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const PROMPT_SUGGESTIONS = [
+  "Calculate 12345 × 6789 using the calculator tool.",
+  "Search the web for the latest Next.js release notes.",
   "Explain quantum computing in three sentences.",
   "Write a TypeScript function to debounce another function.",
-  "Draft a one-paragraph cover letter for a frontend role.",
-  "Give me five project ideas using SSE streaming.",
 ];
 
 // Phase palette — emerald/amber/rose/slate.
@@ -156,6 +216,13 @@ const PHASE_META: Record<Phase, { label: string; dot: string; text: string; puls
   completed: { label: "Completed", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300" },
   error: { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-300" },
   cancelled: { label: "Cancelled", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400" },
+};
+
+/** Icon per built-in tool (matches BUILTIN_TOOL_META order). */
+const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  calculator: Calculator,
+  web_search: Search,
+  get_current_time: Clock,
 };
 
 /** Maximum items per provider group in the dropdown (Radix Select doesn't
@@ -170,6 +237,20 @@ function uid(): string {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Parse a tool-call arguments JSON string → object ({} on failure, §22). */
+function parseToolArgs(raw: string): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
 }
 
 function groupModels(
@@ -215,14 +296,24 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+/** Format tool duration compactly. */
+function formatMs(ms?: number): string {
+  if (ms === undefined) return "";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 // ─── SSE stream reader ──────────────────────────────────────────────────────
 
 interface SseHandlers {
   onDelta: (content: string) => void;
   onReasoning: (content: string) => void;
+  /** Tool-call delta fragments — accumulate by index, NEVER drop (§10-§12). */
+  onToolCall: (fragments: SseToolCallFragment[]) => void;
   onUsage: (usage: Usage) => void;
   onError: (error: SseError) => void;
-  onDone: () => void;
+  /** Fires on the [DONE] sentinel with the stream's final finish_reason. */
+  onDone: (finishReason: string | null | undefined) => void;
 }
 
 /**
@@ -233,7 +324,8 @@ interface SseHandlers {
  * Partial UTF-8 sequences are decoded by a single TextDecoder reused in
  * streaming mode. Multi-line `data:` fields are joined with "\n" per the
  * SSE spec; `event:` fields route frames; comments (`:` lines) and
- * `id:`/`retry:` lines are ignored. `[DONE]` fires onDone exactly once.
+ * `id:`/`retry:` lines are ignored. `[DONE]` fires onDone exactly once
+ * (carrying the observed finish_reason).
  */
 async function readSseStream(
   response: Response,
@@ -249,6 +341,8 @@ async function readSseStream(
   let pendingEvent = "";
   let dataLines: string[] = [];
   let done = false;
+  /** Last finish_reason observed on a choice (arrives on the final chunk). */
+  let finishReason: string | null | undefined;
 
   /** Returns true when the [DONE] sentinel has been processed. */
   const flush = (): boolean => {
@@ -283,7 +377,7 @@ async function readSseStream(
     if (data === "[DONE]") {
       if (!done) {
         done = true;
-        handlers.onDone();
+        handlers.onDone(finishReason);
       }
       return true;
     }
@@ -313,10 +407,20 @@ async function readSseStream(
       if (typeof reasoning === "string" && reasoning.length > 0) {
         handlers.onReasoning(reasoning);
       }
+      // Tool-call delta fragments (Tool PRD §10) — forwarded to the
+      // index-keyed accumulator. NEVER parsed as JSON per-chunk (§12).
+      const toolCallFrags = choice?.delta?.tool_calls;
+      if (Array.isArray(toolCallFrags) && toolCallFrags.length > 0) {
+        handlers.onToolCall(toolCallFrags as SseToolCallFragment[]);
+      }
       // Append content delta.
       const content = choice?.delta?.content;
       if (typeof content === "string" && content.length > 0) {
         handlers.onDelta(content);
+      }
+      // Track the final finish_reason (e.g. "stop" | "tool_calls").
+      if (typeof choice?.finish_reason === "string" && choice.finish_reason) {
+        finishReason = choice.finish_reason;
       }
       // Capture usage (some upstreams send it on the final chunk).
       if (chunk?.usage) {
@@ -345,6 +449,11 @@ async function readSseStream(
         // newline are discarded — that's correct SSE behaviour.)
         if (dataLines.length > 0) {
           flush();
+        }
+        // EOF without [DONE] — still report the observed finish_reason.
+        if (!done) {
+          done = true;
+          handlers.onDone(finishReason);
         }
         return;
       }
@@ -382,6 +491,63 @@ async function readSseStream(
   }
 }
 
+// ─── Tool-call accumulator (Tool PRD §11, §12) ──────────────────────────────
+
+/**
+ * Streaming tool-call accumulator — ONE instance per round.
+ *
+ * Accumulates `delta.tool_calls` fragments by INDEX:
+ *   - id:      first non-empty id wins (OpenAI sends it on the first delta)
+ *   - name:    first non-empty name fragment wins
+ *   - arguments: CONCATENATED fragments — never overwritten, and
+ *                JSON.parse happens ONLY after the stream completes (§12).
+ */
+class ToolCallAccumulator {
+  private map = new Map<number, { id: string; name: string; arguments: string }>();
+
+  consume(fragments: SseToolCallFragment[]): void {
+    for (const frag of fragments) {
+      if (!frag || typeof frag !== "object") continue;
+      const index = typeof frag.index === "number" ? frag.index : 0;
+      let entry = this.map.get(index);
+      if (!entry) {
+        entry = { id: "", name: "", arguments: "" };
+        this.map.set(index, entry);
+      }
+      if (typeof frag.id === "string" && frag.id && !entry.id) {
+        entry.id = frag.id;
+      }
+      const name = frag.function?.name;
+      if (typeof name === "string" && name && !entry.name) {
+        entry.name = name;
+      }
+      const args = frag.function?.arguments;
+      if (typeof args === "string") {
+        entry.arguments += args;
+      }
+    }
+  }
+
+  get size(): number {
+    return this.map.size;
+  }
+
+  /** Finalize — parse arguments ONLY now (§12/§13). */
+  finalize(): OAIToolCall[] {
+    return Array.from(this.map.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([index, e]) => ({
+        id: e.id || `call_${index}_${Math.random().toString(36).slice(2, 10)}`,
+        type: "function" as const,
+        function: {
+          name: e.name,
+          arguments: e.arguments || "{}",
+        },
+      }))
+      .filter((c) => c.function.name);
+  }
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
@@ -396,10 +562,17 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   const [showSystem, setShowSystem] = React.useState<boolean>(false);
   const [openReasoning, setOpenReasoning] = React.useState<Record<string, boolean>>({});
 
+  // Built-in tools toggles (only rendered for tools-capable models).
+  const [enabledTools, setEnabledTools] = React.useState<Record<string, boolean>>(() =>
+    Object.fromEntries(BUILTIN_TOOL_META.map((t) => [t.name, false])),
+  );
+
   // State machine.
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [usage, setUsage] = React.useState<Usage | null>(null);
+  /** Compact tool-activity status line (§26): "Using web_search…". */
+  const [toolStatus, setToolStatus] = React.useState<string | null>(null);
 
   // Live token tracking during streaming (cumulative across the current turn).
   const [streamTokens, setStreamTokens] = React.useState<{ in: number; out: number } | null>(null);
@@ -415,10 +588,11 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   const messagesRef = React.useRef<ChatMessage[]>([]);
   const selectedModelRef = React.useRef<string>("");
   const systemRef = React.useRef<string>("");
+  const enabledToolsRef = React.useRef<Record<string, boolean>>(enabledTools);
   // Guard against duplicate in-flight generations: while a generation is
-  // running, additional send() calls are rejected (one user message → one
-  // generation request — re-renders, model switches, or rapid double-clicks
-  // can never start a second one).
+  // running (INCLUDING all tool rounds), additional send() calls are
+  // rejected — re-renders, model switches, or rapid double-clicks can
+  // never start a second one.
   const generatingRef = React.useRef<boolean>(false);
 
   // Mirror state into refs so the `send` closure (memoized with useCallback)
@@ -433,6 +607,9 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   React.useEffect(() => {
     systemRef.current = system;
   }, [system]);
+  React.useEffect(() => {
+    enabledToolsRef.current = enabledTools;
+  }, [enabledTools]);
 
   // Auto-select the first model on first mount if no ?model= param.
   // Also resolve a `?model=...` deep-link (URL-encoded).
@@ -454,9 +631,14 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       // window.location not available (SSR) — skip.
     }
     if (models.length > 0) {
-      // Prefer a streaming model.
+      // Prefer a streaming + tools model (the tool pipeline is a headline
+      // feature — the default model should exercise it).
       setSelectedModelId(
-        (models.find((m) => m.capabilities.streaming) ?? models[0]).id,
+        (
+          models.find((m) => m.capabilities.streaming && m.capabilities.tools) ??
+          models.find((m) => m.capabilities.streaming) ??
+          models[0]
+        ).id,
       );
     }
   }, [models, initialModelResolved]);
@@ -495,12 +677,22 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     [models, selectedModelId],
   );
 
+  /** Tools to include in the request payload (only for tools-capable models). */
+  const activeTools: OAITool[] = React.useMemo(() => {
+    if (!selectedModel?.capabilities.tools) return [];
+    return BUILTIN_TOOL_DEFINITIONS.filter((t) => enabledTools[t.function.name]);
+  }, [selectedModel, enabledTools]);
+
   // ─── Actions ────────────────────────────────────────────────────────────
 
   const handleSelectModel = React.useCallback((id: string) => {
     setSelectedModelId(id);
     setUsage(null);
     setStreamTokens(null);
+  }, []);
+
+  const toggleTool = React.useCallback((name: string) => {
+    setEnabledTools((prev) => ({ ...prev, [name]: !prev[name] }));
   }, []);
 
   const stop = React.useCallback(() => {
@@ -521,15 +713,82 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     setUsage(null);
     setStreamTokens(null);
     setErrorMessage(null);
+    setToolStatus(null);
     setPhase("idle");
     toast("Chat cleared");
   }, []);
+
+  /**
+   * Execute ONE registry tool via the backend executor endpoint (§7, §24).
+   * Always resolves with a structured payload — failures become
+   * `{ success:false, error }` so the MODEL still receives a tool result
+   * and the generation continues (§25).
+   */
+  const executeToolViaApi = React.useCallback(
+    async (
+      call: OAIToolCall,
+      signal: AbortSignal,
+    ): Promise<{ id: string; ok: boolean; payload: unknown; ms?: number }> => {
+      const started = Date.now();
+      try {
+        const res = await fetch("/api/tools/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: call.function.name,
+            arguments: parseToolArgs(call.function.arguments),
+          }),
+          signal,
+        });
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try {
+            const j = (await res.json()) as { error?: { message?: string } };
+            msg = j?.error?.message ?? msg;
+          } catch {
+            /* body wasn't JSON */
+          }
+          return {
+            id: call.id,
+            ok: false,
+            payload: { success: false, error: msg },
+            ms: Date.now() - started,
+          };
+        }
+        const j = (await res.json()) as {
+          ok: boolean;
+          result?: unknown;
+          error?: string;
+          durationMs?: number;
+        };
+        return {
+          id: call.id,
+          ok: j.ok,
+          payload: j.ok ? (j.result ?? {}) : { success: false, error: j.error ?? "Tool failed" },
+          ms: j.durationMs ?? Date.now() - started,
+        };
+      } catch (err) {
+        if (signal.aborted) throw err;
+        return {
+          id: call.id,
+          ok: false,
+          payload: {
+            success: false,
+            error: err instanceof Error ? err.message : "Tool execution request failed.",
+          },
+          ms: Date.now() - started,
+        };
+      }
+    },
+    [],
+  );
 
   const send = React.useCallback(
     async (overrideText?: string) => {
       const text = (overrideText ?? input).trim();
       if (!text) return;
-      // Duplicate-request guard: one user message → exactly one generation.
+      // Duplicate-request guard: one user message → exactly one generation
+      // (the generation INCLUDES every tool round — see the loop below).
       if (generatingRef.current) return;
       if (!selectedModelRef.current) {
         toast.error("Pick a model first.");
@@ -540,8 +799,18 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       setErrorMessage(null);
       setUsage(null);
       setStreamTokens(null);
+      setToolStatus(null);
 
-      // Build the message list — prior turns + new user turn.
+      const modelInfo =
+        models.find((m) => m.id === selectedModelRef.current) ?? null;
+      const toolsForRequest: OAITool[] =
+        modelInfo?.capabilities.tools
+          ? BUILTIN_TOOL_DEFINITIONS.filter(
+              (t) => enabledToolsRef.current[t.function.name],
+            )
+          : [];
+      const useTools = toolsForRequest.length > 0;
+
       const userMsg: ChatMessage = {
         id: uid(),
         role: "user",
@@ -549,8 +818,9 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         createdAt: Date.now(),
       };
       // The SINGLE assistant message for this generation. Every subsequent
-      // delta / reasoning chunk / usage block updates THIS object — chunks
-      // are never split into separate messages.
+      // delta / reasoning chunk / tool event / usage block updates THIS
+      // object — chunks are never split into separate messages, across ALL
+      // tool rounds.
       const assistantMsg: ChatMessage = {
         id: uid(),
         role: "assistant",
@@ -559,14 +829,16 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         model: selectedModelRef.current,
         providerLabel: selectedModel?.providerName,
         status: "streaming",
+        toolEvents: [],
       };
       const priorMessages = messagesRef.current;
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setInput("");
 
-      // The request body messages include the system prompt (if any) + every
-      // prior turn + the new user turn (NOT the empty assistant placeholder).
-      const requestMessages: Array<{ role: string; content: string }> = [];
+      // The request message list: system + every prior turn + the new user
+      // turn (NOT the empty assistant placeholder). Tool rounds APPEND the
+      // assistant tool_calls + tool results to this list (§14).
+      const requestMessages: RequestMessage[] = [];
       if (systemRef.current.trim()) {
         requestMessages.push({ role: "system", content: systemRef.current.trim() });
       }
@@ -575,156 +847,329 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       }
       requestMessages.push({ role: "user", content: text });
 
-      setPhase("routing");
+      // Local mirror of the assistant content — the single source of truth
+      // for the fence detector inside the loop (React state is async).
+      let assistantContent = "";
+      const appendContent = (delta: string) => {
+        assistantContent += delta;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? { ...m, content: m.content + delta }
+              : m,
+          ),
+        );
+      };
+      const replaceContent = (next: string) => {
+        assistantContent = next;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: next } : m)),
+        );
+      };
 
       const ac = new AbortController();
       abortRef.current = ac;
 
-      // Mutable holder for values captured inside the SSE closure.
-      const holder: { usage: Usage | null; error: SseError | null } = {
-        usage: null,
-        error: null,
+      setPhase("routing");
+
+      // Generation-scoped holders.
+      let finalUsage: Usage | null = null;
+
+      // Helper — append tool event chips (status: running).
+      const pushToolEvents = (calls: OAIToolCall[]) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? {
+                  ...m,
+                  toolEvents: [
+                    ...(m.toolEvents ?? []),
+                    ...calls.map((c) => ({
+                      key: c.id,
+                      name: c.function.name,
+                      status: "running" as const,
+                    })),
+                  ],
+                }
+              : m,
+          ),
+        );
+      };
+      // Helper — settle tool event chips (status: ok | error).
+      const settleToolEvents = (
+        results: Array<{ id: string; ok: boolean; payload: unknown; ms?: number }>,
+      ) => {
+        const byId = new Map(results.map((r) => [r.id, r]));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? {
+                  ...m,
+                  toolEvents: (m.toolEvents ?? []).map((ev) => {
+                    const r = byId.get(ev.key);
+                    if (!r) return ev;
+                    const errText =
+                      !r.ok &&
+                      r.payload &&
+                      typeof r.payload === "object" &&
+                      "error" in (r.payload as Record<string, unknown>)
+                        ? String((r.payload as Record<string, unknown>).error)
+                        : undefined;
+                    return {
+                      ...ev,
+                      status: r.ok ? ("ok" as const) : ("error" as const),
+                      ms: r.ms,
+                      error: errText,
+                    };
+                  }),
+                }
+              : m,
+          ),
+        );
       };
 
       try {
-        const response = await fetch("/api/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: selectedModelRef.current,
-            messages: requestMessages,
-            stream: true,
-          }),
-          signal: ac.signal,
-        });
+        // ─── TOOL EXECUTION LOOP (Tool PRD §23) ────────────────────────────
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          setPhase("generating");
+          setToolStatus(round === 0 ? null : "Generating final response…");
 
-        // Non-2xx — server didn't even open the stream. Surface the JSON
-        // error envelope inline.
-        if (!response.ok) {
-          let msg = `HTTP ${response.status}`;
-          let errType: string | undefined;
-          try {
-            const errJson = await response.json();
-            msg = errJson?.error?.message ?? msg;
-            errType = errJson?.error?.type;
-          } catch {
-            // response body wasn't JSON — keep the HTTP status message.
+          const holder: {
+            usage: Usage | null;
+            error: SseError | null;
+            finishReason: string | null | undefined;
+          } = { usage: null, error: null, finishReason: undefined };
+          const toolAcc = new ToolCallAccumulator();
+
+          const response = await fetch("/api/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: selectedModelRef.current,
+              messages: requestMessages,
+              stream: true,
+              // Tool PRD §5/§9 — tools + tool_choice + parallel_tool_calls
+              // are preserved in the request payload (never stripped).
+              ...(useTools
+                ? {
+                    tools: toolsForRequest,
+                    tool_choice: DEFAULT_TOOL_CHOICE,
+                    parallel_tool_calls: true,
+                  }
+                : {}),
+            }),
+            signal: ac.signal,
+          });
+
+          // Non-2xx — server didn't even open the stream. Surface the JSON
+          // error envelope inline.
+          if (!response.ok) {
+            let msg = `HTTP ${response.status}`;
+            let errType: string | undefined;
+            try {
+              const errJson = await response.json();
+              msg = errJson?.error?.message ?? msg;
+              errType = errJson?.error?.type;
+            } catch {
+              // response body wasn't JSON — keep the HTTP status message.
+            }
+            setPhase("error");
+            setErrorMessage(msg);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsg.id
+                  ? { ...m, status: "error", error: msg, errorType: errType }
+                  : m,
+              ),
+            );
+            return;
           }
-          setPhase("error");
-          setErrorMessage(msg);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: "error", error: msg, errorType: errType }
-                : m,
-            ),
-          );
-          return;
-        }
 
-        if (!response.body) {
-          setPhase("error");
-          setErrorMessage("No response body from server.");
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: "error", error: "No response body from server." }
-                : m,
-            ),
-          );
-          return;
-        }
-
-        setPhase("generating");
-
-        await readSseStream(response, {
-          onDelta: (content) => {
-            // Incremental update of the SAME assistant message.
+          if (!response.body) {
+            setPhase("error");
+            setErrorMessage("No response body from server.");
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantMsg.id
-                  ? { ...m, content: m.content + content }
+                  ? { ...m, status: "error", error: "No response body from server." }
                   : m,
               ),
             );
-          },
-          onReasoning: (content) => {
+            return;
+          }
+
+          await readSseStream(
+            response,
+            {
+              onDelta: appendContent,
+              onReasoning: (content) => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsg.id
+                      ? { ...m, reasoning: (m.reasoning ?? "") + content }
+                      : m,
+                  ),
+                );
+              },
+              onToolCall: (fragments) => {
+                toolAcc.consume(fragments);
+              },
+              onUsage: (u) => {
+                holder.usage = u;
+                setStreamTokens({
+                  in: u.prompt_tokens,
+                  out: u.completion_tokens,
+                });
+              },
+              onError: (e: SseError) => {
+                holder.error = e;
+              },
+              onDone: (finishReason) => {
+                holder.finishReason = finishReason ?? undefined;
+              },
+            },
+            ac.signal,
+          );
+
+          if (holder.usage) finalUsage = holder.usage;
+
+          // User-aborted — finalize as cancelled (exits the whole loop).
+          if (ac.signal.aborted) {
+            setPhase("cancelled");
+            setToolStatus(null);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantMsg.id
-                  ? { ...m, reasoning: (m.reasoning ?? "") + content }
+                  ? {
+                      ...m,
+                      status: "cancelled",
+                      content: m.content || "(stopped)",
+                    }
                   : m,
               ),
             );
-          },
-          onUsage: (u) => {
-            holder.usage = u;
-            setStreamTokens({
-              in: u.prompt_tokens,
-              out: u.completion_tokens,
+            return;
+          }
+
+          // Mid-stream error — surface inline and stop the generation.
+          if (holder.error) {
+            const finalErr = holder.error;
+            setPhase("error");
+            setToolStatus(null);
+            setErrorMessage(finalErr.message);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsg.id
+                  ? {
+                      ...m,
+                      status: "error",
+                      error: finalErr.message,
+                      errorType: finalErr.type,
+                    }
+                  : m,
+              ),
+            );
+            return;
+          }
+
+          // ─── TOOL CALL DETECTION (§13) ───────────────────────────────────
+          // (a) Structured `delta.tool_calls` fragments (native providers).
+          let calls: OAIToolCall[] =
+            toolAcc.size > 0 ? toolAcc.finalize() : [];
+
+          // (b) Emulated providers stream the fenced ```tool_call block as
+          //     CONTENT — detect a COMPLETE fence now (after the stream
+          //     ended) and strip it from the displayed text.
+          if (calls.length === 0 && useTools) {
+            const parsed = parseToolCalls(
+              assistantContent,
+              () => `call_fence_${round}_${Math.random().toString(36).slice(2, 10)}`,
+            );
+            if (parsed.toolCalls.length > 0) {
+              calls = parsed.toolCalls;
+              replaceContent(parsed.text);
+            }
+          }
+
+          if (calls.length === 0) {
+            // Normal completion — no tool calls this round. Done.
+            break;
+          }
+
+          // ─── TOOL EXECUTION (§24 — parallel, structured results) ────────
+          setToolStatus(
+            calls.length === 1
+              ? `Using ${calls[0].function.name}…`
+              : `Running ${calls.length} tools…`,
+          );
+          pushToolEvents(calls);
+
+          const results: Array<{
+            id: string;
+            ok: boolean;
+            payload: unknown;
+            ms?: number;
+          }> = [];
+          let abortedDuringTools = false;
+          await Promise.all(
+            calls.map(async (c) => {
+              try {
+                results.push(await executeToolViaApi(c, ac.signal));
+              } catch {
+                // Aborted mid-execution — handled below.
+                abortedDuringTools = true;
+              }
+            }),
+          );
+
+          settleToolEvents(results);
+
+          if (abortedDuringTools || ac.signal.aborted) {
+            setPhase("cancelled");
+            setToolStatus(null);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsg.id
+                  ? { ...m, status: "cancelled", content: m.content || "(stopped)" }
+                  : m,
+              ),
+            );
+            return;
+          }
+
+          // ─── FOLLOW-UP REQUEST HISTORY (§14) ────────────────────────────
+          // assistant (with tool_calls) + tool results — then loop so the
+          // model resumes generation WITH the same tools.
+          requestMessages.push({
+            role: "assistant",
+            content: assistantContent || null,
+            tool_calls: calls,
+          });
+          for (const r of results) {
+            requestMessages.push({
+              role: "tool",
+              tool_call_id: r.id,
+              content: JSON.stringify(r.payload),
             });
-          },
-          onError: (e: SseError) => {
-            holder.error = e;
-          },
-          onDone: () => {
-            // terminal sentinel — finalisation happens below.
-          },
-        }, ac.signal);
-
-        // User-aborted — finalize as cancelled.
-        if (ac.signal.aborted) {
-          setPhase("cancelled");
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? {
-                    ...m,
-                    status: "cancelled",
-                    content: m.content || "(stopped)",
-                  }
-                : m,
-            ),
-          );
-          return;
+          }
+          // Loop continues — next round streams the model's continuation
+          // into the SAME assistant message.
         }
 
-        // Mid-stream error — surface inline.
-        const finalErr: SseError | null = holder.error;
-        if (finalErr) {
-          setPhase("error");
-          setErrorMessage(finalErr.message);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? {
-                    ...m,
-                    status: "error",
-                    error: finalErr.message,
-                    errorType: finalErr.type,
-                  }
-                : m,
-            ),
-          );
-          return;
-        }
-
-        // generating → completed.
+        // generating → completed (all rounds done, no tool calls left).
         setPhase("completed");
+        setToolStatus(null);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsg.id
               ? {
                   ...m,
                   status: "completed",
-                  usage: holder.usage ?? undefined,
+                  usage: finalUsage ?? undefined,
                 }
               : m,
           ),
         );
-
-        // Usage stats (when the upstream sent a usage block).
-        const finalUsage: Usage | null = holder.usage;
         if (finalUsage) {
           setUsage(finalUsage);
         }
@@ -732,6 +1177,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         // Two cases: AbortError (user-initiated) or network failure.
         if (ac.signal.aborted) {
           setPhase("cancelled");
+          setToolStatus(null);
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsg.id
@@ -751,8 +1197,9 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             ? "Network error — please try again."
             : err instanceof Error
               ? err.message
-              : String(err);
+              : "Generation failed.";
         setPhase("error");
+        setToolStatus(null);
         setErrorMessage(friendlyMsg);
         setMessages((prev) =>
           prev.map((m) =>
@@ -768,9 +1215,10 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         generatingRef.current = false;
       }
     },
-    // Refs (selectedModelRef / messagesRef / systemRef) carry fresh values
-    // across renders so they don't need to be in the dep array.
-    [input, selectedModel],
+    // Refs (selectedModelRef / messagesRef / systemRef / enabledToolsRef)
+    // carry fresh values across renders so they don't need to be in the
+    // dep array.
+    [input, selectedModel, models, executeToolViaApi],
   );
 
   const retry = React.useCallback(() => {
@@ -906,7 +1354,9 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                   <Badge variant="secondary" className="text-[11px]">vision</Badge>
                 )}
                 {selectedModel.capabilities.tools && (
-                  <Badge variant="secondary" className="text-[11px]">tools</Badge>
+                  <Badge variant="secondary" className="gap-1 text-[11px]">
+                    <Wrench className="h-3 w-3" /> tools
+                  </Badge>
                 )}
                 {selectedModel.capabilities.webSearch && (
                   <Badge variant="secondary" className="text-[11px]">web search</Badge>
@@ -938,6 +1388,49 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         </Card>
       </div>
 
+      {/* Built-in tools toggle row (only for tools-capable models). */}
+      {selectedModel?.capabilities.tools ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+            <Wrench className="h-3.5 w-3.5" /> Tools
+          </span>
+          {BUILTIN_TOOL_META.map((t) => {
+            const Icon = TOOL_ICONS[t.name] ?? Wrench;
+            const active = enabledTools[t.name];
+            return (
+              <button
+                key={t.name}
+                type="button"
+                onClick={() => toggleTool(t.name)}
+                disabled={isStreaming}
+                title={t.hint}
+                aria-pressed={active}
+                className={cn(
+                  "text-xs px-3 py-1.5 rounded-full border transition-colors inline-flex items-center gap-1.5",
+                  active
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted",
+                  isStreaming && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+          <span className="text-[11px] text-muted-foreground">
+            {activeTools.length > 0
+              ? "Sent with every request; the model calls them when needed."
+              : "Enable a tool to let the model use it."}
+          </span>
+        </div>
+      ) : selectedModel ? (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Wrench className="h-3.5 w-3.5 opacity-50" />
+          This model does not support tool calling.
+        </div>
+      ) : null}
+
       {/* Messages panel. */}
       <Card className="p-0 flex flex-col min-h-[420px] relative overflow-hidden">
         <div
@@ -954,7 +1447,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                   Pick a model and send a message
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Real token-by-token SSE streaming. Free native models, no key required.
+                  Real token-by-token SSE streaming with tool calling. Free native models, no key required.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-2 max-w-xl">
@@ -995,6 +1488,40 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                     m.status === "error" && "border-rose-300 dark:border-rose-800",
                   )}
                 >
+                  {/* Tool execution chips (§26) — compact, no arguments shown. */}
+                  {m.role === "assistant" && (m.toolEvents?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {m.toolEvents!.map((ev) => (
+                        <span
+                          key={ev.key}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono",
+                            ev.status === "running" &&
+                              "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+                            ev.status === "ok" &&
+                              "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+                            ev.status === "error" &&
+                              "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
+                          )}
+                          title={ev.error ?? undefined}
+                        >
+                          {ev.status === "running" ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : ev.status === "ok" ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <AlertCircle className="h-3 w-3" />
+                          )}
+                          {ev.name}
+                          {ev.status === "ok" && ev.ms !== undefined && (
+                            <span className="opacity-70">{formatMs(ev.ms)}</span>
+                          )}
+                          {ev.status === "error" && <span>failed</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Reasoning block — collapses under the same message. */}
                   {m.reasoning && m.role === "assistant" && (
                     <div className="mb-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30 overflow-hidden">
@@ -1074,6 +1601,13 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                         {m.content}
                       </ReactMarkdown>
                     </div>
+                  ) : m.status === "streaming" && (m.toolEvents?.length ?? 0) > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {m.toolEvents!.some((ev) => ev.status === "running")
+                        ? "Executing tools…"
+                        : "Waiting for the model…"}
+                    </span>
                   ) : m.status === "streaming" ? (
                     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1216,13 +1750,19 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         )}
       </form>
 
-      {/* Footer row: phase indicator + clear. */}
+      {/* Footer row: phase indicator + tool status + clear. */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs">
-          <span className={cn("inline-flex items-center gap-1.5", phaseMeta.text)}>
+        <div className="flex items-center gap-2 text-xs min-w-0">
+          <span className={cn("inline-flex items-center gap-1.5 shrink-0", phaseMeta.text)}>
             <span className={cn("h-2 w-2 rounded-full", phaseMeta.dot, phaseMeta.pulse && "animate-pulse")} />
             {phaseMeta.label}
           </span>
+          {toolStatus && (
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground truncate">
+              <Wrench className="h-3 w-3 shrink-0" />
+              <span className="truncate">{toolStatus}</span>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {messages.length > 0 && (

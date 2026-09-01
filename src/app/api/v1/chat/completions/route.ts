@@ -37,6 +37,7 @@ import {
   type OAIChatCompletionRequest,
   type OAIChatCompletionResponse,
   type OAIToolCall,
+  type OAIToolChoice,
 } from "@/lib/openai-types";
 import {
   buildToolSystemPrompt,
@@ -67,6 +68,13 @@ import {
   type ProviderAdapter,
 } from "@/lib/gateway";
 import { ensureGateway, resolveAdapterForModel } from "@/lib/gateway/route-helpers";
+import {
+  isNativeToolProvider,
+  TOOL_AVAILABILITY_SYSTEM_PROMPT,
+  validateToolParams,
+  type ValidatedToolParams,
+} from "@/lib/tools/validation";
+import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import {
   imageAnnotation,
   normalizeMessageContent,
@@ -374,9 +382,6 @@ function normalizeMessagesForGateway(
   const out: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
   const useTools = hasTools(body.tools);
   const wantsWebSearch = body.web_search === true;
-  // Web-search hint system message when not natively supported.
-  // The gateway capabilities object doesn't expose webSearch (yet) so we
-  // always inject the hint when web_search=true.
   if (wantsWebSearch) {
     out.push({
       role: "system",
@@ -385,8 +390,16 @@ function normalizeMessagesForGateway(
     });
   }
   if (useTools) {
-    const skipSystemPrompt = model.providerId === "swarm";
-    if (!skipSystemPrompt) {
+    if (isNativeToolProvider(model.providerId)) {
+      // Native-tools provider: the adapter forwards the REAL API `tools` /
+      // `tool_choice` / `parallel_tool_calls` fields (asserted per §20).
+      // This short system line only reinforces availability (Tool PRD §8) —
+      // it is NEVER a substitute for the API fields themselves.
+      out.push({ role: "system", content: TOOL_AVAILABILITY_SYSTEM_PROMPT });
+    } else {
+      // Emulated provider (no upstream tools API): serialize the tool
+      // definitions into the fenced ```tool_call system directive so the
+      // model still receives them and can emit structured tool calls.
       out.push({
         role: "system",
         content: buildToolSystemPrompt(body.tools!, body.tool_choice),
@@ -467,17 +480,28 @@ export async function POST(request: Request) {
       return gatewayErrorResponse(validationError);
     }
 
+    // ─── Tool PRD §6: validate + normalize tools BEFORE any routing ─────────
+    // Malformed tool schemas are rejected with TOOL_SCHEMA_INVALID — never
+    // forwarded upstream, never silently dropped (§5, §6).
+    let toolParams: ValidatedToolParams;
+    try {
+      toolParams = validateToolParams(body);
+    } catch (err) {
+      if (err instanceof GatewayError) return gatewayErrorResponse(err);
+      throw err;
+    }
+
     const wantsStream = body.stream === true;
-    const useTools = hasTools(body.tools);
+    const useTools = toolParams.tools.length > 0;
 
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {
-      return handleCanonicalRequest(body, request, resolved.model, resolved.adapter, useTools, wantsStream);
+      return handleCanonicalRequest(body, request, resolved.model, resolved.adapter, toolParams, wantsStream);
     }
 
     // ─── LEGACY FALLBACK (old-style ids like fgpt-gpt-5-5, oc-big-pickle) ─────
-    return handleLegacyRequest(body, request, useTools, wantsStream);
+    return handleLegacyRequest(body, request, toolParams, wantsStream);
   } catch (err) {
     // v4: any uncaught exception → standard JSON envelope (never a blank 500).
     // wrapUnknown converts TypeError/Error/string into a GatewayError with
@@ -499,9 +523,10 @@ async function handleCanonicalRequest(
   request: Request,
   model: DiscoveredModel,
   adapter: ProviderAdapter,
-  useTools: boolean,
+  toolParams: ValidatedToolParams,
   wantsStream: boolean,
 ): Promise<Response> {
+  const useTools = toolParams.tools.length > 0;
   // Circuit-breaker check (PRD §121, §122, R-8).
   //
   // R-8: the breaker is keyed per-ROUTE (model id), NOT just per-provider.
@@ -530,6 +555,52 @@ async function handleCanonicalRequest(
     return gatewayErrorResponse(err);
   }
 
+  // ─── Tool PRD §21: capability mismatch gate ───────────────────────────────
+  // A model that does not support tools must never receive them — and must
+  // never be told it has them. Surface TOOL_UNSUPPORTED to the CALLER
+  // instead of silently downgrading the request.
+  if (useTools && model.capabilities.tools === false) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "TOOL_UNSUPPORTED",
+        message: `Model "${model.id}" does not support tool calling. Remove the "tools" field for this model.`,
+        provider: model.providerId,
+        model: model.id,
+      }),
+    );
+  }
+
+  // ─── Tool PRD §19/§27: request-side diagnostics (names/counts only) ───────
+  toolDiagnostics.record({
+    id: `req-${model.id}-${Date.now()}`,
+    kind: "request",
+    at: new Date().toISOString(),
+    model: model.id,
+    provider: model.providerId,
+    streaming: wantsStream,
+    capabilitiesTools: model.capabilities.tools,
+    nativeForwarding: useTools && isNativeToolProvider(model.providerId),
+    toolsRequested: toolParams.tools.length,
+    toolNames: toolDiagnostics.toolNames(toolParams.tools),
+    toolChoice: toolDiagnostics.describeToolChoice(toolParams.toolChoice),
+  });
+
+  // Build normalized messages for the gateway contract. Computed BEFORE the
+  // FreeAIXYZ proxy branch so the proxy receives the tool system prompt too
+  // (root-cause fix: raw body.messages previously bypassed the emulation
+  // prompt for fx/* models → "I don't have access to tools").
+  const messages = normalizeMessagesForGateway(body, model);
+  if (messages.length === 0) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "INVALID_REQUEST",
+        message: "No usable messages after serialization.",
+        model: model.id,
+        provider: model.providerId,
+      }),
+    );
+  }
+
   // ─── FreeAIXYZ special-proxy routing ─────────────────────────────────────
   // The FreeAIXYZ upstream (unlimitedai.org) is behind Cloudflare TLS
   // fingerprinting — plain Node fetch returns 403 (verified). The
@@ -555,17 +626,18 @@ async function handleCanonicalRequest(
     const proxyBody = {
       // Pass the canonical id — the proxy parses it back into the upstream id.
       model: body.model,
-      messages: body.messages.map((m) => ({
+      // Normalized gateway messages — includes the tool system prompt for
+      // this emulated (non-native-tools) upstream so the model actually
+      // receives the tool definitions (Tool PRD §5 — tools must survive
+      // EVERY transformation layer, including the internal proxy hop).
+      messages: messages.map((m) => ({
         role: m.role,
-        content: typeof m.content === "string" ? m.content : "",
+        content: m.content,
       })),
       stream: wantsStream,
-      tools: useTools ? body.tools : undefined,
-      toolChoice: useTools
-        ? typeof body.tool_choice === "string"
-          ? body.tool_choice
-          : "auto"
-        : undefined,
+      tools: useTools ? toolParams.tools : undefined,
+      toolChoice: useTools ? (toolParams.toolChoice ?? "auto") : undefined,
+      parallelToolCalls: useTools ? toolParams.parallelToolCalls : undefined,
       // Forward sampling params (audit E1).
       temperature: body.temperature,
       maxTokens: body.max_tokens ?? body.max_completion_tokens ?? undefined,
@@ -601,19 +673,6 @@ async function handleCanonicalRequest(
     }
   }
 
-  // Build normalized messages for the gateway contract.
-  const messages = normalizeMessagesForGateway(body, model);
-  if (messages.length === 0) {
-    return gatewayErrorResponse(
-      new GatewayError({
-        type: "INVALID_REQUEST",
-        message: "No usable messages after serialization.",
-        model: model.id,
-        provider: model.providerId,
-      }),
-    );
-  }
-
   const chatReq: ChatRequest = {
     modelId: model.id,
     upstreamId: model.upstreamId,
@@ -629,8 +688,11 @@ async function handleCanonicalRequest(
     frequencyPenalty: body.frequency_penalty,
     n: body.n ?? undefined,
     streamOptions: body.stream_options ?? undefined,
-    tools: useTools ? body.tools : undefined,
-    toolChoice: typeof body.tool_choice === "string" ? body.tool_choice : undefined,
+    // Tool PRD §5/§9 — tools, tool_choice (string OR object form), and
+    // parallel_tool_calls are preserved through every transformation layer.
+    tools: useTools ? toolParams.tools : undefined,
+    toolChoice: useTools ? toolParams.toolChoice : undefined,
+    parallelToolCalls: toolParams.parallelToolCalls,
   };
 
   if (wantsStream) {
@@ -772,10 +834,19 @@ async function handleCanonicalRequest(
     );
   }
 
-  // Tool-call envelope parsing (prompt-injection approach).
+  // Tool-call envelope parsing (emulated fence + __tool_calls markers).
   if (useTools && text !== null) {
     const parsed = parseToolCalls(text, generateToolCallId);
     if (parsed.toolCalls.length > 0) {
+      toolDiagnostics.record({
+        id: `fin-${finalModel.id}-${requestId}`,
+        kind: "final",
+        at: new Date().toISOString(),
+        model: finalModel.id,
+        provider: finalAdapter.id,
+        toolCallsDetected: parsed.toolCalls.length,
+        finalStatus: "success",
+      });
       const payload: OAIChatCompletionResponse = {
         id: generateCompletionId(),
         object: "chat.completion",
@@ -853,8 +924,15 @@ function buildLegacyMessages(
     });
   }
   if (useTools) {
-    const skipSystemPrompt = model.provider === "swarm";
-    if (!skipSystemPrompt) {
+    if (isNativeToolProvider(model.provider)) {
+      // Native-tools provider — the adapter forwards the REAL API fields
+      // (asserted per §20); this line only reinforces availability (§8).
+      messages.push({
+        role: "system",
+        content: TOOL_AVAILABILITY_SYSTEM_PROMPT,
+      });
+    } else {
+      // Emulated provider — fenced ```tool_call directive.
       messages.push({
         role: "system",
         content: buildToolSystemPrompt(body.tools!, body.tool_choice),
@@ -910,9 +988,10 @@ function extractSampling(body: OAIChatCompletionRequest) {
 async function handleLegacyRequest(
   body: OAIChatCompletionRequest,
   request: Request,
-  useTools: boolean,
+  toolParams: ValidatedToolParams,
   wantsStream: boolean,
 ): Promise<Response> {
+  const useTools = toolParams.tools.length > 0;
   const model = resolveGatewayModel(body.model);
   if (!model) {
     // Unknown model — surface a clean MODEL_NOT_FOUND rather than routing
@@ -953,6 +1032,33 @@ async function handleLegacyRequest(
     );
   }
 
+  // ─── Tool PRD §21: capability mismatch gate (legacy ids too) ──────────
+  if (useTools && model.capabilities.tools === false) {
+    return gatewayErrorResponse(
+      new GatewayError({
+        type: "TOOL_UNSUPPORTED",
+        message: `Model "${model.id}" does not support tool calling. Remove the "tools" field for this model.`,
+        provider: model.provider,
+        model: model.id,
+      }),
+    );
+  }
+
+  // ─── Tool PRD §19/§27: request-side diagnostics (names/counts only) ───
+  toolDiagnostics.record({
+    id: `req-${model.id}-${Date.now()}`,
+    kind: "request",
+    at: new Date().toISOString(),
+    model: model.id,
+    provider: model.provider,
+    streaming: wantsStream,
+    capabilitiesTools: model.capabilities.tools,
+    nativeForwarding: useTools && isNativeToolProvider(model.provider),
+    toolsRequested: toolParams.tools.length,
+    toolNames: toolDiagnostics.toolNames(toolParams.tools),
+    toolChoice: toolDiagnostics.describeToolChoice(toolParams.toolChoice),
+  });
+
   const messages = buildLegacyMessages(body, model);
   if (messages.length === 0) {
     return gatewayErrorResponse(
@@ -988,12 +1094,9 @@ async function handleLegacyRequest(
       model: body.model,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       stream: wantsStream,
-      tools: useTools ? body.tools : undefined,
-      toolChoice: useTools
-        ? typeof body.tool_choice === "string"
-          ? body.tool_choice
-          : "auto"
-        : undefined,
+      tools: useTools ? toolParams.tools : undefined,
+      toolChoice: useTools ? (toolParams.toolChoice ?? "auto") : undefined,
+      parallelToolCalls: useTools ? toolParams.parallelToolCalls : undefined,
       // Forward sampling params so the proxy can pass them upstream (audit E1).
       temperature: sampling.temperature,
       maxTokens: sampling.maxTokens,
@@ -1031,12 +1134,11 @@ async function handleLegacyRequest(
   } catch (err) {
     return gatewayErrorResponse(wrapUnknown(err, model.provider, model.id));
   }
-  const nativeTools = useTools ? body.tools : undefined;
-  const nativeToolChoice = useTools
-    ? typeof body.tool_choice === "string"
-      ? body.tool_choice
-      : "auto"
-    : undefined;
+  // Tool PRD §5/§9 — preserve the validated tools, tool_choice (string OR
+  // object form) and parallel_tool_calls for the legacy adapter call.
+  const nativeTools = useTools ? toolParams.tools : undefined;
+  const nativeToolChoice = useTools ? (toolParams.toolChoice ?? "auto") : undefined;
+  const nativeParallelToolCalls = useTools ? toolParams.parallelToolCalls : undefined;
   const sampling = extractSampling(body);
 
   if (wantsStream) {
@@ -1048,6 +1150,7 @@ async function handleLegacyRequest(
       request,
       nativeTools,
       nativeToolChoice,
+      nativeParallelToolCalls,
       sampling,
     );
   }
@@ -1058,6 +1161,7 @@ async function handleLegacyRequest(
     useTools,
     nativeTools,
     nativeToolChoice,
+    nativeParallelToolCalls,
     sampling,
   );
 }
@@ -1069,7 +1173,8 @@ async function legacyJsonCompletion(
   messages: ProviderMessage[],
   useTools: boolean,
   tools: unknown[] | undefined,
-  toolChoice: string | undefined,
+  toolChoice: OAIToolChoice | undefined,
+  parallelToolCalls: boolean | undefined,
   sampling: ReturnType<typeof extractSampling>,
 ): Promise<Response> {
   const requestStart = Date.now();
@@ -1081,6 +1186,7 @@ async function legacyJsonCompletion(
       messages,
       tools: tools as ProviderTool[] | undefined,
       toolChoice,
+      parallelToolCalls,
       ...sampling,
     });
     text = result.text;
@@ -1137,6 +1243,15 @@ async function legacyJsonCompletion(
   if (useTools) {
     const parsed = parseToolCalls(text, generateToolCallId);
     if (parsed.toolCalls.length > 0) {
+      toolDiagnostics.record({
+        id: `fin-${model.id}-${requestId}`,
+        kind: "final",
+        at: new Date().toISOString(),
+        model: model.id,
+        provider: model.provider,
+        toolCallsDetected: parsed.toolCalls.length,
+        finalStatus: "success",
+      });
       const payload: OAIChatCompletionResponse = {
         id: generateCompletionId(),
         object: "chat.completion",
@@ -1223,7 +1338,8 @@ async function legacyStreamCompletion(
   useTools: boolean,
   request: Request,
   tools: unknown[] | undefined,
-  toolChoice: string | undefined,
+  toolChoice: OAIToolChoice | undefined,
+  parallelToolCalls: boolean | undefined,
   sampling: ReturnType<typeof extractSampling>,
 ): Promise<Response> {
   const id = generateCompletionId();
@@ -1249,6 +1365,7 @@ async function legacyStreamCompletion(
       signal,
       tools: tools as ProviderTool[] | undefined,
       toolChoice,
+      parallelToolCalls,
       ...sampling,
     });
   } catch (err) {

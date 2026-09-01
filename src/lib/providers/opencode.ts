@@ -16,6 +16,7 @@
  */
 
 import type { Provider, ProviderCompletionRequest } from "./types";
+import { assertToolsForwarded } from "@/lib/tools/forwarding";
 
 const ENDPOINT = "https://opencode.ai/zen/v1/chat/completions";
 const MODELS_ENDPOINT = "https://opencode.ai/zen/v1/models";
@@ -105,8 +106,13 @@ export const openCodeProvider: Provider = {
     if (req.n !== undefined) payload.n = req.n;
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
-      payload.tool_choice = req.toolChoice || "auto";
+      payload.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      payload.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(payload, req.tools, "opencode", req.model.upstream);
 
     const res = await fetchWithRetry(ENDPOINT, {
       method: "POST",
@@ -147,8 +153,13 @@ export const openCodeProvider: Provider = {
     if (req.n !== undefined) payload.n = req.n;
     if (req.tools && req.tools.length > 0) {
       payload.tools = req.tools;
-      payload.tool_choice = req.toolChoice || "auto";
+      payload.tool_choice = req.toolChoice ?? "auto";
     }
+    if (req.parallelToolCalls !== undefined) {
+      payload.parallel_tool_calls = req.parallelToolCalls;
+    }
+    // Tool PRD §20 — prove tools survived into the provider payload.
+    assertToolsForwarded(payload, req.tools, "opencode", req.model.upstream);
 
     const res = await fetchWithRetry(ENDPOINT, {
       method: "POST",
