@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * ProviderModelsClient — the per-provider grid of model cards.
+ * ProviderModelsClient — the per-provider grid of model cards
+ * (WARM AURORA design — dark glass cards, warm badges, keycap Try link).
  *
  * Receives the already-resolved static model list from the server (the
  * parent RSC passes a JSON-serializable subset down). Renders a responsive
@@ -12,10 +13,8 @@
  */
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Zap, Brain } from "lucide-react";
+import { ArrowRight, Zap, Brain, Wrench, Eye, Globe } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
 
 export interface ProviderModelEntry {
@@ -60,15 +59,16 @@ export function ProviderModelsClient({
     <div className="flex flex-col gap-6 min-w-0">
       {/* Header */}
       <header className="flex flex-col gap-3 min-w-0">
+        <span className="fxz-section-eyebrow">Provider</span>
         <div className="flex items-baseline justify-between gap-3 flex-wrap min-w-0">
           <h1
-            className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground min-w-0"
+            className="fxz-page-title min-w-0"
             style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
           >
             {providerLabel}
           </h1>
           <span
-            className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground"
+            className="text-[11px] uppercase tracking-[0.15em] text-[#9c9c9d]"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             {models.length} model{models.length === 1 ? "" : "s"} · native
@@ -78,11 +78,11 @@ export function ProviderModelsClient({
 
       {/* Empty state */}
       {models.length === 0 ? (
-        <div className="text-center py-16 text-sm text-muted-foreground flex flex-col items-center gap-3">
+        <div className="text-center py-16 text-sm text-[#9c9c9d] flex flex-col items-center gap-3">
           <span>No models under this provider.</span>
           <Link
             href="/models"
-            className="text-xs uppercase tracking-[0.15em] text-foreground hover:underline inline-flex items-center gap-1.5"
+            className="text-xs uppercase tracking-[0.15em] text-white hover:text-[#ff8a6b] inline-flex items-center gap-1.5 transition-colors"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             <ArrowRight className="h-3 w-3 rotate-180" />
@@ -104,8 +104,7 @@ export function ProviderModelsClient({
                 onClick={() =>
                   setVisible((c) => c + LOAD_INCREMENT)
                 }
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs uppercase tracking-[0.1em] border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-                style={{ fontFamily: "var(--font-mono), monospace" }}
+                className="fxz-chip"
               >
                 Show {Math.min(LOAD_INCREMENT, remaining)} more · {remaining}{" "}
                 hidden
@@ -126,36 +125,31 @@ function ProviderPageCard({ model }: { model: ProviderModelEntry }) {
   )}/${encodeURIComponent(model.id)}`;
 
   return (
-    <Card
-      className="min-w-0 flex flex-col gap-3 p-4 sm:p-5 rounded-xl border bg-card text-card-foreground shadow-sm transition-colors border-border hover:border-foreground/20"
+    <div
+      className="fxz-panel fxz-panel-hover min-w-0 flex flex-col gap-3 p-4 sm:p-5 rounded-xl"
     >
       {/* Row 1: name + streaming badge */}
       <div className="flex items-start justify-between gap-3 min-w-0">
         <Link
           href={href}
-          className="text-sm font-semibold text-foreground hover:text-accent transition-colors leading-snug min-w-0"
+          className="text-sm font-semibold text-white hover:text-[#ff8a6b] transition-colors leading-snug min-w-0"
           style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
         >
           {model.name}
         </Link>
         {model.capabilities.streaming ? (
-          <Badge
-            variant="secondary"
-            className="gap-1 shrink-0 text-[10px]"
-          >
+          <span className="fxz-badge fxz-badge-warm gap-1 shrink-0">
             <Zap className="h-2.5 w-2.5" /> stream
-          </Badge>
+          </span>
         ) : (
-          <Badge variant="outline" className="shrink-0 text-[10px]">
-            batch
-          </Badge>
+          <span className="fxz-badge shrink-0">batch</span>
         )}
       </div>
 
       {/* Description */}
       {model.description && (
         <p
-          className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-w-0"
+          className="text-xs text-[#9c9c9d] leading-relaxed line-clamp-2 min-w-0"
           title={model.description}
         >
           {model.description}
@@ -165,45 +159,55 @@ function ProviderPageCard({ model }: { model: ProviderModelEntry }) {
       {/* Capability badges */}
       <div className="flex flex-wrap gap-1.5 min-w-0">
         {model.capabilities.reasoning && (
-          <Badge variant="outline" className="gap-1 text-[10px]">
-            <Brain className="h-2.5 w-2.5" /> reasoning
-          </Badge>
+          <span className="fxz-badge gap-1">
+            <Brain className="h-2.5 w-2.5 text-[#ff6b4a]" /> reasoning
+          </span>
         )}
         {model.capabilities.vision && (
-          <Badge variant="outline" className="text-[10px]">vision</Badge>
+          <span className="fxz-badge gap-1">
+            <Eye className="h-2.5 w-2.5" /> vision
+          </span>
         )}
         {model.capabilities.tools && (
-          <Badge variant="outline" className="text-[10px]">tools</Badge>
+          <span className="fxz-badge gap-1">
+            <Wrench className="h-2.5 w-2.5 text-[#ff6b4a]" /> tools
+          </span>
         )}
         {model.capabilities.webSearch && (
-          <Badge variant="outline" className="text-[10px]">web search</Badge>
+          <span className="fxz-badge gap-1">
+            <Globe className="h-2.5 w-2.5" /> web search
+          </span>
         )}
         {model.contextWindow > 0 && (
-          <Badge variant="outline" className="text-[10px] font-mono">
+          <span className="fxz-badge font-mono">
             {model.contextWindow >= 1000
               ? `${Math.round(model.contextWindow / 1000)}k ctx`
               : `${model.contextWindow} ctx`}
-          </Badge>
+          </span>
         )}
       </div>
 
       {/* Model id + copy + try */}
       <div className="mt-auto flex items-center gap-2 min-w-0 pt-1">
         <code
-          className="flex-1 min-w-0 text-[10px] font-mono text-muted-foreground bg-muted rounded px-2 py-1 truncate"
+          className="fxz-code flex-1 min-w-0 truncate"
           title={model.id}
-          style={{ fontFamily: "var(--font-mono), monospace" }}
         >
           {model.id}
         </code>
         <CopyIdButton value={model.id} />
         <Link
           href={`/chat?model=${encodeURIComponent(model.id)}`}
-          className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2.5 h-7 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+          className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 h-7 rounded-md text-[#2f3031] transition-transform hover:-translate-y-px"
+          style={{
+            background: "#e6e6e6",
+            boxShadow:
+              "0 0 0 1.5px rgba(0,0,0,0.85), 0 0 10px rgba(255,255,255,0.12), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(0,0,0,0.25)",
+          }}
         >
           Try
         </Link>
       </div>
-    </Card>
+    </div>
   );
 }

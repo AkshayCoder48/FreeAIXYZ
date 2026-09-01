@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import {
   ArrowLeft,
   MessageSquare,
+  Check,
+  X,
   Zap,
   Brain,
   Eye,
@@ -12,17 +14,8 @@ import {
   Layers,
 } from "lucide-react";
 
-import { Nav } from "@/components/nav";
-import { SiteFooter } from "@/components/site";
+import { AuroraShell } from "@/components/aurora/shell";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { findNativeModel } from "@/lib/native-catalog";
 import { getProviderEntry } from "@/lib/gateway/ids";
 
@@ -98,24 +91,22 @@ export default async function ModelDetailPage({ params }: PageProps) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Nav />
-
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6">
+    <AuroraShell>
+      <div className="pt-10 sm:pt-14 flex flex-col gap-8 min-w-0">
         {/* Breadcrumb */}
         <div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/models"
-            className="text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors inline-flex items-center gap-1.5"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             <ArrowLeft className="h-3 w-3" />
             All models
           </Link>
-          <span className="text-muted-foreground/40">/</span>
+          <span className="text-[#5c5c5f]">/</span>
           <Link
             href={`/models/${encodeURIComponent(entry.providerId)}`}
-            className="text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             {entry.providerName}
@@ -124,25 +115,31 @@ export default async function ModelDetailPage({ params }: PageProps) {
 
         {/* Header */}
         <header className="flex flex-col gap-3">
+          <span className="fxz-section-eyebrow">Model · {entry.providerName}</span>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">native</Badge>
-            <Badge variant="outline">free</Badge>
+            <span className="fxz-badge fxz-badge-warm">native</span>
+            <span className="fxz-badge fxz-badge-warm">free</span>
             {caps.streaming && (
-              <Badge variant="secondary" className="gap-1">
-                <Zap className="h-3 w-3" /> streaming
-              </Badge>
+              <span className="fxz-badge gap-1">
+                <Zap className="h-3 w-3 text-[#ffb347]" /> streaming
+              </span>
             )}
             {caps.reasoning && (
-              <Badge variant="secondary" className="gap-1">
-                <Brain className="h-3 w-3" /> reasoning
-              </Badge>
+              <span className="fxz-badge gap-1">
+                <Brain className="h-3 w-3 text-[#ff6b4a]" /> reasoning
+              </span>
+            )}
+            {caps.tools && (
+              <span className="fxz-badge gap-1">
+                <Wrench className="h-3 w-3 text-[#ff6b4a]" /> tools
+              </span>
             )}
           </div>
-          <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-foreground">
+          <h1 className="fxz-page-title" style={{ overflowWrap: "anywhere" }}>
             {entry.name}
           </h1>
           {entry.description && (
-            <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
+            <p className="text-[15px] text-[#9c9c9d] max-w-3xl leading-relaxed">
               {entry.description}
             </p>
           )}
@@ -150,128 +147,121 @@ export default async function ModelDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* Left column: capabilities + metadata */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Capabilities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {capabilityRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex items-center gap-2.5 text-sm"
+          <div className="lg:col-span-2 space-y-6 min-w-0">
+            <div className="fxz-panel rounded-xl p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-white mb-4">
+                Capabilities
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {capabilityRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center gap-2.5 text-sm"
+                  >
+                    <span
+                      className={
+                        row.ok
+                          ? "text-[#ff6b4a]"
+                          : "text-[#5c5c5f]"
+                      }
                     >
-                      <span
-                        className={
-                          row.ok
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-muted-foreground/50"
-                        }
-                      >
-                        {row.icon}
-                      </span>
-                      <span
-                        className={
-                          row.ok
-                            ? "text-foreground"
-                            : "text-muted-foreground/60 line-through"
-                        }
-                      >
-                        {row.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      {row.ok ? (
+                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-[#ff6b4a]/30 bg-[#ff2f3a]/[0.08]">
+                          {row.icon}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-white/[0.07] bg-white/[0.02] text-[#5c5c5f]">
+                          {row.icon}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={
+                        row.ok
+                          ? "text-zinc-100"
+                          : "text-[#7c7c7f] line-through"
+                      }
+                    >
+                      {row.label}
+                    </span>
+                    {row.ok ? (
+                      <Check className="h-3.5 w-3.5 text-[#ffb347] ml-auto shrink-0" />
+                    ) : (
+                      <X className="h-3.5 w-3.5 text-[#5c5c5f] ml-auto shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Metadata</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+            <div className="fxz-panel rounded-xl p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-white mb-4">
+                Metadata
+              </h2>
+              <div className="space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Provider</span>
-                  <span className="font-medium">{entry.providerName}</span>
+                  <span className="text-[#9c9c9d]">Provider</span>
+                  <span className="font-medium text-white">{entry.providerName}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Upstream id</span>
-                  <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-                    {entry.upstreamId}
-                  </span>
+                  <span className="text-[#9c9c9d]">Upstream id</span>
+                  <span className="fxz-code">{entry.upstreamId}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Context window</span>
-                  <span className="font-mono">
+                  <span className="text-[#9c9c9d]">Context window</span>
+                  <span className="font-mono text-zinc-200">
                     {entry.contextWindow > 0
                       ? `${entry.contextWindow.toLocaleString()} tokens`
                       : "unknown"}
                   </span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Access</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  <span className="text-[#9c9c9d]">Access</span>
+                  <span className="text-[#ffb347] font-medium">
                     Free · no API key required
                   </span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Right column: actions + model id */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Try it</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button asChild className="w-full" size="lg">
-                  <Link href={`/chat?model=${encodeURIComponent(entry.id)}`}>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Open in Playground
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+          <div className="space-y-6 min-w-0">
+            <div className="fxz-panel rounded-xl p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-white mb-4">
+                Try it
+              </h2>
+              <Link
+                href={`/chat?model=${encodeURIComponent(entry.id)}`}
+                className="fxz-keycap w-full"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Open in Playground
+              </Link>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Model ID</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
+            <div className="fxz-panel rounded-xl p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-white mb-4">
+                Model ID
+              </h2>
+              <div className="space-y-3">
                 <code
-                  className="block w-full text-xs font-mono bg-muted rounded px-3 py-2"
-                  style={{
-                    fontFamily: "var(--font-mono), monospace",
-                    overflowWrap: "anywhere",
-                  }}
+                  className="fxz-code block w-full text-xs"
+                  style={{ overflowWrap: "anywhere", whiteSpace: "normal" }}
                 >
                   {entry.id}
                 </code>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <CopyIdButton value={entry.id} />
-                  <span className="text-[11px] text-muted-foreground">
-                    Use this id with POST /api/v1/chat/completions
+                  <span className="text-[11px] text-[#9c9c9d]">
+                    Use this id with <span className="fxz-code">POST /api/v1/chat/completions</span>
                   </span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
-      </main>
-
-      <SiteFooter>
-        <span>
-          {entry.providerName} · {entry.name} · native model
-        </span>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          GET /api/v1/models
-        </span>
-      </SiteFooter>
-    </div>
+      </div>
+    </AuroraShell>
   );
 }

@@ -45,88 +45,93 @@
   --radius-xl: 16px;
 }
 
-/* ─── Minimalist Modern Theme — Electric Blue accent ────────────────────────── */
+/* ─── Warm Aurora Theme — near-black ground + crimson/coral/amber accents ──── */
+/* The whole app shares the landing's cinematic dark design language:          */
+/*   ground #07080a · text #f4f4f5 · muted #9c9c9d · accent coral #ff6b4a      */
+/*   accent-secondary amber #ffb347 · destructive crimson #ff2f3a             */
+/* Strictly WARM — no blue/indigo/violet anywhere. Both :root and .dark map   */
+/* to the same palette so the aurora look is deterministic on every page.      */
 :root {
   --radius: 12px;
-  --background: #FAFAFA;
-  --foreground: #0F172A;
-  --card: #FFFFFF;
-  --card-foreground: #0F172A;
-  --popover: #FFFFFF;
-  --popover-foreground: #0F172A;
-  --primary: #0052FF;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F1F5F9;
-  --secondary-foreground: #0F172A;
-  --muted: #F1F5F9;
-  --muted-foreground: #64748B;
-  --accent: #0052FF;
-  --accent-secondary: #4D7CFF;
-  --accent-foreground: #FFFFFF;
-  --destructive: #E11D48;
-  --destructive-foreground: #FFFFFF;
-  --border: #E2E8F0;
-  --input: #E2E8F0;
-  --ring: #0052FF;
-  --chart-1: #0052FF;
-  --chart-2: #4D7CFF;
-  --chart-3: #64748B;
-  --chart-4: #94A3B8;
-  --chart-5: #CBD5E1;
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #0F172A;
-  --sidebar-primary: #0052FF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F1F5F9;
-  --sidebar-accent-foreground: #0F172A;
-  --sidebar-border: #E2E8F0;
-  --sidebar-ring: #0052FF;
-  /* Accent shadows / glows */
-  --shadow-accent: 0 4px 14px rgba(0, 82, 255, 0.25);
-  --shadow-accent-lg: 0 8px 24px rgba(0, 82, 255, 0.35);
+  --background: #07080a;
+  --foreground: #f4f4f5;
+  --card: #0d0e12;
+  --card-foreground: #f4f4f5;
+  --popover: #0d0e12;
+  --popover-foreground: #f4f4f5;
+  --primary: #ff6b4a;
+  --primary-foreground: #170b08;
+  --secondary: rgba(255, 255, 255, 0.05);
+  --secondary-foreground: #e8e8ea;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #9c9c9d;
+  --accent: #ff6b4a;
+  --accent-secondary: #ffb347;
+  --accent-foreground: #170b08;
+  --destructive: #ff2f3a;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #ff6b4a;
+  --chart-1: #ff2f3a;
+  --chart-2: #ff6b4a;
+  --chart-3: #ffb347;
+  --chart-4: #9c9c9d;
+  --chart-5: #6b6b6e;
+  --sidebar: #0d0e12;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #ff6b4a;
+  --sidebar-primary-foreground: #170b08;
+  --sidebar-accent: rgba(255, 107, 74, 0.12);
+  --sidebar-accent-foreground: #ff8a6b;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #ff6b4a;
+  /* Accent shadows / glows (warm) */
+  --shadow-accent: 0 4px 14px rgba(255, 47, 58, 0.28);
+  --shadow-accent-lg: 0 8px 24px rgba(255, 71, 58, 0.35);
   /* Display / Mono font vars (set by next/font in layout.tsx) */
   --font-display: var(--font-display), Georgia, serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
   --font-body: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* ─── Dark Theme — Inverted with Electric Blue accent ─────────────────────────── */
+/* Aurora design is dark-only: .dark mirrors :root exactly. */
 .dark {
-  --background: #0F172A;
-  --foreground: #FAFAFA;
-  --card: #1E293B;
-  --card-foreground: #FAFAFA;
-  --popover: #1E293B;
-  --popover-foreground: #FAFAFA;
-  --primary: #4D7CFF;
-  --primary-foreground: #FFFFFF;
-  --secondary: #1E293B;
-  --secondary-foreground: #FAFAFA;
-  --muted: #1E293B;
-  --muted-foreground: #94A3B8;
-  --accent: #4D7CFF;
-  --accent-secondary: #6B96FF;
-  --accent-foreground: #FFFFFF;
-  --destructive: #FB7185;
-  --destructive-foreground: #FFFFFF;
-  --border: #334155;
-  --input: #334155;
-  --ring: #4D7CFF;
-  --chart-1: #4D7CFF;
-  --chart-2: #6B96FF;
-  --chart-3: #94A3B8;
-  --chart-4: #64748B;
-  --chart-5: #475569;
-  --sidebar: #1E293B;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #4D7CFF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #334155;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #334155;
-  --sidebar-ring: #4D7CFF;
-  --shadow-accent: 0 4px 14px rgba(77, 124, 255, 0.3);
-  --shadow-accent-lg: 0 8px 24px rgba(77, 124, 255, 0.4);
+  --background: #07080a;
+  --foreground: #f4f4f5;
+  --card: #0d0e12;
+  --card-foreground: #f4f4f5;
+  --popover: #0d0e12;
+  --popover-foreground: #f4f4f5;
+  --primary: #ff6b4a;
+  --primary-foreground: #170b08;
+  --secondary: rgba(255, 255, 255, 0.05);
+  --secondary-foreground: #e8e8ea;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #9c9c9d;
+  --accent: #ff6b4a;
+  --accent-secondary: #ffb347;
+  --accent-foreground: #170b08;
+  --destructive: #ff2f3a;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #ff6b4a;
+  --chart-1: #ff2f3a;
+  --chart-2: #ff6b4a;
+  --chart-3: #ffb347;
+  --chart-4: #9c9c9d;
+  --chart-5: #6b6b6e;
+  --sidebar: #0d0e12;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #ff6b4a;
+  --sidebar-primary-foreground: #170b08;
+  --sidebar-accent: rgba(255, 107, 74, 0.12);
+  --sidebar-accent-foreground: #ff8a6b;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #ff6b4a;
+  --shadow-accent: 0 4px 14px rgba(255, 47, 58, 0.28);
+  --shadow-accent-lg: 0 8px 24px rgba(255, 71, 58, 0.35);
 }
 
 @layer base {
@@ -138,14 +143,21 @@
     font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
   }
-  h1, h2 {
-    font-family: var(--font-display), Georgia, serif;
-    font-weight: 400;
+  /* Aurora type system: ONE sans (Inter) — hierarchy from size+weight. */
+  h1, h2, h3 {
+    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
     letter-spacing: -0.02em;
+    color: #ffffff;
   }
   code, pre, .font-mono {
     font-family: var(--font-mono), ui-monospace, monospace;
+  }
+  ::selection {
+    background: rgba(255, 107, 74, 0.35);
+    color: #ffffff;
   }
 }
 
@@ -163,8 +175,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle 600px at 0% 0%, rgba(0, 82, 255, 0.18), transparent 60%),
-    radial-gradient(circle 600px at 100% 100%, rgba(77, 124, 255, 0.12), transparent 60%);
+    radial-gradient(circle 600px at 0% 0%, rgba(255, 47, 58, 0.14), transparent 60%),
+    radial-gradient(circle 600px at 100% 100%, rgba(255, 179, 71, 0.08), transparent 60%);
   z-index: 0;
 }
 
@@ -188,7 +200,7 @@
   width: 6px;
 }
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 82, 255, 0.4);
+  background: rgba(255, 107, 74, 0.35);
   border-radius: 999px;
 }
 .custom-scroll::-webkit-scrollbar-thumb:hover {
@@ -259,17 +271,17 @@
 
 /* ─── Gradient utility classes ─────────────────────────────────────────────────── */
 .bg-accent-gradient {
-  background-image: linear-gradient(to right, #0052FF, #4D7CFF);
+  background-image: linear-gradient(to right, #ff2f3a, #ff6b4a, #ffb347);
 }
 .text-accent-gradient {
-  background-image: linear-gradient(to right, #0052FF, #4D7CFF);
+  background-image: linear-gradient(to right, #ff2f3a, #ff6b4a, #ffb347);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
 .border-accent-gradient {
-  border-image: linear-gradient(to bottom right, #0052FF, #4D7CFF, #0052FF) 1;
+  border-image: linear-gradient(to bottom right, #ff2f3a, #ff6b4a, #ff2f3a) 1;
 }
 
 /* ─── Warm Aurora landing hero (light-blades on #07080a) ───────────────────── */
@@ -580,4 +592,465 @@
 
 @media (prefers-reduced-motion: reduce) {
   .fxz-blade, .fxz-caret, .fxz-fade-up { animation: none !important; }
+}
+
+/* ═══ WARM AURORA APP DESIGN SYSTEM (shared by playground/models/docs) ═══════ */
+
+/* Aurora blade container — FIXED so the light stays pinned to the viewport
+   while long content (docs) scrolls over it. `.fxz-blades-dim` softens the
+   blades for reading surfaces (content pages) — scales the whole group. */
+.fxz-blades {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.fxz-blades-dim {
+  opacity: 0.45;
+  filter: saturate(0.92);
+}
+
+/* Grain + vignette pinned to the viewport on content pages. */
+.fxz-grain-fixed {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Dark-glass panel (Cards, toolbars, message bubbles) ───────────────── */
+.fxz-panel {
+  position: relative;
+  background: rgba(10, 11, 13, 0.66);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 16px 50px -20px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.fxz-panel-solid {
+  background: #0d0e12;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 50px -22px rgba(0, 0, 0, 0.75);
+}
+.fxz-panel-hover {
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.fxz-panel-hover:hover {
+  border-color: rgba(255, 107, 74, 0.32);
+  box-shadow:
+    0 20px 60px -22px rgba(0, 0, 0, 0.85),
+    0 0 24px -8px rgba(255, 47, 58, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Glass input (textareas, search, select triggers) ──────────────────── */
+.fxz-input {
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: #f4f4f5 !important;
+  caret-color: #ff6b4a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.fxz-input::placeholder {
+  color: #7c7c7f;
+}
+.fxz-input:focus-visible {
+  border-color: rgba(255, 107, 74, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(255, 47, 58, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.fxz-input:focus {
+  border-color: rgba(255, 107, 74, 0.45) !important;
+}
+
+/* ─── Warm pill chip (filter tabs, tool toggles, suggestions) ───────────── */
+.fxz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #9c9c9d;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 9999px;
+  padding: 0.32rem 0.85rem;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  white-space: nowrap;
+}
+.fxz-chip:hover {
+  color: #f0f0f0;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+}
+.fxz-chip-active {
+  color: #ffd9cd;
+  border-color: rgba(255, 107, 74, 0.45);
+  background: linear-gradient(90deg,
+    rgba(255, 47, 58, 0.16) 0%,
+    rgba(255, 107, 74, 0.12) 55%,
+    rgba(255, 179, 71, 0.07) 100%);
+}
+.fxz-chip-active:hover {
+  color: #ffe4db;
+  border-color: rgba(255, 107, 74, 0.6);
+}
+
+/* ─── Small warm badge (capability tags) ────────────────────────────────── */
+.fxz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #b9b9bc;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 1.5px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.fxz-badge-warm {
+  color: #ff8a6b;
+  border-color: rgba(255, 107, 74, 0.35);
+  background: rgba(255, 47, 58, 0.08);
+}
+
+/* ─── Warm monospace code pill (model ids, endpoints) ───────────────────── */
+.fxz-code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: #d9c8b8;
+  background: rgba(255, 47, 58, 0.06);
+  border: 1px solid rgba(255, 107, 74, 0.18);
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.fxz-code-block {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  background: rgba(10, 11, 13, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #e2e2e4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.fxz-code-warm { color: #ffb347; }
+.fxz-code-hot { color: #ff6b4a; }
+.fxz-code-key { color: #ffd9cd; }
+
+/* ─── Section eyebrow (uppercase mono label above page titles) ──────────── */
+.fxz-section-eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #ff6b4a;
+}
+
+/* ─── Page title (content pages share the hero type scale, one size down) ─ */
+.fxz-page-title {
+  font-size: clamp(1.9rem, 3.6vw, 2.75rem) !important;
+  font-weight: 600 !important;
+  line-height: 1.12 !important;
+  letter-spacing: -0.02em !important;
+  color: #ffffff !important;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ─── Send keycap (composer primary action — tactile, keycap-raised) ────── */
+.fxz-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #e6e6e6;
+  color: #2f3031;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 14px rgba(255, 255, 255, 0.14),
+    0 8px 24px -10px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+.fxz-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 22px rgba(255, 255, 255, 0.24),
+    0 12px 28px -10px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+}
+.fxz-send:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.fxz-send:disabled {
+  filter: grayscale(0.6) brightness(0.55);
+  cursor: not-allowed;
+}
+
+/* ─── Stop keycap (crimson — destructive tactile key) ───────────────────── */
+.fxz-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(180deg, #ff4d4d 0%, #e51d28 100%);
+  color: #ffffff;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 18px rgba(255, 47, 58, 0.35),
+    0 8px 24px -10px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.fxz-stop:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.92),
+    0 0 26px rgba(255, 47, 58, 0.5),
+    0 12px 28px -10px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+.fxz-stop:active {
+  transform: translateY(1px);
+}
+
+/* ─── Warm status dots (phase indicator) ────────────────────────────────── */
+.fxz-dot-idle      { background: #6b6b6e; }
+.fxz-dot-amber     { background: #ffb347; }
+.fxz-dot-coral     { background: #ff6b4a; }
+.fxz-dot-crimson   { background: #ff2f3a; }
+.fxz-dot-pulse {
+  animation: fxz-dot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes fxz-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 107, 74, 0.5); }
+  50%      { transform: scale(1.25); opacity: 0.75; box-shadow: 0 0 0 4px rgba(255, 107, 74, 0); }
+}
+
+/* ─── User / assistant message bubbles ──────────────────────────────────── */
+.fxz-bubble-user {
+  background: linear-gradient(135deg, rgba(255, 47, 58, 0.92) 0%, rgba(255, 107, 74, 0.92) 55%, rgba(255, 179, 71, 0.88) 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 107, 74, 0.5);
+  box-shadow:
+    0 10px 30px -12px rgba(255, 47, 58, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.fxz-bubble-assistant {
+  background: rgba(12, 13, 16, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 34px -18px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Reasoning fold (amber-tinted dark glass) ──────────────────────────── */
+.fxz-reasoning {
+  background: rgba(255, 179, 71, 0.05);
+  border: 1px solid rgba(255, 179, 71, 0.22);
+  border-radius: 8px;
+}
+
+/* ─── Tool status chips (§26, warm palette) ─────────────────────────────── */
+.fxz-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #b9b9bc;
+  background: rgba(255, 255, 255, 0.03);
+}
+.fxz-tool-running {
+  border-color: rgba(255, 179, 71, 0.45);
+  color: #ffcf87;
+  background: rgba(255, 179, 71, 0.08);
+}
+.fxz-tool-ok {
+  border-color: rgba(255, 107, 74, 0.4);
+  color: #ff9d7f;
+  background: rgba(255, 107, 74, 0.09);
+}
+.fxz-tool-error {
+  border-color: rgba(255, 47, 58, 0.5);
+  color: #ff8a92;
+  background: rgba(255, 47, 58, 0.10);
+}
+
+/* ─── Warm-avatar squares (user/assistant glyphs) ───────────────────────── */
+.fxz-avatar-user {
+  background: linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%);
+  box-shadow: 0 6px 18px -8px rgba(255, 47, 58, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+.fxz-avatar-bot {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #ff8a6b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ─── Warm glow icon tile (feature icons, empty-state glyphs) ───────────── */
+.fxz-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #ff6b4a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ═══ DOCS SECTION (same warm aurora design language) ═════════════════════ */
+
+/* Sidebar group label. */
+.fxz-docs-group-label {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7c7c7f;
+}
+
+/* Sidebar nav item. */
+.fxz-docs-navitem {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 8px;
+  padding: 0.42rem 0.7rem;
+  font-size: 13px;
+  font-weight: 400;
+  color: #9c9c9d;
+  border: 1px solid transparent;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+  text-align: left;
+  width: 100%;
+}
+.fxz-docs-navitem:hover {
+  color: #e8e8ea;
+  background: rgba(255, 255, 255, 0.04);
+}
+.fxz-docs-navitem-active {
+  color: #ffd9cd;
+  background: linear-gradient(90deg,
+    rgba(255, 47, 58, 0.16) 0%,
+    rgba(255, 107, 74, 0.10) 60%,
+    rgba(255, 179, 71, 0.05) 100%);
+  border-color: rgba(255, 107, 74, 0.30);
+  font-weight: 500;
+}
+
+/* Docs prose typography (ONE sans for prose, mono for code). */
+.fxz-docs-prose {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: #b9b9bc;
+}
+.fxz-docs-prose h2 {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+.fxz-docs-prose h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+/* Docs table (warm hairlines, mono cells). */
+.fxz-docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.fxz-docs-table th {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff8a6b;
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 107, 74, 0.25);
+  white-space: nowrap;
+}
+.fxz-docs-table td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #b9b9bc;
+  vertical-align: top;
+}
+.fxz-docs-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.fxz-docs-table td:first-child {
+  color: #e8e8ea;
+  white-space: nowrap;
+}
+
+/* Docs callouts. */
+.fxz-docs-callout {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.85rem 1.1rem;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #b9b9bc;
+}
+.fxz-docs-callout-info {
+  border-color: rgba(255, 107, 74, 0.3);
+  background: linear-gradient(90deg, rgba(255, 47, 58, 0.07), rgba(255, 107, 74, 0.04) 70%, transparent);
+}
+.fxz-docs-callout-warn {
+  border-color: rgba(255, 179, 71, 0.35);
+  background: linear-gradient(90deg, rgba(255, 179, 71, 0.08), rgba(255, 179, 71, 0.03) 70%, transparent);
+}
+.fxz-docs-callout-tip {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.045), transparent 70%);
+}
+
+/* Prev / next pager cards. */
+.fxz-docs-pager {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.9rem 1.1rem;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+.fxz-docs-pager:hover {
+  border-color: rgba(255, 107, 74, 0.4);
+  background: rgba(255, 47, 58, 0.05);
+  transform: translateY(-1px);
+}
+
+/* Reduced motion for the new animations. */
+@media (prefers-reduced-motion: reduce) {
+  .fxz-dot-pulse, .fxz-blade { animation: none !important; }
 }

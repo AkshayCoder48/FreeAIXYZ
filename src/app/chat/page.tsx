@@ -1,15 +1,18 @@
 /**
- * /chat — Native models playground.
+ * /chat — Native models playground (WARM AURORA design).
  *
  * RSC. Serializes the STATIC native model catalog (bundled at build time —
  * no fetch, no discovery, no credentials) to the client island, which owns
  * the interactive chat surface (state machine, SSE streaming, markdown render).
+ * Shell: floating pill nav + dimmed living aurora + dark-glass panels.
  */
 
 import type { Metadata } from "next";
 
-import { Nav } from "@/components/nav";
-import { SectionLabel, SiteFooter, FadeIn } from "@/components/site";
+import {
+  AuroraShell,
+  AuroraPageHeader,
+} from "@/components/aurora/shell";
 import {
   ChatPlaygroundClient,
   type ChatPlaygroundData,
@@ -24,7 +27,7 @@ export const dynamic = "force-static";
 export const metadata: Metadata = {
   title: "Chat Playground — FreeAIXYZ",
   description:
-    "Streaming chat playground with native free models. Real SSE deltas, token-by-token streaming, no API key required.",
+    "Streaming chat playground with native free models. Real SSE deltas, token-by-token streaming, tool calling — no API key required.",
 };
 
 export default function ChatPage() {
@@ -44,39 +47,22 @@ export default function ChatPage() {
   const data: ChatPlaygroundData = { models };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Nav />
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-8 sm:py-12 min-w-0 flex flex-col gap-6 min-h-0">
-        <FadeIn className="flex flex-col gap-3">
-          <SectionLabel dotColor="var(--chart-2, #10b981)">Chat playground</SectionLabel>
-          <h1 className="text-4xl sm:text-5xl font-normal tracking-tight text-foreground mt-2">
-            Send a message. Watch it{" "}
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-emerald-400">
-              stream
-            </span>
-            .
-          </h1>
-          <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
-            {models.length} free native models from the static registry. Real
-            SSE deltas — no buffering, no re-pacing, no API key required.
-          </p>
-        </FadeIn>
+    <AuroraShell>
+      <div className="pt-10 sm:pt-14 flex flex-col gap-8 min-w-0">
+        <AuroraPageHeader
+          eyebrow="Chat playground"
+          title="Send a message. Watch it stream."
+          gradientWord="stream"
+          lede={
+            <>
+              {models.length} free native models from the static registry. Real
+              token-by-token SSE deltas — no buffering, no re-pacing, no API key
+              required. Toggle built-in tools and watch the model call them live.
+            </>
+          }
+        />
         <ChatPlaygroundClient data={data} />
-      </main>
-      <SiteFooter>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          POST /api/v1/chat/completions · stream:true
-        </span>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          GET /api/v1/models
-        </span>
-      </SiteFooter>
-    </div>
+      </div>
+    </AuroraShell>
   );
 }

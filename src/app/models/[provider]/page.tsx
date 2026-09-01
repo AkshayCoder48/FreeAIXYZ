@@ -3,8 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ArrowLeft } from "lucide-react";
 
-import { Nav } from "@/components/nav";
-import { SiteFooter } from "@/components/site";
+import { AuroraShell } from "@/components/aurora/shell";
 import {
   ProviderModelsClient,
   type ProviderModelEntry,
@@ -75,14 +74,12 @@ export default async function ProviderModelsPage({ params }: PageProps) {
   }));
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Nav />
-
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6">
+    <AuroraShell>
+      <div className="pt-10 sm:pt-14 flex flex-col gap-6 min-w-0">
         <div>
           <Link
             href="/models"
-            className="text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors inline-flex items-center gap-1.5"
             style={{ fontFamily: "var(--font-mono), monospace" }}
           >
             <ArrowLeft className="h-3 w-3" />
@@ -93,19 +90,7 @@ export default async function ProviderModelsPage({ params }: PageProps) {
           providerLabel={providerEntry.name}
           models={entries}
         />
-      </main>
-
-      <SiteFooter>
-        <span>
-          {providerEntry.name} · native models · static registry
-        </span>
-        <span
-          className="font-mono"
-          style={{ fontFamily: "var(--font-mono), monospace" }}
-        >
-          GET /api/v1/models
-        </span>
-      </SiteFooter>
-    </div>
+      </div>
+    </AuroraShell>
   );
 }

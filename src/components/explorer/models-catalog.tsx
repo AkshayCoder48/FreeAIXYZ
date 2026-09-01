@@ -1,21 +1,22 @@
 "use client";
 
 /**
- * ModelsCatalog — /models catalog (static data).
+ * ModelsCatalog — /models catalog (static data, WARM AURORA design).
  *
  * Receives the static native model list via props (serialized from the RSC
  * — no network fetch, no discovery, no pricing).
  *
  * Layout:
- *   - Search input + provider filter tabs
- *   - One section per provider with a responsive grid of model cards
+ *   - Eyebrow + headline (one warm gradient word) + search
+ *   - Provider filter pills (warm active state)
+ *   - One section per provider with a responsive grid of dark-glass cards
  *
- * Card:
- *   - Provider name + capability badges
+ * Card (dark glass, warm hover glow):
+ *   - Provider name + capability badges (warm mono chips)
  *   - Model display name (clickable → /models/[provider]/[model])
  *   - Description (line-clamped to 2 lines)
- *   - Model id + Copy button
- *   - "Try in playground" link (→ /chat?model=…)
+ *   - Model id (warm code pill) + Copy button
+ *   - "Try in playground" warm keycap-style link (→ /chat?model=…)
  *
  * Overflow hardening: normal document flow (flex column), `min-w-0` on
  * card roots, `overflow-wrap: anywhere` on long ids, wrapping badge rows.
@@ -23,11 +24,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Search, Copy, Check, MessageSquare, Zap, Brain } from "lucide-react";
+import { Search, Copy, Check, MessageSquare, Zap, Brain, Wrench, Eye, Globe } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -117,34 +115,32 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
       {/* Header + search */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 justify-between">
-          <div>
-            <h1 className="text-4xl sm:text-5xl font-normal tracking-tight text-foreground">
-              Native{" "}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-emerald-400">
-                models
-              </span>
+          <div className="flex flex-col gap-3">
+            <span className="fxz-section-eyebrow">Native catalog</span>
+            <h1 className="fxz-page-title">
+              Native <span className="fxz-gradient-word">models</span>
             </h1>
-            <p className="text-sm text-muted-foreground mt-2 max-w-2xl leading-relaxed">
+            <p className="text-[15px] text-[#9c9c9d] max-w-2xl leading-relaxed">
               {models.length} free models across {groups.length} native
               providers. Static registry — every model maps to an implemented
               adapter. No API key required.
             </p>
           </div>
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#7c7c7f] pointer-events-none" />
+            <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search models…"
-              className="pl-9"
+              className="fxz-input w-full rounded-lg pl-9 pr-3 h-10 text-sm outline-none"
               aria-label="Search models"
             />
           </div>
         </div>
 
-        {/* Provider filter tabs */}
+        {/* Provider filter pills (warm active) */}
         <div
-          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
+          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 custom-scroll"
           role="tablist"
           aria-label="Filter by provider"
         >
@@ -154,10 +150,8 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
             aria-selected={providerFilter === "all"}
             onClick={() => setProviderFilter("all")}
             className={cn(
-              "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-              providerFilter === "all"
-                ? "bg-foreground text-background border-foreground"
-                : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+              "fxz-chip",
+              providerFilter === "all" && "fxz-chip-active",
             )}
           >
             All ({models.length})
@@ -170,10 +164,8 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
               aria-selected={providerFilter === g.providerId}
               onClick={() => setProviderFilter(g.providerId)}
               className={cn(
-                "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-                providerFilter === g.providerId
-                  ? "bg-foreground text-background border-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",
+                "fxz-chip",
+                providerFilter === g.providerId && "fxz-chip-active",
               )}
             >
               {g.providerName} ({g.items.length})
@@ -184,11 +176,11 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
 
       {/* Sections */}
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="fxz-panel rounded-xl p-8 text-center">
+          <p className="text-sm text-[#9c9c9d]">
             No models match “{query}”.
           </p>
-        </Card>
+        </div>
       ) : (
         filtered.map((g) => (
           <section
@@ -199,69 +191,72 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
             <div className="flex items-baseline gap-3">
               <h2
                 id={`provider-${g.providerId}`}
-                className="text-lg font-semibold text-foreground"
+                className="text-lg font-semibold text-white"
               >
                 {g.providerName}
               </h2>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-[#7c7c7f] font-mono">
                 {g.items.length} model{g.items.length === 1 ? "" : "s"}
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {g.items.map((m) => (
-                <Card
+                <div
                   key={m.id}
-                  className="p-4 flex flex-col gap-2.5 min-w-0 hover:border-foreground/30 transition-colors"
+                  className="fxz-panel fxz-panel-hover p-4 flex flex-col gap-2.5 min-w-0 rounded-xl"
                 >
                   <div className="flex items-start justify-between gap-2 min-w-0">
                     <Link
                       href={`/models/${m.providerId}/${encodeURIComponent(m.id)}`}
-                      className="text-sm font-semibold text-foreground hover:text-accent transition-colors leading-snug"
+                      className="text-sm font-semibold text-white hover:text-[#ff8a6b] transition-colors leading-snug"
                       style={{ overflowWrap: "anywhere" }}
                     >
                       {m.name}
                     </Link>
                     {m.capabilities.streaming && (
-                      <Badge
-                        variant="secondary"
-                        className="gap-1 shrink-0 text-[10px]"
-                      >
+                      <span className="fxz-badge fxz-badge-warm gap-1 shrink-0">
                         <Zap className="h-2.5 w-2.5" /> stream
-                      </Badge>
+                      </span>
                     )}
                   </div>
                   <p
-                    className="text-xs text-muted-foreground leading-relaxed line-clamp-2"
+                    className="text-xs text-[#9c9c9d] leading-relaxed line-clamp-2"
                     title={m.description}
                   >
                     {m.description}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {m.capabilities.reasoning && (
-                      <Badge variant="outline" className="gap-1 text-[10px]">
-                        <Brain className="h-2.5 w-2.5" /> reasoning
-                      </Badge>
+                      <span className="fxz-badge gap-1">
+                        <Brain className="h-2.5 w-2.5 text-[#ff6b4a]" /> reasoning
+                      </span>
                     )}
                     {m.capabilities.vision && (
-                      <Badge variant="outline" className="text-[10px]">vision</Badge>
+                      <span className="fxz-badge gap-1">
+                        <Eye className="h-2.5 w-2.5" /> vision
+                      </span>
                     )}
                     {m.capabilities.tools && (
-                      <Badge variant="outline" className="text-[10px]">tools</Badge>
+                      <span className="fxz-badge gap-1">
+                        <Wrench className="h-2.5 w-2.5 text-[#ff6b4a]" /> tools
+                      </span>
                     )}
                     {m.capabilities.webSearch && (
-                      <Badge variant="outline" className="text-[10px]">web search</Badge>
+                      <span className="fxz-badge gap-1">
+                        <Globe className="h-2.5 w-2.5" /> web search
+                      </span>
                     )}
                     {m.contextWindow > 0 && (
-                      <Badge variant="outline" className="text-[10px] font-mono">
+                      <span className="fxz-badge font-mono">
                         {m.contextWindow >= 1000
                           ? `${Math.round(m.contextWindow / 1000)}k ctx`
                           : `${m.contextWindow} ctx`}
-                      </Badge>
+                      </span>
                     )}
                   </div>
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     <code
-                      className="flex-1 min-w-0 text-[10px] font-mono text-muted-foreground bg-muted rounded px-2 py-1 truncate"
+                      className="fxz-code flex-1 min-w-0 truncate"
                       title={m.id}
                     >
                       {m.id}
@@ -269,23 +264,28 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
                     <button
                       type="button"
                       onClick={() => void copyId(m.id)}
-                      className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border border-border hover:bg-muted transition-colors"
+                      className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border border-white/10 text-[#9c9c9d] hover:text-white hover:border-[#ff6b4a]/40 transition-colors"
                       aria-label={`Copy model id ${m.id}`}
                     >
                       {copied === m.id ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        <Check className="h-3.5 w-3.5 text-[#ffb347]" />
                       ) : (
                         <Copy className="h-3.5 w-3.5" />
                       )}
                     </button>
                     <Link
                       href={`/chat?model=${encodeURIComponent(m.id)}`}
-                      className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2.5 h-7 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                      className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 h-7 rounded-md text-[#2f3031] transition-transform hover:-translate-y-px"
+                      style={{
+                        background: "#e6e6e6",
+                        boxShadow:
+                          "0 0 0 1.5px rgba(0,0,0,0.85), 0 0 10px rgba(255,255,255,0.12), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(0,0,0,0.25)",
+                      }}
                     >
                       <MessageSquare className="h-3 w-3" /> Try
                     </Link>
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
           </section>

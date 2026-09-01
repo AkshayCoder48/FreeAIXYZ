@@ -74,7 +74,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   Select,
@@ -86,7 +85,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -207,15 +205,15 @@ const PROMPT_SUGGESTIONS = [
   "Write a TypeScript function to debounce another function.",
 ];
 
-// Phase palette — emerald/amber/rose/slate.
+// Phase palette — WARM aurora (amber / coral / crimson on near-black).
 const PHASE_META: Record<Phase, { label: string; dot: string; text: string; pulse?: boolean }> = {
-  idle: { label: "Idle", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400" },
-  preparing: { label: "Preparing", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-300", pulse: true },
-  routing: { label: "Routing", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-300", pulse: true },
-  generating: { label: "Generating", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300", pulse: true },
-  completed: { label: "Completed", dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300" },
-  error: { label: "Error", dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-300" },
-  cancelled: { label: "Cancelled", dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-400" },
+  idle: { label: "Idle", dot: "fxz-dot-idle", text: "text-zinc-400" },
+  preparing: { label: "Preparing", dot: "fxz-dot-amber", text: "text-[#ffcf87]", pulse: true },
+  routing: { label: "Routing", dot: "fxz-dot-amber", text: "text-[#ffcf87]", pulse: true },
+  generating: { label: "Generating", dot: "fxz-dot-coral", text: "text-[#ff8a6b]", pulse: true },
+  completed: { label: "Completed", dot: "fxz-dot-amber", text: "text-[#ffcf87]" },
+  error: { label: "Error", dot: "fxz-dot-crimson", text: "text-[#ff8a92]" },
+  cancelled: { label: "Cancelled", dot: "fxz-dot-idle", text: "text-zinc-500" },
 };
 
 /** Icon per built-in tool (matches BUILTIN_TOOL_META order). */
@@ -1258,34 +1256,36 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
   return (
     <div className="flex flex-col gap-4 min-h-0">
-      {/* Error banner (request-level failures). */}
+      {/* Error banner (request-level failures) — warm crimson glass. */}
       {errorMessage && (
-        <Alert className="border-rose-300 bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-800">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center gap-3 justify-between w-full">
-            <span className="text-sm">{errorMessage}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={retry}
-              className="h-7 shrink-0 border-rose-300 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40"
-            >
-              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div
+          role="alert"
+          className="fxz-panel flex items-center gap-3 px-4 py-3 rounded-xl border-[#ff2f3a]/40"
+          style={{ boxShadow: "0 16px 50px -20px rgba(255,47,58,0.35), inset 0 1px 0 rgba(255,255,255,0.05)" }}
+        >
+          <AlertCircle className="h-4 w-4 text-[#ff6b6f] shrink-0" />
+          <span className="text-sm text-[#ff9aa0] flex-1 min-w-0">{errorMessage}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={retry}
+            className="h-7 shrink-0 border-[#ff2f3a]/40 text-[#ff9aa0] hover:bg-[#ff2f3a]/10 hover:text-[#ffb3b6]"
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry
+          </Button>
+        </div>
       )}
 
       {/* Top control bar: model selector + model info card. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] gap-3">
-        <Card className="p-3 flex flex-col gap-2">
+        <Card className="fxz-panel p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Cpu className="h-3.5 w-3.5" />
+            <Cpu className="h-3.5 w-3.5 text-[#ff6b4a]" />
             <span className="uppercase tracking-wider font-medium">Model</span>
             {selectedModel?.capabilities.streaming && (
-              <Badge className="ml-auto gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100">
+              <span className="fxz-badge fxz-badge-warm ml-auto gap-1">
                 <Zap className="h-3 w-3" /> streaming
-              </Badge>
+              </span>
             )}
           </div>
           <Select
@@ -1293,7 +1293,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             onValueChange={handleSelectModel}
             disabled={isStreaming}
           >
-            <SelectTrigger className="w-full font-medium" aria-label="Select model">
+            <SelectTrigger className="fxz-input w-full font-medium" aria-label="Select model">
               <SelectValue placeholder={models.length ? "Pick a model" : "No models"} />
             </SelectTrigger>
             <SelectContent className="max-h-[340px]">
@@ -1331,7 +1331,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         </Card>
 
         {/* Model capability card. */}
-        <Card className="p-3 flex flex-col gap-2">
+        <Card className="fxz-panel p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="uppercase tracking-wider font-medium">
               {selectedModel?.providerName ?? "Model info"}
@@ -1341,33 +1341,31 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             <>
               <div className="flex flex-wrap gap-1.5">
                 {selectedModel.capabilities.streaming && (
-                  <Badge variant="secondary" className="gap-1 text-[11px]">
-                    <Zap className="h-3 w-3" /> streaming
-                  </Badge>
+                  <span className="fxz-badge gap-1">
+                    <Zap className="h-3 w-3 text-[#ffb347]" /> streaming
+                  </span>
                 )}
                 {selectedModel.capabilities.reasoning && (
-                  <Badge variant="secondary" className="gap-1 text-[11px]">
-                    <Brain className="h-3 w-3" /> reasoning
-                  </Badge>
+                  <span className="fxz-badge gap-1">
+                    <Brain className="h-3 w-3 text-[#ff6b4a]" /> reasoning
+                  </span>
                 )}
                 {selectedModel.capabilities.vision && (
-                  <Badge variant="secondary" className="text-[11px]">vision</Badge>
+                  <span className="fxz-badge">vision</span>
                 )}
                 {selectedModel.capabilities.tools && (
-                  <Badge variant="secondary" className="gap-1 text-[11px]">
-                    <Wrench className="h-3 w-3" /> tools
-                  </Badge>
+                  <span className="fxz-badge gap-1">
+                    <Wrench className="h-3 w-3 text-[#ff6b4a]" /> tools
+                  </span>
                 )}
                 {selectedModel.capabilities.webSearch && (
-                  <Badge variant="secondary" className="text-[11px]">web search</Badge>
+                  <span className="fxz-badge">web search</span>
                 )}
               </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted">
-                  {selectedModel.id}
-                </span>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="fxz-code truncate">{selectedModel.id}</span>
                 {selectedModel.contextWindow > 0 && (
-                  <span>{formatTokens(selectedModel.contextWindow)} ctx</span>
+                  <span className="shrink-0">{formatTokens(selectedModel.contextWindow)} ctx</span>
                 )}
               </div>
             </>
@@ -1376,12 +1374,12 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
           )}
           {/* Live token counter while streaming. */}
           {streamTokens && (
-            <div className="text-[11px] text-muted-foreground font-mono">
+            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-[#9c9c9d]">
               in {streamTokens.in} · out {streamTokens.out}
             </div>
           )}
           {usage && !isStreaming && (
-            <div className="text-[11px] text-muted-foreground font-mono">
+            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-[#9c9c9d]">
               tokens: {usage.prompt_tokens} in · {usage.completion_tokens} out
             </div>
           )}
@@ -1406,10 +1404,8 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                 title={t.hint}
                 aria-pressed={active}
                 className={cn(
-                  "text-xs px-3 py-1.5 rounded-full border transition-colors inline-flex items-center gap-1.5",
-                  active
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted",
+                  "fxz-chip",
+                  active && "fxz-chip-active",
                   isStreaming && "opacity-60 cursor-not-allowed",
                 )}
               >
@@ -1432,21 +1428,21 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       ) : null}
 
       {/* Messages panel. */}
-      <Card className="p-0 flex flex-col min-h-[420px] relative overflow-hidden">
+      <Card className="fxz-panel p-0 flex flex-col min-h-[420px] relative overflow-hidden">
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-4 max-h-[60vh] min-h-[380px]"
         >
           {messages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 py-8 text-center">
-              <div className="h-12 w-12 rounded-2xl bg-muted flex items-center justify-center">
-                <Bot className="h-6 w-6 text-muted-foreground" />
+              <div className="fxz-icon-tile h-12 w-12">
+                <Bot className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-sm font-medium text-white">
                   Pick a model and send a message
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-[#9c9c9d] mt-1">
                   Real token-by-token SSE streaming with tool calling. Free native models, no key required.
                 </p>
               </div>
@@ -1458,7 +1454,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                     onClick={() => {
                       setInput(s);
                     }}
-                    className="text-xs px-3 py-1.5 rounded-full border border-border bg-background hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                    className="fxz-chip text-left"
                   >
                     {s}
                   </button>
@@ -1475,17 +1471,17 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                 )}
               >
                 {m.role === "assistant" && (
-                  <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="h-4 w-4 text-muted-foreground" />
+                  <div className="fxz-avatar-bot h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="h-4 w-4" />
                   </div>
                 )}
                 <div
                   className={cn(
                     "max-w-[85%] sm:max-w-[75%] rounded-xl px-3.5 py-2.5",
                     m.role === "user"
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-muted/60 border border-border",
-                    m.status === "error" && "border-rose-300 dark:border-rose-800",
+                      ? "fxz-bubble-user"
+                      : "fxz-bubble-assistant",
+                    m.status === "error" && "border-[#ff2f3a]/50",
                   )}
                 >
                   {/* Tool execution chips (§26) — compact, no arguments shown. */}
@@ -1495,13 +1491,10 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                         <span
                           key={ev.key}
                           className={cn(
-                            "inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono",
-                            ev.status === "running" &&
-                              "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-                            ev.status === "ok" &&
-                              "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
-                            ev.status === "error" &&
-                              "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
+                            "fxz-tool-chip",
+                            ev.status === "running" && "fxz-tool-running",
+                            ev.status === "ok" && "fxz-tool-ok",
+                            ev.status === "error" && "fxz-tool-error",
                           )}
                           title={ev.error ?? undefined}
                         >
@@ -1524,7 +1517,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
                   {/* Reasoning block — collapses under the same message. */}
                   {m.reasoning && m.role === "assistant" && (
-                    <div className="mb-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30 overflow-hidden">
+                    <div className="fxz-reasoning mb-2 overflow-hidden">
                       <button
                         type="button"
                         onClick={() =>
@@ -1533,7 +1526,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                             [m.id]: !prev[m.id],
                           }))
                         }
-                        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-900/30 transition-colors"
+                        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-[#ffcf87] hover:bg-[#ffb347]/10 transition-colors"
                         aria-expanded={openReasoning[m.id] ?? true}
                       >
                         <Brain className="h-3 w-3" />
@@ -1549,7 +1542,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                         />
                       </button>
                       {(openReasoning[m.id] ?? true) && (
-                        <pre className="px-3 pb-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-amber-900 dark:text-amber-200/80 font-mono max-h-56 overflow-y-auto">
+                        <pre className="px-3 pb-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-[#ffe0b3]/80 font-mono max-h-56 overflow-y-auto">
                           {m.reasoning}
                         </pre>
                       )}
@@ -1559,7 +1552,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                   {m.role === "user" ? (
                     <p className="text-sm whitespace-pre-wrap">{m.content}</p>
                   ) : m.status === "error" && !m.content ? (
-                    <div className="flex items-start gap-2 text-sm text-rose-700 dark:text-rose-300">
+                    <div className="flex items-start gap-2 text-sm text-[#ff8a92]">
                       <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                       <span>{m.error ?? "Generation failed."}</span>
                     </div>
@@ -1588,7 +1581,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                               <code
                                 {...props}
                                 className={cn(
-                                  "font-mono text-[12px] rounded bg-muted px-1 py-0.5",
+                                  "font-mono text-[12px] rounded px-1 py-0.5 bg-[#ff2f3a]/[0.08] text-[#ffd9cd]",
                                   className,
                                 )}
                               >
@@ -1642,7 +1635,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                         aria-label="Copy message"
                       >
                         {copiedIdx === idx ? (
-                          <Check className="h-3 w-3" />
+                          <Check className="h-3 w-3 text-[#ffb347]" />
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
@@ -1671,7 +1664,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                 setShowJumpToLatest(false);
               }
             }}
-            className="absolute bottom-3 right-4 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-border bg-background shadow-sm hover:bg-muted transition-colors"
+            className="absolute bottom-3 right-4 z-10 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-white/10 bg-black/70 backdrop-blur-md text-zinc-300 hover:text-white hover:border-[#ff6b4a]/40 transition-colors"
           >
             <ArrowDown className="h-3 w-3" /> Latest
           </button>
@@ -1696,7 +1689,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             value={system}
             onChange={(e) => setSystem(e.target.value)}
             placeholder="Optional system prompt — applied to every request."
-            className="mt-2 min-h-[70px] text-sm"
+            className="fxz-input mt-2 min-h-[70px] text-sm"
             aria-label="System prompt"
           />
         )}
@@ -1721,32 +1714,31 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
           }}
           placeholder="Send a message…"
           rows={2}
-          className="flex-1 resize-none min-h-[52px] max-h-[200px]"
+          className="fxz-input flex-1 resize-none min-h-[52px] max-h-[200px] text-sm"
           aria-label="Message"
         />
         {isStreaming ? (
           <div className="flex gap-2">
-            <Button
+            <button
               type="button"
-              variant="destructive"
               onClick={stop}
-              className="h-[52px] px-4"
+              className="fxz-stop h-[52px] px-4"
               aria-label="Stop generation"
             >
-              <Square className="h-4 w-4" />
-              <span className="ml-2 hidden sm:inline">Stop</span>
-            </Button>
+              <Square className="h-4 w-4" fill="currentColor" />
+              <span className="hidden sm:inline">Stop</span>
+            </button>
           </div>
         ) : (
-          <Button
+          <button
             type="submit"
             disabled={!input.trim() || !selectedModelId}
-            className="h-[52px] px-4"
+            className="fxz-send h-[52px] px-5"
             aria-label="Send message"
           >
             <Send className="h-4 w-4" />
-            <span className="ml-2 hidden sm:inline">Send</span>
-          </Button>
+            <span className="hidden sm:inline">Send</span>
+          </button>
         )}
       </form>
 
@@ -1754,7 +1746,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs min-w-0">
           <span className={cn("inline-flex items-center gap-1.5 shrink-0", phaseMeta.text)}>
-            <span className={cn("h-2 w-2 rounded-full", phaseMeta.dot, phaseMeta.pulse && "animate-pulse")} />
+            <span className={cn("h-2 w-2 rounded-full", phaseMeta.dot, phaseMeta.pulse && "fxz-dot-pulse")} />
             {phaseMeta.label}
           </span>
           {toolStatus && (

@@ -198,6 +198,9 @@ export default function Home() {
               <Link href="/models" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
                 Models
               </Link>
+              <Link href="/docs" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
+                Docs
+              </Link>
               <a href="#quickstart" className="text-sm font-medium text-[#9c9c9d] hover:text-white transition-colors">
                 API
               </a>
@@ -580,6 +583,7 @@ export default function Home() {
           <div className="flex items-center gap-6">
             <Link href="/chat" className="hover:text-zinc-200 transition-colors">Playground</Link>
             <Link href="/models" className="hover:text-zinc-200 transition-colors">Models</Link>
+            <Link href="/docs" className="hover:text-zinc-200 transition-colors">Docs</Link>
             <a href="/api/v1/models" className="hover:text-zinc-200 transition-colors">API</a>
           </div>
           <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}>
