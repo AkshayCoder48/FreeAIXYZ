@@ -699,15 +699,23 @@ async function handleCanonicalRequest(
       streamOptions: body.stream_options ?? undefined,
     };
     try {
-      const proxyRes = await fetchInternalProxyWithRetry(`${origin}${proxyRoute}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: wantsStream ? "text/event-stream" : "application/json",
+      // 3 attempts (vs. default 2): the fx/* upstream (unlimitedai.org behind
+      // Cloudflare) flaps intermittently and this branch PASSES THROUGH the
+      // proxy's ≥500 responses — one extra transient absorb keeps client-
+      // visible 502s rare. Retries only fire pre-stream (always safe).
+      const proxyRes = await fetchInternalProxyWithRetry(
+        `${origin}${proxyRoute}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: wantsStream ? "text/event-stream" : "application/json",
+          },
+          body: JSON.stringify(proxyBody),
+          signal: request.signal,
         },
-        body: JSON.stringify(proxyBody),
-        signal: request.signal,
-      });
+        3,
+      );
       // R-4: strip hop-by-hop + content-encoding headers from the internal
       // proxy response before passing through. The internal fetch asks for
       // brotli/gzip via Accept-Encoding, and the proxy route builds its own
@@ -1177,15 +1185,21 @@ async function handleLegacyRequest(
       streamOptions: sampling.streamOptions,
     };
     try {
-      const proxyRes = await fetchInternalProxyWithRetry(`${origin}${proxyRoute}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: wantsStream ? "text/event-stream" : "application/json",
+      // 3 attempts (vs. default 2) — same fx/f freegpt flap-absorb rationale
+      // as the canonical fx/* branch above; retries only fire pre-stream.
+      const proxyRes = await fetchInternalProxyWithRetry(
+        `${origin}${proxyRoute}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: wantsStream ? "text/event-stream" : "application/json",
+          },
+          body: JSON.stringify(proxyBody),
+          signal: request.signal,
         },
-        body: JSON.stringify(proxyBody),
-        signal: request.signal,
-      });
+        3,
+      );
       // R-4: pass through the response with cleaned headers (BUG-2).
       return new Response(proxyRes.body, {
         status: proxyRes.status,
