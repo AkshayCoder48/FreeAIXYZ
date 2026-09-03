@@ -1,7 +1,833 @@
 {
   "$schema": "https://freeaixyz4all.vercel.app/api/v1/models",
-  "generatedAt": "2026-09-03T10:18:29.588Z",
+  "generatedAt": "2026-09-03T10:42:54.555Z",
   "source": "https://freeaixyz4all.vercel.app/api/v1/models",
-  "count": 0,
-  "models": []
+  "count": 75,
+  "models": [
+    {
+      "id": "au/llama3-8b",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "AuroraAI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "f2/free2gpt-auto",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Free2GPT",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "fc/v3",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeChat",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/chatgpt",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/chatgpt-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/claude",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/claude-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/deepseek",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/deepseek-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/gemini",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/gemini-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/grok",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/grok-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/meta",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/meta-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/perplexity",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/perplexity-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/qwen",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "fx/qwen-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "FreeAIXYZ Text API",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "go/gpt-oss-120b",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "GPT-OSS",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "jg/jollygen",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "JollyGen",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/cohere/north-mini-code:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/kilo-auto/balanced",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/kilo-auto/efficient",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/kilo-auto/free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/kilo-auto/frontier",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/kilo-auto/small",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/nvidia/nemotron-3-super-120b-a12b:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/poolside/laguna-s-2.1:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/stepfun/step-3.7-flash:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "kc/tencent/hy3:free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Kilo Code",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "l7/codestral-latest",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "LLM7.io",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "l7/deepseek-v4-flash:0731",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "LLM7.io",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "l7/gemini-3.1-flash-lite",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "LLM7.io",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "l7/minimax-m2.7",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "LLM7.io",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "mk/all",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Miklium",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "mk/female",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Miklium",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "mk/male",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Miklium",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "mk/miklium",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Miklium",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "mk/personalityless",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Miklium",
+      "capabilities": [
+        "text"
+      ]
+    },
+    {
+      "id": "oc/big-pickle",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "OpenCode.ai",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "oc/laguna-s-2.1-free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "OpenCode.ai",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "oc/mimo-v2.5-free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "OpenCode.ai",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "oc/nemotron-3-ultra-free",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "OpenCode.ai",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "sm/Qwen3.5-9B-Q4_K_M.gguf",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Swarm",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "ss/gpt-5.4-mini-no-login",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "SurfSense",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "ss/gpt-o4-mini-no-login",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "SurfSense",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "sw/Nemo",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "SpicyWriter",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/claude-sonnet-4",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/codestral-latest",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/deepseek-r1",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/deepseek-v3",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/deepseek-v3.1",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-2.5-flash",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-2.5-pro",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-3-flash",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-3.1-flash-lite",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-3.5-flash",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gemini-3.6-flash",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gpt-4o-latest",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gpt-5",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gpt-5.2",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/gpt-oss-120b",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/grok-4-fast",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/L3-70B-Euryale-v2.1",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/midnight-rose",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/o3-mini",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/toolbaz_v4",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "tb/toolbaz-v4.5-fast",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Toolbaz",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "ua/chat-model-reasoning",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "UnlimitedAI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "ua/chat-model-reasoning-with-search",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "UnlimitedAI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "un/Lorbus/Qwen3.6-27B-int4-AutoRound",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "UncloseAI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "vx/vexa",
+      "object": "model",
+      "created": 1788432151,
+      "owned_by": "Vexa AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    }
+  ]
 }
