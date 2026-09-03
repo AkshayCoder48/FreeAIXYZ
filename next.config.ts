@@ -20,9 +20,13 @@ const corsHeaders = [
   },
   {
     key: "Access-Control-Expose-Headers",
-    value: "Content-Type, Content-Length, X-Request-Id, X-Failover, Retry-After",
+    value:
+      "Content-Type, Content-Length, X-Request-Id, X-Gateway, X-Failover, Retry-After",
   },
   { key: "Access-Control-Max-Age", value: "86400" },
+  // Gateway identity (see src/lib/api/cors.ts GATEWAY_ID): one header glance
+  // proves whether this deployment served the request.
+  { key: "X-Gateway", value: "freeaixyz4all" },
 ];
 
 const nextConfig: NextConfig = {

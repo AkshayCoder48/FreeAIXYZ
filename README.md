@@ -675,6 +675,29 @@ One JSON envelope everywhere (`4xx` and `5xx`, streaming pre-flight included):
 
 Retryable types are safe to retry with backoff — the gateway already did one retry + one provider failover internally before surfacing them.
 
+### Which gateway served my request? (`X-Gateway`)
+
+Every response from this gateway carries an identity header:
+
+```
+X-Gateway: freeaixyz4all
+```
+
+It is CORS-exposed, so browsers and apps (OnyxAgent, devtools, OpenAI SDKs) can read it directly. Use it to settle "where did my error come from?" in five seconds:
+
+```bash
+curl -si https://freeaixyz4all.vercel.app/v1/models | grep -i x-gateway
+# x-gateway: freeaixyz4all   ← this deployment served the request
+```
+
+**If a response has NO `X-Gateway: freeaixyz4all` header, it did not come from this gateway — full stop.** This matters because error bodies from *other* OpenAI-compatible gateways (e.g. one-api instances whose upstream pools include Vercel Edge-runtime apps) can look superficially similar to ours — for example:
+
+```json
+{"error":{"message":"The edge runtime does not support Node.js 'crypto' module.","type":"upstream_error","param":null,"code":"upstream_error"}}
+```
+
+That body has `type: "upstream_error"` (lowercase) and a `param` field — the one-api envelope. Our envelope always has an UPPERCASE `type`, a `request_id`, `provider`, `model`, and `status`, and never a `param` field. Every route here runs on the **Node.js runtime** (no Edge runtime, no `node:crypto` anywhere), so this deployment cannot emit that message. If your client shows an error like the one above, the request went to a different Base URL — check your app's provider configuration.
+
 ---
 
 ## Providers

@@ -58,12 +58,35 @@ export const CORS_ALLOW_HEADERS =
 export const CORS_ALLOW_METHODS =
   "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD";
 
+/**
+ * Gateway identity (5-second triage tool).
+ *
+ * EVERY response served by this gateway carries `X-Gateway: freeaixyz4all`.
+ * When a client reports an error, one header glance (browser devtools,
+ * `curl -i`) settles WHICH gateway actually served the request:
+ *
+ *   $ curl -si https://freeaixyz4all.vercel.app/v1/models | head -1
+ *   → X-Gateway: freeaixyz4all          ← we served it
+ *   → (absent)                            ← some OTHER gateway served it
+ *
+ * This exists because error bodies from one-api gateways
+ * (freegpt.tech's pool — `"type":"upstream_error","param":null`) look
+ * superficially similar to ours but are NOT ours. Any response WITHOUT
+ * `X-Gateway: freeaixyz4all` never traversed this deployment.
+ */
+export const GATEWAY_ID = "freeaixyz4all";
+
+export const GATEWAY_IDENTITY_HEADERS: Record<string, string> = {
+  "X-Gateway": GATEWAY_ID,
+};
+
 /** Headers the browser is allowed to READ from responses. */
 export const CORS_EXPOSE_HEADERS =
   [
     "Content-Type",
     "Content-Length",
     "X-Request-Id",
+    "X-Gateway",
     "X-Failover",
     "Retry-After",
     "X-RateLimit-Remaining",
@@ -90,6 +113,9 @@ export function withCors(response: Response): Response {
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     headers.set(key, value);
   }
+  for (const [key, value] of Object.entries(GATEWAY_IDENTITY_HEADERS)) {
+    headers.set(key, value);
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -110,6 +136,7 @@ export function corsPreflight(): Response {
     statusText: "No Content",
     headers: {
       ...CORS_HEADERS,
+      ...GATEWAY_IDENTITY_HEADERS,
       Allow: CORS_ALLOW_METHODS,
     },
   });
