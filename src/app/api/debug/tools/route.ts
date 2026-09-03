@@ -15,11 +15,21 @@
 import { NextResponse } from "next/server";
 import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { BUILTIN_TOOL_DEFINITIONS } from "@/lib/tools/definitions";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET() {
+export function GET(): Response {
+  return withCors(toolsDebug());
+}
+
+/** CORS preflight. */
+export function OPTIONS(): Response {
+  return corsPreflight();
+}
+
+function toolsDebug(): Response {
   return NextResponse.json({
     registry: BUILTIN_TOOL_DEFINITIONS.map((t) => t.function.name),
     traces: toolDiagnostics.list(),

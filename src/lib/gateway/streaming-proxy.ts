@@ -31,6 +31,8 @@ import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
 import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
+import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
+import { isTransientUpstreamError, retryDelayMs, sleep } from "@/lib/gateway/retry";
 import type {
   ChatRequest,
   ProviderAdapter,
@@ -48,6 +50,9 @@ export const STREAM_HEADERS: Record<string, string> = {
   "X-Accel-Buffering": "no",
   "X-No-Buffer": "true",
 };
+
+/** Transient-failure retries per candidate during pre-flight (FIX A). */
+const PREFLIGHT_RETRIES = 1;
 
 /**
  * Failover candidate (audit D1). The gateway resolves the requested model
@@ -110,6 +115,12 @@ class StreamingProxyService {
     // ─── PRE-FLIGHT: try each candidate until one yields a first chunk ───
     // R-2: pre-first-token errors get a real HTTP status, NOT a 200 OK
     // SSE stream with an in-band event:error frame.
+    //
+    // FIX A (transient 502s, e.g. the upstream's "edge runtime does not
+    // support Node.js 'crypto' module" crash): each candidate gets ONE
+    // same-instance retry with linear backoff when the failure classifies
+    // as transient (network/5xx/429/edge-crypto). Only after the retry also
+    // fails do we move to the next candidate (provider failover, audit D1).
     let firstDelta: string | null = null;
     let successGen: AsyncGenerator<string, void, unknown> | null = null;
     let successCandidate: FailoverCandidate | null = null;
@@ -119,49 +130,68 @@ class StreamingProxyService {
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
       const isPrimary = i === 0;
-      timings.upstreamRequestStart = timings.upstreamRequestStart ?? Date.now();
-      let gen: AsyncGenerator<string, void, unknown>;
-      try {
-        gen = candidate.adapter.stream(candidate.req);
-      } catch (err) {
-        preflightErr = this.wrapUnknownStreamErr(
-          err,
-          candidate,
-          timings.requestId,
-        );
-        failoverOccurred = !isPrimary || failoverOccurred;
-        continue;
-      }
-      try {
-        const first = await gen.next();
-        if (first.done) {
-          // Generator returned without yielding anything → empty upstream.
-          preflightErr = emptyUpstreamResponseError(
-            candidate.adapter.id,
-            candidate.req.modelId,
+
+      for (let attempt = 0; attempt <= PREFLIGHT_RETRIES; attempt++) {
+        timings.upstreamRequestStart = timings.upstreamRequestStart ?? Date.now();
+        let gen: AsyncGenerator<string, void, unknown>;
+        try {
+          gen = candidate.adapter.stream(candidate.req);
+        } catch (err) {
+          preflightErr = this.wrapUnknownStreamErr(
+            err,
+            candidate,
+            timings.requestId,
           );
-          try { await gen.return(undefined); } catch { /* ignore */ }
           failoverOccurred = !isPrimary || failoverOccurred;
-          continue;
+          if (attempt < PREFLIGHT_RETRIES && isTransientUpstreamError(err)) {
+            await sleep(retryDelayMs(attempt));
+            continue;
+          }
+          break;
         }
-        // Pre-flight succeeded — this candidate is the winner.
-        firstDelta = first.value;
-        successGen = gen;
-        successCandidate = candidate;
-        timings.upstreamFirstChunk = Date.now();
-        if (!isPrimary) failoverOccurred = true;
-        break;
-      } catch (err) {
-        // Pre-first-token throw → try next candidate (audit D1 failover).
-        preflightErr = this.wrapUnknownStreamErr(
-          err,
-          candidate,
-          timings.requestId,
-        );
-        try { await gen.return(undefined); } catch { /* ignore */ }
-        failoverOccurred = !isPrimary || failoverOccurred;
-        continue;
+        try {
+          const first = await gen.next();
+          if (first.done) {
+            // Generator returned without yielding anything → empty upstream.
+            // Retry once: some upstreams intermittently return an empty
+            // first generation right after a cold start.
+            try { await gen.return(undefined); } catch { /* ignore */ }
+            preflightErr = emptyUpstreamResponseError(
+              candidate.adapter.id,
+              candidate.req.modelId,
+            );
+            failoverOccurred = !isPrimary || failoverOccurred;
+            if (attempt < PREFLIGHT_RETRIES) {
+              await sleep(retryDelayMs(attempt));
+              continue;
+            }
+            break;
+          }
+          // Pre-flight succeeded — this candidate is the winner.
+          firstDelta = first.value;
+          successGen = gen;
+          successCandidate = candidate;
+          timings.upstreamFirstChunk = Date.now();
+          if (!isPrimary) failoverOccurred = true;
+          break;
+        } catch (err) {
+          // Pre-first-token throw → retry transient failures once (FIX A),
+          // then fail over to the next candidate (audit D1).
+          try { await gen.return(undefined); } catch { /* ignore */ }
+          preflightErr = this.wrapUnknownStreamErr(
+            err,
+            candidate,
+            timings.requestId,
+          );
+          failoverOccurred = !isPrimary || failoverOccurred;
+          if (attempt < PREFLIGHT_RETRIES && isTransientUpstreamError(err)) {
+            await sleep(retryDelayMs(attempt));
+            continue;
+          }
+          break;
+        }
       }
+      if (successGen !== null) break;
     }
 
     // ─── PRE-FLIGHT FAILED → return real HTTP error Response (R-2) ───
@@ -286,6 +316,15 @@ class StreamingProxyService {
     // providers (kilocode/opencode/gptoss/freegpt/llm7/swarm) become proper
     // `delta.tool_calls` SSE chunks — NEVER raw assistant text (§8).
     const normalizer = new ToolCallNormalizer();
+    // FIX B — one FenceNormalizer per stream, ACTIVE ONLY when the request
+    // carried tools. Upstreams that cannot emit `delta.tool_calls` write the
+    // tool call as a fenced ```tool_call block inside `delta.content`; this
+    // normalizer detects the fence mid-stream, stops forwarding its text,
+    // parses the body, and re-emits it as STANDARD `delta.tool_calls` chunks
+    // (+ finish_reason "tool_calls") so every OpenAI-compatible client —
+    // not just our playground — executes the tool instead of rendering a
+    // code block and concluding "the AI has no tools".
+    const fence = new FenceNormalizer((candidate.req.tools?.length ?? 0) > 0);
 
     // Emit the buffered first chunk immediately (no buffering beyond the
     // single pre-flight chunk — the price of returning a real HTTP status
@@ -301,6 +340,7 @@ class StreamingProxyService {
         candidate.req.modelId,
         firstDelta,
         normalizer,
+        fence,
       );
       if (hadFrag) anyContent = true;
       timings.proxyFirstForward = Date.now();
@@ -313,6 +353,7 @@ class StreamingProxyService {
       while (true) {
         if (candidate.req.signal?.aborted) {
           this.sendAborted(controller, timings, encoder);
+          this.safeClose(controller);
           return;
         }
         const next = await gen.next();
@@ -332,6 +373,7 @@ class StreamingProxyService {
           candidate.req.modelId,
           delta,
           normalizer,
+          fence,
         );
         if (hadFrag) anyContent = true;
         if (!firstEnqueued) {
@@ -342,8 +384,35 @@ class StreamingProxyService {
         }
         if (candidate.req.signal?.aborted) {
           this.sendAborted(controller, timings, encoder);
+          this.safeClose(controller);
           return;
         }
+      }
+      // FIX B: flush the fence normalizer BEFORE the empty-check + final
+      // chunk — releases any held-back text, closes an unterminated fence
+      // (models sometimes never write the closing ```), and emits any
+      // fence-parsed tool calls as standard delta.tool_calls chunks.
+      const fenceOut = fence.flush();
+      if (fenceOut.content) {
+        this.enqueueContentChunk(
+          controller,
+          encoder,
+          sseId,
+          created,
+          candidate.req.modelId,
+          fenceOut.content,
+        );
+        anyContent = true;
+      }
+      if (fenceOut.toolCalls && fenceOut.toolCalls.length > 0) {
+        this.enqueueToolCallsChunk(
+          controller,
+          encoder,
+          sseId,
+          created,
+          candidate.req.modelId,
+          fenceOut.toolCalls,
+        );
       }
       // R-5: refuse to pass on a fully-empty stream. (Can happen if the
       // pre-flight chunk was the empty string and nothing else came.)
@@ -362,14 +431,19 @@ class StreamingProxyService {
           sseId,
           created,
         );
+        this.safeClose(controller);
         timings.totalDurationMs = Date.now() - timings.requestStart;
         metricsService.recordStreamTimings(timings);
         return;
       }
       // Success — emit final stop chunk + usage + [DONE] (PRD §10, audit E2).
-      // PRD §13: if the normalizer emitted any tool calls, the finish_reason
-      // is "tool_calls" (not "stop") so OpenAI clients route to the tool
-      // execution pipeline instead of treating the turn as complete.
+      // PRD §13 + FIX B: if EITHER normalizer emitted tool calls (native
+      // `delta.tool_calls` markers OR fence-parsed text-embedded calls), the
+      // finish_reason is "tool_calls" (not "stop") so OpenAI clients route
+      // to the tool execution pipeline instead of treating the turn as
+      // complete.
+      const hadToolCalls =
+        normalizer.didEmitToolCalls || fence.didEmitToolCalls;
       this.enqueueFinal(
         controller,
         encoder,
@@ -377,7 +451,7 @@ class StreamingProxyService {
         created,
         candidate.req,
         timings.bytes,
-        normalizer.didEmitToolCalls ? "tool_calls" : "stop",
+        hadToolCalls ? "tool_calls" : "stop",
       );
       // Tool PRD §19/§27 — record the stream-side tool-call detection
       // (names/counts only, never arguments).
@@ -388,10 +462,10 @@ class StreamingProxyService {
         model: candidate.req.modelId,
         provider: candidate.adapter.id,
         streaming: true,
-        toolCallsDetected: normalizer.didEmitToolCalls
-          ? normalizer.snapshot().length
-          : 0,
-        finalStatus: normalizer.didEmitToolCalls ? "success" : "no_tool_calls",
+        toolCallsDetected:
+          (normalizer.didEmitToolCalls ? normalizer.snapshot().length : 0) +
+          (fence.didEmitToolCalls ? fence.emittedToolCallCount : 0),
+        finalStatus: hadToolCalls ? "success" : "no_tool_calls",
       });
       providerHealthService.recordProviderSuccess(candidate.adapter.id);
       providerHealthService.recordModelSuccess(candidate.req.modelId);
@@ -406,6 +480,13 @@ class StreamingProxyService {
         ttftMs: timings.ttftMs,
         durationMs: Date.now() - timings.requestStart,
       });
+      // SUCCESS EXIT — close the stream so every client (curl, OpenAI SDKs,
+      // browsers) sees clean EOF right after [DONE] instead of hanging until
+      // their own timeout. The pre-flight restructure originally left the
+      // controller open on the success path, which made standard clients
+      // that read to EOF block forever (verified live: curl hung >120s after
+      // [DONE] had already been written).
+      this.safeClose(controller);
     } catch (err) {
       // Mid-stream failure (after at least the pre-flight chunk was
       // forwarded) → emit `event: error` + terminal chunk (R-2 mid-stream
@@ -423,8 +504,21 @@ class StreamingProxyService {
         sseId,
         created,
       );
+      this.safeClose(controller);
       timings.totalDurationMs = Date.now() - timings.requestStart;
       metricsService.recordStreamTimings(timings);
+    }
+  }
+
+  /**
+   * Idempotent stream close — never throws (double-close / already-closed
+   * controllers are expected on abort paths).
+   */
+  private safeClose(controller: ReadableStreamDefaultController<Uint8Array>): void {
+    try {
+      controller.close();
+    } catch {
+      // already closed or errored — nothing to do
     }
   }
 
@@ -553,11 +647,15 @@ class StreamingProxyService {
 
   /**
    * Enqueue one OpenAI-shaped delta chunk, routing through the
-   * ToolCallNormalizer (PRD §24, §137 — no buffering).
+   * ToolCallNormalizer (PRD §24, §137 — no buffering) AND the
+   * FenceNormalizer (FIX B — text-embedded tool calls).
    *
-   * The normalizer consumes the raw provider delta and returns either:
-   *   - `content` (plain text) → emitted as `delta.content`
-   *   - `toolCalls` (incremental fragments) → emitted as `delta.tool_calls`
+   * The marker normalizer consumes the raw provider delta and returns either:
+   *   - `content` (plain text) → routed THROUGH the fence normalizer, which
+   *     may forward it, hold back a small opener-prefix tail, or convert an
+   *     embedded ```tool_call fence into `delta.tool_calls`
+   *   - `toolCalls` (incremental fragments) → emitted directly as
+   *     `delta.tool_calls` (native path — no fence handling needed)
    *   - both (mixed text + marker)
    *
    * `__tool_calls` markers NEVER reach the client as `delta.content`
@@ -565,7 +663,8 @@ class StreamingProxyService {
    * architectural layer, between raw provider stream and unified SSE output.
    *
    * Returns true if the delta produced any forwardable fragment (content or
-   * tool call), false otherwise (e.g. a suppressed unparseable marker).
+   * tool call), false otherwise (e.g. a suppressed unparseable marker or
+   * text buffered inside an open fence).
    */
   private enqueueNormalizedDelta(
     controller: ReadableStreamDefaultController<Uint8Array>,
@@ -575,40 +674,93 @@ class StreamingProxyService {
     model: string,
     delta: string,
     normalizer: ToolCallNormalizer,
+    fence: FenceNormalizer,
   ): boolean {
     const norm = normalizer.consume(delta);
     let forwarded = false;
     if (norm.content) {
-      const payload = {
-        id: sseId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          { index: 0, delta: { content: norm.content }, finish_reason: null },
-        ],
-      };
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
-      );
-      forwarded = true;
+      const fenceOut = fence.push(norm.content);
+      if (fenceOut.content) {
+        this.enqueueContentChunk(
+          controller,
+          encoder,
+          sseId,
+          created,
+          model,
+          fenceOut.content,
+        );
+        forwarded = true;
+      }
+      if (fenceOut.toolCalls && fenceOut.toolCalls.length > 0) {
+        this.enqueueToolCallsChunk(
+          controller,
+          encoder,
+          sseId,
+          created,
+          model,
+          fenceOut.toolCalls,
+        );
+        forwarded = true;
+      }
     }
     if (norm.toolCalls && norm.toolCalls.length > 0) {
-      const payload = {
-        id: sseId,
-        object: "chat.completion.chunk",
+      this.enqueueToolCallsChunk(
+        controller,
+        encoder,
+        sseId,
         created,
         model,
-        choices: [
-          { index: 0, delta: { tool_calls: norm.toolCalls }, finish_reason: null },
-        ],
-      };
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+        norm.toolCalls,
       );
       forwarded = true;
     }
     return forwarded;
+  }
+
+  /** Emit one `delta.content` SSE chunk. */
+  private enqueueContentChunk(
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    encoder: TextEncoder,
+    sseId: string,
+    created: number,
+    model: string,
+    content: string,
+  ): void {
+    const payload = {
+      id: sseId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [
+        { index: 0, delta: { content }, finish_reason: null },
+      ],
+    };
+    controller.enqueue(
+      encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+    );
+  }
+
+  /** Emit one `delta.tool_calls` SSE chunk (one or more complete fragments). */
+  private enqueueToolCallsChunk(
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    encoder: TextEncoder,
+    sseId: string,
+    created: number,
+    model: string,
+    toolCalls: unknown[],
+  ): void {
+    const payload = {
+      id: sseId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [
+        { index: 0, delta: { tool_calls: toolCalls }, finish_reason: null },
+      ],
+    };
+    controller.enqueue(
+      encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+    );
   }
 
   /**

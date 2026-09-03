@@ -79,6 +79,8 @@ import {
   imageAnnotation,
   normalizeMessageContent,
 } from "@/lib/gateway/content-normalize";
+import { withCors, corsPreflight } from "@/lib/api/cors";
+import { isTransientUpstreamError, retryDelayMs, sleep, withRetry } from "@/lib/gateway/retry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,6 +117,44 @@ function cleanProxyHeaders(src: Headers): Record<string, string> {
     out[key] = value;
   });
   return out;
+}
+
+/**
+ * FIX A — internal proxy hop with ONE transient retry.
+ *
+ * The freegpt/freeaixyz proxy routes are fetched via `fetch(origin + route)`.
+ * When that hop throws (network blip) or answers 5xx (upstream crash), the
+ * request is retried once with backoff before the error reaches the client.
+ * Only ≥500 statuses are retried — a 5xx from the proxy means NO stream was
+ * opened (the proxy returns 200 + SSE for streaming successes), so the
+ * client has received nothing yet and the retry is safe.
+ */
+async function fetchInternalProxyWithRetry(
+  url: string,
+  init: RequestInit,
+  attempts = 2,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status >= 500 && attempt < attempts - 1) {
+        // Drain the error body so the socket is released before retrying.
+        try { await res.text(); } catch { /* ignore */ }
+        await sleep(retryDelayMs(attempt));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts - 1 && isTransientUpstreamError(err)) {
+        await sleep(retryDelayMs(attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 /** Wrap unknown errors as GatewayError PROVIDER_UNAVAILABLE (PRD §148). */
@@ -444,8 +484,17 @@ function normalizeMessagesForGateway(
   return out;
 }
 
-/** POST /api/v1/chat/completions. */
-export async function POST(request: Request) {
+/** POST /api/v1/chat/completions (CORS-wrapped — see src/lib/api/cors.ts). */
+export async function POST(request: Request): Promise<Response> {
+  return withCors(await handleChatCompletions(request));
+}
+
+/** OPTIONS /api/v1/chat/completions — CORS preflight (204 + allow-headers). */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function handleChatCompletions(request: Request): Promise<Response> {
   // v4 requirement: every error response MUST carry the standard JSON
   // envelope `{ error: { type, message, provider, model, request_id, code,
   // status } }` — including 500s. Before this wrapper, any uncaught
@@ -650,7 +699,7 @@ async function handleCanonicalRequest(
       streamOptions: body.stream_options ?? undefined,
     };
     try {
-      const proxyRes = await fetch(`${origin}${proxyRoute}`, {
+      const proxyRes = await fetchInternalProxyWithRetry(`${origin}${proxyRoute}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -730,10 +779,29 @@ async function handleCanonicalRequest(
   let usedFallback: { model: DiscoveredModel; adapter: ProviderAdapter } | null = null;
   let text: string | null = null;
   let primaryErr: GatewayError | null = null;
-  try {
-    const result = await adapter.complete(chatReq);
-    text = result.text;
-  } catch (err) {
+  // FIX A: transient upstream failures (network / 5xx / 429 / upstream edge
+  // crashes like the intermittent "edge runtime does not support Node.js
+  // 'crypto' module" 502) get ONE same-model retry with linear backoff BEFORE
+  // the audit-D1 provider failover runs — the live diagnosis showed those
+  // failures succeed on the immediate next attempt.
+  let completeErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const result = await adapter.complete(chatReq);
+      text = result.text;
+      completeErr = null;
+      break;
+    } catch (err) {
+      completeErr = err;
+      if (attempt === 0 && isTransientUpstreamError(err)) {
+        await sleep(retryDelayMs(attempt));
+        continue;
+      }
+      break;
+    }
+  }
+  if (completeErr !== null) {
+    const err = completeErr;
     primaryErr = wrapUnknown(err, adapter.id, model.id);
     providerHealthService.recordProviderFailure(adapter.id, err);
     providerHealthService.recordModelFailure(model.id, err);
@@ -1109,7 +1177,7 @@ async function handleLegacyRequest(
       streamOptions: sampling.streamOptions,
     };
     try {
-      const proxyRes = await fetch(`${origin}${proxyRoute}`, {
+      const proxyRes = await fetchInternalProxyWithRetry(`${origin}${proxyRoute}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1181,14 +1249,17 @@ async function legacyJsonCompletion(
   const requestId = generateRequestId();
   let text: string;
   try {
-    const result = await provider.complete({
-      model,
-      messages,
-      tools: tools as ProviderTool[] | undefined,
-      toolChoice,
-      parallelToolCalls,
-      ...sampling,
-    });
+    // FIX A: one transient retry before the error surfaces to the client.
+    const result = await withRetry(() =>
+      provider.complete({
+        model,
+        messages,
+        tools: tools as ProviderTool[] | undefined,
+        toolChoice,
+        parallelToolCalls,
+        ...sampling,
+      }),
+    );
     text = result.text;
   } catch (err) {
     const ge = wrapUnknown(err, model.provider, model.id);

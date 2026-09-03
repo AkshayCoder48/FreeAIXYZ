@@ -6,7 +6,12 @@
       "headers": [
         { "key": "X-Accel-Buffering", "value": "no" },
         { "key": "Cache-Control", "value": "no-cache, no-transform" },
-        { "key": "Connection", "value": "keep-alive" }
+        { "key": "Connection", "value": "keep-alive" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Content-Length, Authorization, Accept, Accept-Language, Origin, User-Agent, X-API-Key, X-Requested-With, X-Request-Id, Cache-Control, Pragma, OpenAI-Beta, OpenAI-Organization, OpenAI-Project, HTTP-Referer, X-Title" },
+        { "key": "Access-Control-Expose-Headers", "value": "Content-Type, Content-Length, X-Request-Id, X-Failover, Retry-After" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
       ]
     },
     {
@@ -23,6 +28,36 @@
         { "key": "X-Accel-Buffering", "value": "no" },
         { "key": "Cache-Control", "value": "no-cache, no-transform" },
         { "key": "Connection", "value": "keep-alive" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Content-Length, Authorization, Accept, Accept-Language, Origin, User-Agent, X-API-Key, X-Requested-With, X-Request-Id, Cache-Control, Pragma, OpenAI-Beta, OpenAI-Organization, OpenAI-Project, HTTP-Referer, X-Title" },
+        { "key": "Access-Control-Expose-Headers", "value": "Content-Type, Content-Length, X-Request-Id, X-Failover, Retry-After" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    },
+    {
+      "source": "/v1/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Content-Length, Authorization, Accept, Accept-Language, Origin, User-Agent, X-API-Key, X-Requested-With, X-Request-Id, Cache-Control, Pragma, OpenAI-Beta, OpenAI-Organization, OpenAI-Project, HTTP-Referer, X-Title" },
+        { "key": "Access-Control-Expose-Headers", "value": "Content-Type, Content-Length, X-Request-Id, X-Failover, Retry-After" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    },
+    {
+      "source": "/chat/completions",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Content-Length, Authorization, Accept, Accept-Language, Origin, User-Agent, X-API-Key, X-Requested-With, X-Request-Id, Cache-Control, Pragma, OpenAI-Beta, OpenAI-Organization, OpenAI-Project, HTTP-Referer, X-Title" },
+        { "key": "Access-Control-Expose-Headers", "value": "Content-Type, Content-Length, X-Request-Id, X-Failover, Retry-After" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
       ]
     }
   ]

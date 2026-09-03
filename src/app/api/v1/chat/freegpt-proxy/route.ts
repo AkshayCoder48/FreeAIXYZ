@@ -37,6 +37,7 @@ import {
   sseErrorEvent,
   sseTerminalErrorChunk,
 } from "@/lib/gateway/errors";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,7 +75,16 @@ function gatewayErrorResponse(err: GatewayError): NextResponse {
   });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<Response> {
+  return withCors(await freegptProxy(request));
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function freegptProxy(request: Request): Promise<Response> {
   let body: ProxyRequest;
   try {
     body = (await request.json()) as ProxyRequest;

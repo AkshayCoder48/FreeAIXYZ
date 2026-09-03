@@ -18,6 +18,7 @@
  * chunk to the network individually.
  */
 
+import { withCors, corsPreflight } from "@/lib/api/cors";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -33,7 +34,16 @@ const HEADERS: Record<string, string> = {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** GET /api/debug/stream. */
-export async function GET() {
+export async function GET(): Promise<Response> {
+  return withCors(await streamDebug());
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function streamDebug(): Promise<Response> {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

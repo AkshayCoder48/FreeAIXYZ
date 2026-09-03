@@ -24,12 +24,22 @@ import {
   hasToolExecutor,
 } from "@/lib/tools/registry";
 import { toolDiagnostics } from "@/lib/tools/diagnostics";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<Response> {
+  return withCors(await executeTool(request));
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function executeTool(request: Request): Promise<Response> {
   let body: { name?: unknown; arguments?: unknown } | undefined;
   try {
     body = (await request.json()) as typeof body;

@@ -10,13 +10,23 @@
 
 import { catalogStore, isGatewayReady } from "@/lib/gateway";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 10;
 
 /** GET /ready. */
-export async function GET() {
+export async function GET(): Promise<Response> {
+  return withCors(await readinessCheck());
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function readinessCheck(): Promise<Response> {
   await ensureGateway();
   try {
     const catalog = catalogStore.getCatalog();

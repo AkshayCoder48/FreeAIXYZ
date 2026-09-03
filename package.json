@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test": "bun tests/run-tests.mjs",
     "test:streaming": "node test-streaming.mjs",
-    "diagnose": "node scripts/provider-diagnose.mjs"
+    "diagnose": "node scripts/provider-diagnose.mjs",
+    "models:fetch": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

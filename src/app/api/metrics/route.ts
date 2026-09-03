@@ -8,13 +8,23 @@
 
 import { errorResponse, GatewayError, metricsService } from "@/lib/gateway";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 /** GET /api/metrics. */
-export async function GET() {
+export async function GET(): Promise<Response> {
+  return withCors(await metricsSnapshot());
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function metricsSnapshot(): Promise<Response> {
   await ensureGateway();
   try {
     const metrics = metricsService.getMetrics();

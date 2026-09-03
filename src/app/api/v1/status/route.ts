@@ -26,6 +26,7 @@ import {
 } from "@/lib/gateway";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 import { DELISTED_PROVIDERS } from "@/lib/gateway/adapters/legacy";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -116,7 +117,16 @@ function mapProviderStatus(
   return "unknown";
 }
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<Response> {
+  return withCors(await statusSnapshot(request));
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function statusSnapshot(request: Request): Promise<Response> {
   await ensureGateway();
 
   let url: URL;

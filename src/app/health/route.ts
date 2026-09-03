@@ -15,6 +15,7 @@
 
 import { catalogStore, providerRegistry } from "@/lib/gateway";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,16 @@ interface HealthResponse {
 }
 
 /** GET /health. */
-export async function GET() {
+export async function GET(): Promise<Response> {
+  return withCors(await healthSnapshot());
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function healthSnapshot(): Promise<Response> {
   await ensureGateway();
 
   // Provider aggregates — best-effort.

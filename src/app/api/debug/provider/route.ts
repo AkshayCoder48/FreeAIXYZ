@@ -27,6 +27,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -318,7 +319,16 @@ function classifyEvent(ev: SseEvent): ParsedEntry {
 }
 
 /** GET /api/debug/provider — single-run live diagnostic. */
-export async function GET(req: Request) {
+export async function GET(req: Request): Promise<Response> {
+  return withCors(await providerDebug(req));
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function providerDebug(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const provider = url.searchParams.get("provider") || DEFAULT_PROVIDER;
   const model = url.searchParams.get("model") || DEFAULT_MODEL;

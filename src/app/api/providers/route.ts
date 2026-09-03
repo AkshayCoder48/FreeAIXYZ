@@ -17,6 +17,7 @@ import {
   type ProviderAdapter,
 } from "@/lib/gateway";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,16 @@ interface ProviderEntry {
 }
 
 /** GET /api/providers. */
-export async function GET() {
+export async function GET(): Promise<Response> {
+  return withCors(await listProviders());
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function listProviders(): Promise<Response> {
   await ensureGateway();
   try {
     const adapters = providerRegistry.list();

@@ -19,6 +19,7 @@ import {
 import { isDelistedModel } from "@/lib/gateway/delisted";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,8 +58,37 @@ function healthStatus(m: DiscoveredModel): "healthy" | "degraded" | "down" {
   }
 }
 
-/** GET /api/v1/models. */
-export async function GET(request: Request) {
+/**
+ * Capability gate honesty (FIX B): expose a plain string-array of capability
+ * names on EVERY model entry (not just ?health=true) so OpenAI clients can
+ * filter tool-capable / stream-capable models BEFORE sending a request —
+ * e.g. `models.filter(m => m.capabilities.includes("tools"))`.
+ */
+function capabilityList(m: DiscoveredModel): string[] {
+  const caps = m.capabilities;
+  const out: string[] = [];
+  if (caps.text) out.push("text");
+  if (caps.image) out.push("image");
+  if (caps.imageEdit) out.push("image_edit");
+  if (caps.audioInput) out.push("audio_input");
+  if (caps.audioOutput) out.push("audio_output");
+  if (caps.vision) out.push("vision");
+  if (caps.tools) out.push("tools");
+  if (caps.streaming) out.push("streaming");
+  return out;
+}
+
+/** GET /api/v1/models (CORS-wrapped). */
+export async function GET(request: Request): Promise<Response> {
+  return withCors(await listModels(request));
+}
+
+/** OPTIONS /api/v1/models — CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function listModels(request: Request): Promise<Response> {
   await ensureGateway();
 
   let url: URL;
@@ -90,11 +120,16 @@ export async function GET(request: Request) {
         object: "model" as const,
         created: CREATED_EPOCH,
         owned_by: ownedBy(m),
+        // FIX B — capability tag ALWAYS present (clients can filter
+        // tool-capable models without the health flag).
+        capabilities: capabilityList(m),
+        free: m.free !== false,
       };
       if (!showHealth) return base;
-      // ?health=true → include capabilities + status + context window.
+      // ?health=true → include status + context window + the full
+      // capability-flag object (the plain capabilities ARRAY stays canonical).
       const entry: Record<string, unknown> = { ...base };
-      entry.capabilities = m.capabilities;
+      entry.capability_flags = m.capabilities;
       entry.status = healthStatus(m);
       entry.internal_status = m.status;
       entry.context_window = m.metadata?.contextWindow ?? null;

@@ -34,6 +34,7 @@ import {
   sseErrorEvent,
   sseTerminalErrorChunk,
 } from "@/lib/gateway/errors";
+import { withCors, corsPreflight } from "@/lib/api/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -217,7 +218,16 @@ async function* streamFromUpstream(
 
 // ─── Route handler ────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<Response> {
+  return withCors(await freeaixyzProxy(request));
+}
+
+/** CORS preflight. */
+export async function OPTIONS(): Promise<Response> {
+  return corsPreflight();
+}
+
+async function freeaixyzProxy(request: NextRequest): Promise<Response> {
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
