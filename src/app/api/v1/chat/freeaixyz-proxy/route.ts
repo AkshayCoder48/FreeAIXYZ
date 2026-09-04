@@ -23,8 +23,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync } from "child_process";
 import { resolveGatewayModel } from "@/lib/providers/registry";
-import { generateCompletionId, generateToolCallId, estimateTokens, type OAIToolCall } from "@/lib/openai-types";
-import { parseToolCalls } from "@/lib/tool-calls";
+import { generateCompletionId, generateToolCallId, estimateTokens, type OAITool, type OAIToolCall, type OAIToolChoice } from "@/lib/openai-types";
+import { parseToolCalls, buildToolSystemPrompt } from "@/lib/tool-calls";
 import type { ProviderTool } from "@/lib/providers/types";
 import {
   GatewayError,
@@ -121,6 +121,108 @@ function invalidateNonce() { cachedNonce = null; lastCacheTime = 0; }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function ensureUuid(v?: string): string { return (v && UUID_RE.test(v)) ? v : crypto.randomUUID(); }
 
+// ─── Upstream prompt composition ──────────────────────────────────────────
+
+/** Does this message carry the tool-calling directive (fence format)? */
+function hasToolDirective(content: string): boolean {
+  return content.includes("```tool_call") || content.includes("tool-calling assistant");
+}
+
+/**
+ * Compose the full message list into the ONE `message` field the UnlimitedAI
+ * chat endpoint accepts.
+ *
+ * The upstream is a CHAT SITE (WordPress aipkit admin-ajax), not an
+ * OpenAI-compatible API: it takes a single message per turn and keeps NO
+ * memory of prior requests (every gateway call mints a fresh
+ * conversation_uuid + session_id). Before this helper, the route forwarded
+ * ONLY the last user message — silently dropping:
+ *
+ *   1. The tool-calling system directive → the model never saw the tool
+ *      definitions and answered "I don't have physical tools, but I can
+ *      guide you…" even though the client DID send a valid `tools` array.
+ *   2. The entire conversation history → multi-turn context, prior assistant
+ *      turns and tool results all vanished, breaking every agent loop at
+ *      round 2 (the follow-up turn had no idea what round 1 produced).
+ *
+ * Composition (chat-model friendly):
+ *   <system directives, joined>
+ *   User: <prior turn>
+ *   Assistant: <prior turn>
+ *   <last user message>   ← the new turn, unlabeled, anchors the cache write
+ */
+function buildUpstreamPrompt(
+  messages: Array<{ role: string; content: string }>,
+): { prompt: string; lastUser: { role: string; content: string } } {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  if (lastUserIdx === -1) throw new Error("FreeAIXYZ: no user message");
+  const lastUser = messages[lastUserIdx];
+
+  // Agent-loop detection: a turn in which tools were already called and their
+  // results came back (role tool/function, or the serialized "[tool result…]"
+  // text produced by messageToText). The chat-site model needs an explicit
+  // "answer now" cue on these turns — without it the CRITICAL RULES pressure
+  // of the tool directive sometimes makes it re-emit the SAME call in a loop
+  // instead of using the result it already has.
+  const hasToolResults = messages.some(
+    (m) =>
+      m.role === "tool" ||
+      m.role === "function" ||
+      (typeof m.content === "string" && m.content.startsWith("[tool result")),
+  );
+
+  const systemParts: string[] = [];
+  const convoParts: string[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (i === lastUserIdx) continue;
+    const m = messages[i];
+    const content = typeof m.content === "string" ? m.content.trim() : "";
+    if (!content) continue;
+    if (m.role === "system") {
+      systemParts.push(content);
+    } else if (m.role === "assistant") {
+      convoParts.push(`Assistant: ${content}`);
+    } else if (m.role === "tool" || m.role === "function") {
+      convoParts.push(`Tool result: ${content}`);
+    } else {
+      convoParts.push(`User: ${content}`);
+    }
+  }
+
+  const parts: string[] = [];
+  if (systemParts.length > 0) parts.push(systemParts.join("\n\n"));
+  parts.push(...convoParts);
+  parts.push(typeof lastUser.content === "string" ? lastUser.content : "");
+  if (hasToolResults) {
+    parts.push(
+      "(The tools above were already called and their results are shown. Do NOT repeat a tool call — use the results you already have and answer the user's original question directly now.)",
+    );
+  }
+  return { prompt: parts.join("\n\n"), lastUser };
+}
+
+/** Placeholder tool-call names copied verbatim from the directive template
+ * (e.g. `"<tool_name>"`) — weak upstream bots echo the example instead of
+ * filling in a real tool. Forwarding them would hand the client a call it
+ * can never resolve, so they are dropped (text fallback instead). */
+function isPlaceholderCall(tc: OAIToolCall): boolean {
+  const name = tc.function?.name ?? "";
+  return /^<[^>]*>$/.test(name) || name === "tool_name" || name === "function_name";
+}
+
+/** Parse model output for tool calls, dropping placeholder-template calls. */
+function parseRealToolCalls(output: string): { toolCalls: OAIToolCall[]; text: string } {
+  const parsed = parseToolCalls(output, generateToolCallId);
+  const real = parsed.toolCalls.filter((tc) => !isPlaceholderCall(tc));
+  return { toolCalls: real, text: parsed.text };
+}
+
 // ─── Stream from UnlimitedAI ──────────────────────────────────────────────
 
 async function* streamFromUpstream(
@@ -132,9 +234,13 @@ async function* streamFromUpstream(
   if (!botId) throw new Error(`FreeAIXYZ: unknown model "${modelUpstream}"`);
 
   const wantsWebSearch = modelUpstream.endsWith("-search");
-  const lastUser = messages.filter((m) => m.role === "user").pop();
-  if (!lastUser) throw new Error("FreeAIXYZ: no user message");
-  const prompt = lastUser.content;
+  // THE "I don't have physical tools" FIX: compose the FULL conversation —
+  // system directives (incl. the tool-calling directive with the tool list)
+  // + prior turns + the new user turn — instead of forwarding ONLY the last
+  // user message. The upstream chat site keeps no state between calls (fresh
+  // conversation_uuid per request), so this single field is the model's ONLY
+  // chance to see the tool definitions and the conversation context.
+  const { prompt } = buildUpstreamPrompt(messages);
 
   const convUuid = ensureUuid();
   const sessionId = ensureUuid();
@@ -242,8 +348,25 @@ async function freeaixyzProxy(request: NextRequest): Promise<Response> {
     );
   }
   const model = resolveGatewayModel(body.model as string);
-  const messages = (body.messages as Array<{ role: string; content: string }>) ?? [];
+  let messages = (body.messages as Array<{ role: string; content: string }>) ?? [];
   const useTools = Array.isArray(body.tools) && body.tools.length > 0;
+
+  // Defensive tool-directive synthesis (the second half of the "I don't have
+  // physical tools" fix): the canonical /api/v1/chat/completions route
+  // already injects buildToolSystemPrompt(...) as a system message before
+  // proxying here — but DIRECT callers of this route may pass `tools`
+  // without that directive. The upstream model must SEE the tool list to
+  // emit a ```tool_call block; synthesize the directive when it's missing.
+  if (useTools && !messages.some((m) => m.role === "system" && hasToolDirective(m.content ?? ""))) {
+    const toolChoice = (body.toolChoice ?? body.tool_choice) as OAIToolChoice | undefined;
+    messages = [
+      {
+        role: "system",
+        content: buildToolSystemPrompt(body.tools as OAITool[], toolChoice),
+      },
+      ...messages,
+    ];
+  }
   const wantsStream = body.stream === true;
 
   // The chat completions route now also forwards canonical `fx/<upstreamId>`
@@ -364,7 +487,7 @@ async function freeaixyzProxy(request: NextRequest): Promise<Response> {
           // the rest from the (already-opened) generator.
           let fullText = firstDelta;
           for await (const delta of preflight) { if (delta) fullText += delta; }
-          const parsed = parseToolCalls(fullText, generateToolCallId);
+          const parsed = parseRealToolCalls(fullText);
           if (parsed.toolCalls.length > 0) {
             for (let i = 0; i < parsed.toolCalls.length; i++) {
               const tc: OAIToolCall = parsed.toolCalls[i];
@@ -460,7 +583,7 @@ async function freeaixyzProxy(request: NextRequest): Promise<Response> {
       return gatewayErrorResponse(emptyUpstreamResponseError("freeaixyz", modelId));
     }
     if (useTools) {
-      const parsed = parseToolCalls(text, generateToolCallId);
+      const parsed = parseRealToolCalls(text);
       if (parsed.toolCalls.length > 0) return jsonNoEncoding({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, message: { role: "assistant", content: parsed.text || null, tool_calls: parsed.toolCalls }, finish_reason: "tool_calls" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
     }
     return jsonNoEncoding({ id: generateCompletionId(), object: "chat.completion", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: { prompt_tokens: estimateTokens(messages.map((m) => m.content).join("\n")), completion_tokens: estimateTokens(text), total_tokens: estimateTokens(messages.map((m) => m.content).join("\n")) + estimateTokens(text) } });
