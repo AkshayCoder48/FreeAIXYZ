@@ -60,9 +60,15 @@ const MODEL_BREAKER_COOLDOWN_MS = 30 * 1000;
 // upstream recovers in 1–2s; 10s cooldown is 5–10× the recovery window.
 const PROVIDER_BREAKER_THRESHOLDS: Record<string, number> = {
   toolbaz: 10,
+  // nsfwgf: account rotation (mail.tm magic-link) can transiently fail
+  // during heavy bursts — the adapter self-heals by rotating to a fresh
+  // account within seconds. A 5-failure breaker would amplify a single
+  // rotation hiccup into a 60s full-provider outage.
+  nsfwgf: 10,
 };
 const PROVIDER_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
   toolbaz: 10 * 1000,
+  nsfwgf: 10 * 1000,
 };
 // Per-MODEL breaker overrides, keyed by provider id. The model id is
 // canonical (`<shortId>/<upstream>`) — the provider is resolved via
@@ -70,9 +76,11 @@ const PROVIDER_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
 // provider.
 const MODEL_BREAKER_THRESHOLDS_BY_PROVIDER: Record<string, number> = {
   toolbaz: 10,
+  nsfwgf: 10,
 };
 const MODEL_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
   toolbaz: 10 * 1000,
+  nsfwgf: 10 * 1000,
 };
 
 type BreakerState = "closed" | "open" | "half_open";

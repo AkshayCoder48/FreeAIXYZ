@@ -51,6 +51,11 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   // per-request identity rotation (fresh clientId/chatId = unlimited free
   // tier). Custom SSE UIMessage protocol, no CORS, no auth, no key.
   { id: "nova", shortId: "nv", name: "Nova", baseUrl: "https://nova-uncensored.vercel.app" },
+  // NSFWGF (www.nsfwgirlfriend.com): uncensored companion backend (OpenRouter
+  // free pool). Custom request envelope, OpenAI-shaped SSE responses.
+  // Automated disposable-email account rotation (mail.tm magic-link signin;
+  // each fresh account = 50 free messages, rotated at 44 → unlimited).
+  { id: "nsfwgf", shortId: "ng", name: "NSFWGF", baseUrl: "https://www.nsfwgirlfriend.com" },
   // Image providers (no chat adapter but used for image model catalog).
   { id: "jollygen-image", shortId: "ji", name: "JollyGen Image", baseUrl: "https://api.jollygenapi.space" },
   { id: "aianime", shortId: "ai", name: "AIAnime", baseUrl: "https://api.aianime.io" },

@@ -34,7 +34,8 @@ export type ProviderId =
   | "vexa"
   | "uncloseai"
   | "free2gpt"
-  | "nova";
+  | "nova"
+  | "nsfwgf";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -275,6 +276,19 @@ export const MODELS: readonly GatewayModel[] = [
   nv("nova-instant", "instant", "NOVA Instant — uncensored nemotron-120b, per-request identity rotation, real SSE streaming + emulated tools", "unrestricted", 128000),
   nv("nova-websearch", "websearch", "NOVA (search slot) — same uncensored nemotron-120b engine, web-search capable endpoint, identity rotation", "unrestricted", 128000),
   nv("nova-file-analysis", "fileAnalysis", "NOVA (file slot) — uncensored nemotron-120b with document-analysis endpoint, identity rotation", "unrestricted", 128000),
+
+  // ─── NSFWGF (www.nsfwgirlfriend.com): uncensored companion backend with ──
+  // automated email-account rotation. Custom request envelope, but the
+  // response is a pure OpenAI-shaped SSE stream (delta.content + [DONE]).
+  // Anonymous access is IP-rate-limited (40012) — instead we auto-create
+  // disposable mail.tm inboxes, complete the NextAuth email magic-link
+  // signin, and rotate accounts every 44 messages (each = 50 free msgs).
+  // 20-generation hard-tested: lfm-7b 20/20, llama3-8b 20/20, sft-7b 18/20;
+  // all other slots are VIP-locked (40002) — intentionally not listed.
+  // Upstream caps replies at 300 completion tokens (companion-style).
+  ngf("ngf-nemo", "lfm-7b", "NSFWGF Nemo — Mistral Nemo 12B via uncensored companion backend, auto-rotated accounts, real SSE streaming, 20/20 reliability", "unrestricted", 32000),
+  ngf("ngf-lunaris-8b", "llama3-8b", "NSFWGF Lunaris — L3-Lunaris 8B (uncensored Llama-3 roleplay) via companion backend, auto-rotated accounts, real SSE streaming, 20/20 reliability", "unrestricted", 32000),
+  ngf("ngf-mimo-flash", "sft-7b", "NSFWGF MiMo Flash — xiaomi MiMo-v2-Flash via companion backend, auto-rotated accounts, real SSE streaming, 18/20 reliability", "unrestricted", 32000),
 ];
 
 /** Toolbaz model helper (audit G1: streaming=true — gateway emits real SSE). */
@@ -745,6 +759,37 @@ function nv(
   };
 }
 
+/** NSFWGF model helper. Uncensored companion-chat backend (nsfwgirlfriend
+ * .com → OpenRouter free pool) with automated disposable-email account
+ * rotation (mail.tm magic-link signin; each fresh account = 50 free
+ * messages, rotated at 44). Real OpenAI-shaped SSE streaming; tools via
+ * the gateway's emulated fence/bare-JSON pipeline. Upstream caps replies
+ * at ~300 completion tokens (companion-style short answers). */
+function ngf(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "nsfwgf",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
 /** Find a model by id (case-insensitive). Returns undefined if not found. */
 export function findModel(id: string | undefined): GatewayModel | undefined {
   if (!id) return undefined;
@@ -833,6 +878,10 @@ export const PROVIDER_INFO: Record<
   "nova": {
     name: "NOVA",
     description: "3 free uncensored models (Instant, Search, File Analysis — nemotron-120b) via nova-uncensored — per-request identity rotation, real SSE streaming, no signup, no key",
+  },
+  "nsfwgf": {
+    name: "NSFWGF",
+    description: "3 uncensored models (Mistral Nemo, L3-Lunaris 8B roleplay, MiMo-v2-Flash) via companion backend — automated disposable-email account rotation (unlimited quota), real SSE streaming, companion-style short replies",
   },
   "auroraai": {
     name: "AuroraAI",

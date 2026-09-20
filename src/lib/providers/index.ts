@@ -21,6 +21,7 @@ import { vexaProvider } from "./vexa";
 import { uncloseAiProvider } from "./uncloseai";
 import { free2GptProvider } from "./free2gpt";
 import { novaProvider } from "./nova";
+import { nsfwgfProvider } from "./nsfwgf";
 // FreeGPT provider is NOT imported here — it uses Node.js APIs (eval("require"),
 // fs, path) that break Edge runtime. It's imported directly in the Node.js
 // proxy route: /api/v1/chat/freegpt-proxy
@@ -45,6 +46,7 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   uncloseai: uncloseAiProvider,
   free2gpt: free2GptProvider,
   nova: novaProvider,
+  nsfwgf: nsfwgfProvider,
   // freegpt is handled via Node.js proxy route, not here
 };
 
