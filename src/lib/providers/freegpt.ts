@@ -119,14 +119,18 @@ async function curlPost(
   body: string,
 ): Promise<{ status: number; body: string }> {
   const cp = await import("node:child_process");
-  const args = ["-s", "-S", "--max-time", "120", "-w", "\n__HTTP_STATUS__%{http_code}", "-d", body];
+  // Long-output fix: the old 120s cap cut slow generations mid-string.
+  // Non-streaming buffers the WHOLE completion inside this one request, so
+  // the window must cover the full generation — 600s (route budget is 300s
+  // on Vercel, which clamps first; local dev has no cap).
+  const args = ["-s", "-S", "--max-time", "600", "-w", "\n__HTTP_STATUS__%{http_code}", "-d", body];
   for (const [k, v] of Object.entries(headers)) {
     args.push("-H", `${k}: ${v}`);
   }
   args.push(url);
 
   return new Promise((resolve, reject) => {
-    const proc = cp.spawn("curl", args, { timeout: 130000 });
+    const proc = cp.spawn("curl", args, { timeout: 610000 });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
@@ -582,12 +586,19 @@ export const freeGptProvider: Provider = {
     // Keep `-N` for no-buffering so genuine streaming is preserved (PRD §137).
     const cp = await import("node:child_process");
     const url = `${BASE_URL}${COMPLETIONS_PATH}`;
+    // UNLIMITED-OUTPUT FIX: the old 120s cap killed curl mid-delta, which
+    // surfaced to clients as the stream "stopping whenever it wants" —
+    // mid-token, no [DONE], no finish_reason. The gateway must never cut a
+    // generation short: 1800s (30 min) is effectively "until the upstream
+    // stops" (even 16k tokens at 20 tok/s finishes in ~800s) while still
+    // bounding zombie processes. Client disconnects still kill curl early
+    // via gen.return() → finally { proc.kill() }.
     const curlArgs = [
       "-s",
       "-S",
       "-N",
       "--max-time",
-      "120",
+      "1800",
       "-w",
       "\n__HTTP_STATUS__%{http_code}",
       "-d",
@@ -598,7 +609,7 @@ export const freeGptProvider: Provider = {
     }
     curlArgs.push(url);
 
-    const proc = cp.spawn("curl", curlArgs, { timeout: 130000 });
+    const proc = cp.spawn("curl", curlArgs, { timeout: 1810000 });
 
     const STATUS_MARKER = "__HTTP_STATUS__";
 

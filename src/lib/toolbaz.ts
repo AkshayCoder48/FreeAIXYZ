@@ -268,10 +268,11 @@ export interface CompletionResult {
  * with a freshly rotated identity, which is exactly what the adapter already
  * does per request. The retry is capped at 1 to avoid amplifying load.
  *
- * A 30s hard timeout is enforced on the writing.php fetch (direct-wire data
- * shows max ~4s response time; 30s is ample and prevents hitting Vercel's
- * 60s serverless maxDuration, which would otherwise surface as an
- * `upstream_timeout` to the client).
+ * A 300s hard timeout is enforced on the writing.php fetch. Direct-wire
+ * data showed ~4s typical, but a synchronous FULL generation (long code
+ * outputs) can take much longer — the old 30s cap cut those mid-response
+ * (the "AI stops whenever it wants" symptom). 300s lets even slow full
+ * generations finish; on Vercel the route's maxDuration clamps first.
  */
 export async function complete({
   model,
@@ -298,10 +299,10 @@ export async function complete({
         session_id: sessionId,
       }).toString();
 
-      // 30s hard timeout — combines the caller's signal with a timeout
+      // 300s hard timeout — combines the caller's signal with a timeout
       // abort so either one fires the abort.
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 300_000);
       const onCallerAbort = () => controller.abort();
       if (signal) signal.addEventListener("abort", onCallerAbort, { once: true });
 

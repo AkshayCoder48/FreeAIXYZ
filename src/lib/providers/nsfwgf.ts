@@ -1,3 +1,5 @@
+// NSFWGF provider — uncensored models via nsfwgirlfriend.com with automated
+// disposable-email account rotation. See agent-ctx + worklog for protocol.
 /**
  * NSFWGF provider (www.nsfwgirlfriend.com) — uncensored companion-chat
  * backend with automated email-account rotation.
@@ -478,6 +480,10 @@ function buildNsfwgfBody(
     session_date: date,
     gender: "Female",
     userGender: "Unknown",
+    // Ask for long outputs — honored only if the character server respects
+    // OpenAI-style max_tokens; auto-continuation covers the case where it
+    // doesn't (the observed default).
+    max_tokens: 8192,
   };
 }
 
@@ -567,38 +573,50 @@ async function fetchUpstream(
   throw lastErr ?? new Error("nsfwgf: upstream retries exhausted");
 }
 
-/** Parse one SSE line → content delta (OpenAI-shaped chunks). */
-function parseSseLine(line: string): string | null {
+/** Parse one SSE line → { delta, finish } (OpenAI-shaped chunks). */
+function parseSseLine(line: string): { delta: string | null; finish: string | null } | null {
   const t = line.trim();
   if (!t.startsWith("data:")) return null;
   const raw = t.slice(5).trim();
   if (!raw || raw === "[DONE]") return null;
   try {
     const json = JSON.parse(raw) as {
-      choices?: Array<{ delta?: { content?: string } }>;
+      choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
     };
-    const c = json.choices?.[0]?.delta?.content;
-    return typeof c === "string" && c ? c : null;
+    const choice = json.choices?.[0];
+    const c = typeof choice?.delta?.content === "string" && choice.delta.content
+      ? choice.delta.content
+      : null;
+    const finish = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+    if (c || finish) return { delta: c, finish };
+    return null;
   } catch {
     return null;
   }
 }
 
+/** Result of one upstream generation segment. */
+interface SegmentResult {
+  text: string;
+  finishReason: string | null;
+}
+
 /**
- * Stream the upstream response, yielding content deltas as they arrive.
- * Retries ONCE with a fresh session if the whole stream comes back empty
- * (sft-7b intermittently 200s with zero content — ~10% of requests).
+ * Stream ONE upstream generation segment, yielding content deltas as they
+ * arrive. Retries ONCE with a fresh session if the whole stream comes back
+ * empty (sft-7b intermittently 200s with zero content — ~10% of requests).
  */
-async function* streamWithRetry(
+async function* segment(
   req: ProviderCompletionRequest,
-): AsyncGenerator<string, void, unknown> {
+): AsyncGenerator<string, SegmentResult, unknown> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetchUpstream(req, true);
     if (!res.body) throw new Error("nsfwgf: upstream returned no body");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let yielded = false;
+    let text = "";
+    let finishReason: string | null = null;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -607,18 +625,20 @@ async function* streamWithRetry(
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const delta = parseSseLine(line);
-          if (delta) {
-            yielded = true;
-            yield delta;
+          const parsed = parseSseLine(line);
+          if (parsed?.delta) {
+            text += parsed.delta;
+            yield parsed.delta;
           }
+          if (parsed?.finish) finishReason = parsed.finish;
         }
       }
       const tail = parseSseLine(buffer);
-      if (tail) {
-        yielded = true;
-        yield tail;
+      if (tail?.delta) {
+        text += tail.delta;
+        yield tail.delta;
       }
+      if (tail?.finish) finishReason = tail.finish;
     } finally {
       try {
         reader.releaseLock();
@@ -626,10 +646,134 @@ async function* streamWithRetry(
         /* best-effort */
       }
     }
-    if (yielded) return;
+    if (text.length > 0) return { text, finishReason };
     // Empty 200 — one fresh retry before surfacing an error.
   }
   throw new Error("nsfwgf: upstream returned an empty response (after retry)");
+}
+
+// ───────────────────── auto-continuation (upstream output cap) ─────────────
+
+/**
+ * UPSTREAM CAP WORKAROUND — the root cause of "the AI stops whenever it
+ * wants": the character server HARD-CAPS every generation at ~300
+ * completion tokens (measured: 296 deltas / ~1.16k chars — deterministically
+ * the same size every time) and labels it finish_reason "stop", so clients
+ * cannot tell a cap hit from a natural end. `max_tokens` is ignored
+ * upstream (verified live — identical capped output with 8192 requested).
+ *
+ * The ONLY way to deliver long outputs: CONTINUE. Feed the accumulated text
+ * back as assistant context and re-request until the model signals a real
+ * end (sub-cap segment, a DONE marker, or an empty continuation). To the
+ * client this is one seamless stream.
+ */
+const SEGMENT_CAP_CHARS = 1000; // finish=stop segment ≥ this ⇒ likely a cap hit
+const MAX_CONTINUATION_ROUNDS = 24; // ≈ 7k tokens total — effectively unlimited
+const DONE_MARKER_RE = /^DONE\b/i;
+const CONTINUE_INSTRUCTION =
+  "Continue your previous response EXACTLY where it stopped mid-text. Do not repeat anything, do not add commentary or apologies, do not restart — output ONLY the seamless continuation. If the previous response was already complete and nothing is missing, reply with exactly: DONE";
+
+function shouldContinue(roundText: string, finishReason: string | null): boolean {
+  if (!roundText.trim()) return false;
+  if (finishReason === "length") return true; // definitive cap signal
+  // The upstream sometimes reports "stop" on cap hits (observed once per
+  // model); capped segments land in a tight ~1050–1200 char band, so treat
+  // near-cap-length stop segments as capped too. The DONE-marker swallow
+  // makes the occasional false positive harmless (one wasted round).
+  return roundText.length >= SEGMENT_CAP_CHARS;
+}
+
+async function* streamWithAutoContinue(
+  req: ProviderCompletionRequest,
+): AsyncGenerator<string, void, unknown> {
+  const baseMessages = req.messages;
+  let accumulated = "";
+
+  // Round 0 — the original request.
+  const first = yield* segment(req);
+  accumulated += first.text;
+  let roundText = first.text;
+  let roundFinish = first.finishReason;
+
+  for (let round = 1; round <= MAX_CONTINUATION_ROUNDS; round++) {
+    if (req.signal?.aborted) return;
+    if (!shouldContinue(roundText, roundFinish)) {
+      console.error(`[NSFWGF-CONT] round ${round}: stopping (roundLen=${roundText.length} finish=${roundFinish})`);
+      return;
+    }
+    console.error(`[NSFWGF-CONT] round ${round}: continuing (roundLen=${roundText.length} finish=${roundFinish})`);
+
+    const contReq: ProviderCompletionRequest = {
+      ...req,
+      messages: [
+        ...baseMessages,
+        { role: "assistant", content: accumulated },
+        { role: "user", content: CONTINUE_INSTRUCTION },
+      ],
+    };
+
+    const gen = segment(contReq);
+    let pending = ""; // hold-back buffer for the DONE-marker check
+    let holding = true;
+    let contText = "";
+    let contFinish: string | null = null;
+    let swallowed = false;
+    try {
+      while (true) {
+        const n = await gen.next();
+        if (n.done) {
+          contFinish = (n.value as SegmentResult | undefined)?.finishReason ?? null;
+          if (holding && pending) {
+            if (DONE_MARKER_RE.test(pending.trimStart())) swallowed = true;
+            else yield pending;
+          }
+          break;
+        }
+        const delta = n.value as string;
+        contText += delta;
+        if (holding) {
+          pending += delta;
+          if (DONE_MARKER_RE.test(pending.trimStart())) {
+            swallowed = true;
+            break;
+          }
+          if (pending.trimStart().length >= 24) {
+            holding = false;
+            yield pending;
+            pending = "";
+          }
+        } else {
+          yield delta;
+        }
+      }
+    } catch (err) {
+      // A failed continuation round must NOT error the stream — the client
+      // already holds a coherent (long) text; end gracefully instead.
+      console.error(`[NSFWGF-CONT] round ${round}: FAILED — ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    } finally {
+      try {
+        // Cast: gen.return()'s parameter must match the declared return type,
+        // but we only ever use it to run the segment's cleanup path.
+        await gen.return(undefined as unknown as SegmentResult);
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+
+    if (swallowed) {
+      console.error(`[NSFWGF-CONT] round ${round}: model replied DONE — natural end`);
+      return; // model confirmed the text was already complete
+    }
+    if (!contText.trim()) {
+      console.error(`[NSFWGF-CONT] round ${round}: empty continuation — natural end`);
+      return;
+    }
+    console.error(`[NSFWGF-CONT] round ${round}: +${contText.length} chars (finish=${contFinish}) — continuing`);
+    accumulated += contText;
+    roundText = contText;
+    roundFinish = contFinish;
+  }
 }
 
 export const nsfwgfProvider: Provider = {
@@ -637,7 +781,7 @@ export const nsfwgfProvider: Provider = {
 
   async complete(req: ProviderCompletionRequest): Promise<{ text: string }> {
     let text = "";
-    for await (const delta of streamWithRetry(req)) {
+    for await (const delta of streamWithAutoContinue(req)) {
       text += delta;
     }
     if (!text.trim()) {
@@ -647,6 +791,6 @@ export const nsfwgfProvider: Provider = {
   },
 
   async *stream(req: ProviderCompletionRequest): AsyncGenerator<string, void, unknown> {
-    yield* streamWithRetry(req);
+    yield* streamWithAutoContinue(req);
   },
 };

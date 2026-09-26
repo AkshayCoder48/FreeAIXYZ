@@ -297,12 +297,16 @@ async function* streamFromUpstream(
   if (wantsWebSearch) params += "&frontend_web_search_active=true";
   const sseUrl = `${AJAX_URL}?${params}`;
 
-  // ─── UNLIMITED OUTPUT: 270s generation window. The old 120s cap cut long
-  // generations mid-string — a truncated tool call failed JSON.parse and
-  // leaked to the client as raw text. 270s + ~10s of cache/nonce work stays
-  // inside the route's 300s maxDuration budget (and local dev has no cap).
+  // ─── UNLIMITED OUTPUT: 1800s (30 min) generation window — effectively
+  // "until the upstream stops". The old 120s cap cut long generations
+  // mid-string (truncated tool calls leaked as raw text); the 270s interim
+  // fix still cut very long/slow generations — clients saw the stream
+  // "stop whenever it wants" with no [DONE] and no finish_reason. On Vercel
+  // the route's 300s maxDuration clamps first (platform limit); local dev
+  // has no cap, so 1800s governs. Client disconnects kill curl early via
+  // gen.return() → finally { proc.kill() }.
   const { spawn } = require("child_process") as typeof import("child_process");
-  const proc = spawn("curl", ["-s", "-N", "--max-time", "270", "-H", `User-Agent: ${UA}`, "-H", `Referer: ${CHAT_URL}`, "-H", "Origin: https://unlimitedai.org", "-H", "Accept: text/event-stream", sseUrl]);
+  const proc = spawn("curl", ["-s", "-N", "--max-time", "1800", "-H", `User-Agent: ${UA}`, "-H", `Referer: ${CHAT_URL}`, "-H", "Origin: https://unlimitedai.org", "-H", "Accept: text/event-stream", sseUrl]);
 
   let buf = "";
   try {
