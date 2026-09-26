@@ -670,8 +670,22 @@ async function* segment(
 const SEGMENT_CAP_CHARS = 1000; // finish=stop segment ≥ this ⇒ likely a cap hit
 const MAX_CONTINUATION_ROUNDS = 24; // ≈ 7k tokens total — effectively unlimited
 const DONE_MARKER_RE = /^DONE\b/i;
+/** Head/tail overlap window — models often re-emit the last few tokens of
+ *  the cut-off text at the start of a continuation (e.g. segment ends
+ *  "const directionalLight" and the continuation starts
+ *  "const directionalLight = new …"). Trim that duplicated prefix. */
+const OVERLAP_WINDOW = 600;
 const CONTINUE_INSTRUCTION =
-  "Continue your previous response EXACTLY where it stopped mid-text. Do not repeat anything, do not add commentary or apologies, do not restart — output ONLY the seamless continuation. If the previous response was already complete and nothing is missing, reply with exactly: DONE";
+  "Continue your previous response EXACTLY from its last character — begin mid-word or mid-line if that is where it stopped. Do not repeat any text you already wrote. Output ONLY the continuation, no commentary. If the previous response was already complete, reply with exactly: DONE";
+
+/** Longest suffix of `acc` that is also a prefix of `cont` (≥ 8 chars). */
+function overlapTrimLen(acc: string, cont: string): number {
+  const max = Math.min(acc.length, cont.length, OVERLAP_WINDOW);
+  for (let k = max; k >= 8; k--) {
+    if (acc.endsWith(cont.slice(0, k))) return k;
+  }
+  return 0;
+}
 
 function shouldContinue(roundText: string, finishReason: string | null): boolean {
   if (!roundText.trim()) return false;
@@ -713,9 +727,10 @@ async function* streamWithAutoContinue(
     };
 
     const gen = segment(contReq);
-    let pending = ""; // hold-back buffer for the DONE-marker check
+    let pending = ""; // hold-back buffer for DONE-marker + overlap detection
     let holding = true;
-    let contText = "";
+    let contText = ""; // RAW text of this round (for cap detection)
+    let yieldedText = ""; // what the client actually sees (post-trim)
     let contFinish: string | null = null;
     let swallowed = false;
     try {
@@ -724,8 +739,16 @@ async function* streamWithAutoContinue(
         if (n.done) {
           contFinish = (n.value as SegmentResult | undefined)?.finishReason ?? null;
           if (holding && pending) {
-            if (DONE_MARKER_RE.test(pending.trimStart())) swallowed = true;
-            else yield pending;
+            if (DONE_MARKER_RE.test(pending.trimStart())) {
+              swallowed = true;
+            } else {
+              const trim = overlapTrimLen(accumulated, pending);
+              const out = pending.slice(trim);
+              if (out) {
+                yieldedText += out;
+                yield out;
+              }
+            }
           }
           break;
         }
@@ -737,12 +760,19 @@ async function* streamWithAutoContinue(
             swallowed = true;
             break;
           }
-          if (pending.trimStart().length >= 24) {
+          if (pending.length >= OVERLAP_WINDOW) {
+            // Full window available — decide the one-time trim, then flush.
+            const trim = overlapTrimLen(accumulated, pending);
+            const out = pending.slice(trim);
+            if (out) {
+              yieldedText += out;
+              yield out;
+            }
             holding = false;
-            yield pending;
             pending = "";
           }
         } else {
+          yieldedText += delta;
           yield delta;
         }
       }
@@ -769,8 +799,10 @@ async function* streamWithAutoContinue(
       console.error(`[NSFWGF-CONT] round ${round}: empty continuation — natural end`);
       return;
     }
-    console.error(`[NSFWGF-CONT] round ${round}: +${contText.length} chars (finish=${contFinish}) — continuing`);
-    accumulated += contText;
+    console.error(
+      `[NSFWGF-CONT] round ${round}: raw +${contText.length} chars, yielded +${yieldedText.length} (finish=${contFinish}) — continuing`,
+    );
+    accumulated += yieldedText;
     roundText = contText;
     roundFinish = contFinish;
   }
