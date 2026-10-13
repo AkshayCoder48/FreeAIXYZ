@@ -33,6 +33,7 @@ import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
 import { isTransientUpstreamError, retryDelayMs, sleep } from "@/lib/gateway/retry";
+import { wrapStreamWithAutoContinue } from "@/lib/gateway/auto-continue";
 import type {
   ChatRequest,
   ProviderAdapter,
@@ -135,7 +136,13 @@ class StreamingProxyService {
         timings.upstreamRequestStart = timings.upstreamRequestStart ?? Date.now();
         let gen: AsyncGenerator<string, void, unknown>;
         try {
-          gen = candidate.adapter.stream(candidate.req);
+          // GENERIC AUTO-CONTINUE (see lib/gateway/auto-continue.ts): the
+          // wrapped generator forwards every delta unchanged while the text
+          // looks complete; when a provider ends mid-code (unclosed fence /
+          // unbalanced brackets), it transparently continues through the
+          // same adapter until the upstream truly stops. Tool-carrying
+          // requests pass through un-wrapped.
+          gen = wrapStreamWithAutoContinue(candidate.adapter, candidate.req);
         } catch (err) {
           preflightErr = this.wrapUnknownStreamErr(
             err,

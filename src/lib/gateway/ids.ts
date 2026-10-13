@@ -56,6 +56,17 @@ export const PROVIDER_SHORT_IDS: readonly ProviderShortIdEntry[] = [
   // Automated disposable-email account rotation (mail.tm magic-link signin;
   // each fresh account = 50 free messages, rotated at 44 → unlimited).
   { id: "nsfwgf", shortId: "ng", name: "NSFWGF", baseUrl: "https://www.nsfwgirlfriend.com" },
+  // Task 4 (GPT-AI import, github.com/OshekharO/GPT-AI): scraper-backed free
+  // chat upstreams, live-tested 2026-10-13. 15 endpoints probed — 9 were
+  // dead / key-walled / quota-locked and dropped; these 6 imported:
+  //   g2 = goody2.ai, cs = Chat Smith (Vulcan Labs), cf = chatwithfiction.com,
+  //   bk = bookai.chat, pa = publicai.co, dp = beta.dopple.ai
+  { id: "goody2", shortId: "g2", name: "Goody2", baseUrl: "https://www.goody2.ai" },
+  { id: "chatsmith", shortId: "cs", name: "Chat Smith", baseUrl: "https://api.vulcanlabs.co" },
+  { id: "chatwithfiction", shortId: "cf", name: "ChatWithFiction", baseUrl: "https://www.chatwithfiction.com" },
+  { id: "bookai", shortId: "bk", name: "BookAI", baseUrl: "https://api.bookai.chat:2096" },
+  { id: "publicai", shortId: "pa", name: "PublicAI", baseUrl: "https://publicai.co" },
+  { id: "dopple", shortId: "dp", name: "Dopple AI", baseUrl: "https://beta.dopple.ai" },
   // Image providers (no chat adapter but used for image model catalog).
   { id: "jollygen-image", shortId: "ji", name: "JollyGen Image", baseUrl: "https://api.jollygenapi.space" },
   { id: "aianime", shortId: "ai", name: "AIAnime", baseUrl: "https://api.aianime.io" },

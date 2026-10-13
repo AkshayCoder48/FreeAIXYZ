@@ -37,7 +37,21 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  // StrictMode ON (perf pass, 3-perf): double-invokes effects in DEV only
+  // (catches missing cleanup — e.g. leaked rAF/observer listeners); zero
+  // effect on the production bundle. All playground effects were verified
+  // idempotent under the mount→unmount→mount cycle (guards + functional
+  // setState).
+  reactStrictMode: true,
+  // ── Perf pass (3-perf): cheap, zero-risk server/transport wins ──
+  // Drop the X-Powered-By response header (bytes + fingerprinting).
+  poweredByHeader: false,
+  // gzip/brotli compress responses at the platform layer (Vercel edge
+  // handles this anyway; explicit for self-hosted standalone runs).
+  compress: true,
+  // No browser source maps in production (default; pinned explicitly so
+  // the perf posture is documented and cannot regress silently).
+  productionBrowserSourceMaps: false,
   // NOTE (2026-08-31): the dev script runs `next dev --webpack` (see
   // package.json) instead of the Turbopack default. Rationale: this box has
   // only 4GB RAM and Turbopack's incremental compiler + hot-module graph

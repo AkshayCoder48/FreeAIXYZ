@@ -3,14 +3,14 @@
 /**
  * DocBlocks — renderer for the FreeAIXYZ documentation content model.
  *
- * Every block renders in the WARM AURORA design language:
- *   - paragraphs: Inter 14.5px on near-black;
- *   - code: dark-glass mono blocks with a warm header row (traffic lights
- *     + lang badge) and a tiny warm-palette tokenizer (comments muted,
- *     strings amber, numbers coral, keywords cream) — NO blue/purple;
- *   - tables: warm hairlines, mono uppercase headers;
- *   - callouts: warm-tinted glass (info coral / warn amber / tip neutral);
- *   - kbd: the keycap-styled mono chips.
+ * Every block renders in the HyperDimension design language:
+ *   - paragraphs: Geist 14.5px on #111319;
+ *   - code: obsidian mono blocks with a crimson header row (traffic lights
+ *     + lang badge) and the warm HyperDimension tokenizer (comments wine,
+ *     strings blush, numbers ember, keywords crimson) — NO blue/purple;
+ *   - tables: crimson hairlines, mono uppercase headers;
+ *   - callouts: crimson/ember/gold-tinted glass;
+ *   - kbd: the crimson mono chips.
  *
  * Paragraph text supports a markdown-lite inline grammar:
  *   **bold**  `code`  [label](href)
@@ -50,7 +50,7 @@ function InlineText({ text }: { text: string }) {
             <a
               key={i}
               href={link[2]}
-              className="text-[#ff8a6b] hover:text-[#ffb347] underline decoration-[#ff6b4a]/40 underline-offset-2 transition-colors"
+              className="text-blush hover:text-gold underline decoration-crimson/40 underline-offset-2 transition-colors"
             >
               {link[1]}
             </a>
@@ -86,25 +86,25 @@ function CodeLine({ line }: { line: string }) {
     const [tok, comment, hash, str, num, kw] = m;
     if (comment || hash) {
       pieces.push(
-        <span key={pieces.length} className="text-[#7c7c7f] italic">
+        <span key={pieces.length} className="text-[#8a5a5e] italic">
           {tok}
         </span>,
       );
     } else if (str) {
       pieces.push(
-        <span key={pieces.length} className="text-[#ffb347]">
+        <span key={pieces.length} className="text-blush">
           {tok}
         </span>,
       );
     } else if (num) {
       pieces.push(
-        <span key={pieces.length} className="text-[#ff8a6b]">
+        <span key={pieces.length} className="text-ember">
           {tok}
         </span>,
       );
     } else if (kw) {
       pieces.push(
-        <span key={pieces.length} className="text-[#ffd9cd]">
+        <span key={pieces.length} className="text-crimson font-semibold">
           {tok}
         </span>,
       );
@@ -129,15 +129,15 @@ function CodeBlock({
   const lines = code.split("\n");
   return (
     <div className="fxz-cmdbar overflow-hidden my-4" aria-label={title ?? "Code example"}>
-      {/* Header row — warm traffic lights + language badge */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.07]">
+      {/* Header row — crimson traffic lights + language badge */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-hd-highest/60">
         <div className="flex items-center gap-2">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff2f3a]/70" />
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ff6b4a]/70" />
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#ffb347]/70" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-crimson shadow-[0_0_6px_rgba(255,42,85,0.8)]" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-ember shadow-[0_0_6px_rgba(255,133,13,0.8)]" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-gold" />
           {title && (
             <span
-              className="ml-2 text-[10.5px] text-[#9c9c9d] truncate"
+              className="ml-2 text-[10.5px] text-muted-foreground truncate"
               style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
             >
               {title}
@@ -145,14 +145,14 @@ function CodeBlock({
           )}
         </div>
         <span
-          className="shrink-0 text-[10px] uppercase tracking-[0.15em] text-[#ff8a6b]"
+          className="shrink-0 text-[10px] uppercase tracking-[0.15em] text-ember"
           style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
         >
           {lang ?? "text"}
         </span>
       </div>
       <pre
-        className="overflow-x-auto px-4 sm:px-5 py-4 text-[12px] leading-[1.7] text-[#e2e2e4] custom-scroll"
+        className="overflow-x-auto px-4 sm:px-5 py-4 text-[12px] leading-[1.7] text-[#e2e2ea] custom-scroll"
         style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
       >
         <code>
@@ -192,7 +192,7 @@ function Callout({
   const Icon = meta.icon;
   return (
     <div className={`fxz-docs-callout ${meta.cls} my-4 flex gap-3`}>
-      <Icon className="h-4 w-4 shrink-0 mt-0.5 text-[#ff8a6b]" />
+      <Icon className="h-4 w-4 shrink-0 mt-0.5 text-ember" />
       <div className="min-w-0">
         <p className="font-semibold text-white text-[13px] mb-1">
           {title ?? meta.label}
@@ -242,17 +242,17 @@ function KbdRow({ items }: { items: { keys: string; label: string }[] }) {
   return (
     <div className="my-4 fxz-code-block rounded-[10px] p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 flex-wrap">
       <span
-        className="text-[10px] uppercase tracking-[0.15em] text-[#7c7c7f] shrink-0"
+        className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground shrink-0"
         style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
       >
-        <Terminal className="inline h-3 w-3 mr-1.5 -mt-0.5 text-[#ff8a6b]" />
+        <Terminal className="inline h-3 w-3 mr-1.5 -mt-0.5 text-crimson" />
         shortcuts
       </span>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         {items.map((item) => (
           <span key={item.keys} className="inline-flex items-center gap-2.5">
             <span className="fxz-kbd">{item.keys}</span>
-            <span className="text-xs text-[#9c9c9d]">{item.label}</span>
+            <span className="text-xs text-muted-foreground">{item.label}</span>
           </span>
         ))}
       </div>
@@ -283,7 +283,7 @@ export function DocBlockView({ block }: { block: DocBlock }) {
           className={`my-3.5 pl-6 ${block.ordered ? "list-decimal" : "list-disc"}`}
         >
           {block.items.map((item, i) => (
-            <li key={i} className="my-1.5 marker:text-[#ff6b4a]/70">
+            <li key={i} className="my-1.5 marker:text-crimson/70">
               <InlineText text={item} />
             </li>
           ))}

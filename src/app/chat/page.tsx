@@ -1,10 +1,10 @@
 /**
- * /chat — Native models playground (WARM AURORA design).
+ * /chat — Native models playground (HyperDimension AI "Crimson Orb" design).
  *
  * RSC. Serializes the STATIC native model catalog (bundled at build time —
  * no fetch, no discovery, no credentials) to the client island, which owns
  * the interactive chat surface (state machine, SSE streaming, markdown render).
- * Shell: floating pill nav + dimmed living aurora + dark-glass panels.
+ * Shell: floating pill nav + dimmed crimson orb backdrop + obsidian panels.
  */
 
 import type { Metadata } from "next";
@@ -25,7 +25,7 @@ import {
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: "Chat Playground — FreeAIXYZ",
+  title: "Chat Playground — HyperDimension AI",
   description:
     "Streaming chat playground with native free models. Real SSE deltas, token-by-token streaming, tool calling — no API key required.",
 };
@@ -50,7 +50,7 @@ export default function ChatPage() {
     <AuroraShell>
       <div className="pt-10 sm:pt-14 flex flex-col gap-8 min-w-0">
         <AuroraPageHeader
-          eyebrow="Chat playground"
+          eyebrow="Crimson core // chat playground"
           title="Send a message. Watch it stream."
           gradientWord="stream"
           lede={

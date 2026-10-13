@@ -1,20 +1,21 @@
 "use client";
 
 /**
- * AuroraShell — the shared WARM AURORA app chrome for every content page
- * (playground, models, docs).
+ * AuroraShell — the shared app chrome for every content page (playground,
+ * models, docs), skinned in the HyperDimension AI "Crimson Orb" design system.
  *
- * Design language (identical to the landing hero):
- *   - near-black ground #07080a with living warm light-blades
- *     (crimson #ff2f3a → coral #ff6b4a → amber #ffb347) drifting + breathing
- *     on pure-CSS keyframes, layered under film-grain + vignette;
- *   - a floating dark-glass PILL NAV (backdrop-blur, hairline border,
- *     inner-top highlight) with the warm diamond glyph + wordmark;
- *   - tactile keycap accents, warm mono captions;
- *   - strictly WARM — no purple/indigo/violet anywhere.
+ * Design language (Stitch 3D UI kit):
+ *   - ground #111319 with a dim, static crimson orb bloom + ambient ember
+ *     glows pinned behind the content (pure CSS, no canvas on content pages);
+ *   - a floating dark-glass PILL NAV (backdrop-blur, crimson hairline,
+ *     inner-top highlight) with the glowing orb glyph + Space Grotesk
+ *     wordmark and the mono "Crimson Core Matrix" tagline;
+ *   - JetBrains Mono captions, crimson active states, ember accents;
+ *   - strictly WARM — no blue/indigo anywhere.
  *
- * The background layer is position:fixed and dimmed (`.fxz-blades-dim`) so
- * long scrolling content (docs) stays readable while the aurora stays alive.
+ * The sticky-footer pattern is preserved: the shell root is
+ * `min-h-screen flex flex-col` and the footer uses `mt-auto`, so short pages
+ * pin the footer to the viewport bottom while long pages push it down.
  */
 
 import * as React from "react";
@@ -31,16 +32,17 @@ const NAV_LINKS = [
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 
-/** Warm diamond glyph — the brand mark (crimson → coral → amber). */
+/** Glowing crimson orb glyph — the HyperDimension brand mark. */
 export function AuroraGlyph({ size = 14 }: { size?: number }) {
   return (
     <span
-      className="inline-block shrink-0 rotate-45 rounded-[3px]"
+      className="inline-block shrink-0 rounded-full"
       style={{
         width: size,
         height: size,
-        background: "linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%)",
-        boxShadow: "0 0 12px rgba(255,47,58,0.55)",
+        background:
+          "radial-gradient(circle at 35% 30%, #fff3e2 0%, #ff850d 30%, #ff2a55 65%, #92002a 100%)",
+        boxShadow: "0 0 12px rgba(255,42,85,0.75), 0 0 4px rgba(255,133,13,0.6)",
       }}
       aria-hidden="true"
     />
@@ -85,18 +87,23 @@ export function AuroraNav() {
     <header className="sticky top-4 z-50 px-4 flex justify-center">
       <div ref={menuRef} className="relative w-full max-w-3xl">
         <nav
-          className="flex items-center justify-between rounded-full border border-white/10 bg-black/60 backdrop-blur-xl px-4 sm:px-5 py-2.5"
+          className="flex items-center justify-between rounded-full border border-crimson/25 bg-hd-deep/80 backdrop-blur-xl px-4 sm:px-5 py-2.5"
           style={{
             boxShadow:
-              "0 18px 50px -18px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07)",
+              "0 18px 50px -18px rgba(0,0,0,0.9), 0 0 22px rgba(255,42,85,0.14), inset 0 1px 0 rgba(255,255,255,0.07)",
           }}
           aria-label="Main navigation"
         >
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <AuroraGlyph />
-            <span className="text-[15px] font-semibold tracking-tight text-white">
-              FreeAI<span className="text-zinc-500">XYZ</span>
+            <AuroraGlyph size={16} />
+            <span className="flex flex-col leading-none">
+              <span className="font-display text-[15px] font-bold tracking-tight text-white">
+                HyperDimension<span className="text-crimson">AI</span>
+              </span>
+              <span className="font-mono text-[8.5px] uppercase tracking-[0.22em] text-muted-foreground mt-1">
+                Crimson Core Matrix
+              </span>
             </span>
           </Link>
 
@@ -111,11 +118,16 @@ export function AuroraNav() {
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex items-center gap-1.5 text-sm font-medium transition-colors",
-                    active ? "text-white" : "text-[#9c9c9d] hover:text-white",
+                    active
+                      ? "text-white"
+                      : "text-muted-foreground hover:text-white",
                   )}
                 >
                   <Icon
-                    className={cn("h-3.5 w-3.5", active ? "text-[#ff6b4a]" : "text-[#7c7c7f]")}
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      active ? "text-crimson" : "text-hd-line",
+                    )}
                     strokeWidth={1.75}
                   />
                   {label}
@@ -133,7 +145,7 @@ export function AuroraNav() {
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-zinc-300 hover:text-white transition-colors"
+              className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-crimson/25 text-muted-foreground hover:text-white transition-colors"
               aria-label={open ? "Close menu" : "Open menu"}
               aria-expanded={open}
             >
@@ -146,11 +158,14 @@ export function AuroraNav() {
           </div>
         </nav>
 
-        {/* Mobile dropdown (dark glass, warm active) */}
+        {/* Mobile dropdown (dark glass, crimson active) */}
         {open && (
           <div
-            className="md:hidden absolute left-0 right-0 top-[calc(100%+10px)] rounded-2xl border border-white/10 bg-black/85 backdrop-blur-xl p-2"
-            style={{ boxShadow: "0 24px 60px -18px rgba(0,0,0,0.95), inset 0 1px 0 rgba(255,255,255,0.06)" }}
+            className="md:hidden absolute left-0 right-0 top-[calc(100%+10px)] rounded-2xl border border-crimson/25 bg-hd-deep/90 backdrop-blur-xl p-2"
+            style={{
+              boxShadow:
+                "0 24px 60px -18px rgba(0,0,0,0.95), 0 0 26px rgba(255,42,85,0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
           >
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
               const active = isActive(href);
@@ -162,11 +177,14 @@ export function AuroraNav() {
                     "flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition-colors",
                     active
                       ? "fxz-docs-navitem-active"
-                      : "text-[#9c9c9d] hover:text-white hover:bg-white/[0.04]",
+                      : "text-muted-foreground hover:text-white hover:bg-white/[0.04]",
                   )}
                 >
                   <Icon
-                    className={cn("h-4 w-4", active ? "text-[#ff6b4a]" : "text-[#7c7c7f]")}
+                    className={cn(
+                      "h-4 w-4",
+                      active ? "text-crimson" : "text-hd-line",
+                    )}
                     strokeWidth={1.75}
                   />
                   {label}
@@ -184,20 +202,14 @@ export function AuroraNav() {
   );
 }
 
-// ─── Fixed warm aurora background (dimmed for content pages) ─────────────────
+// ─── Fixed HyperDimension backdrop (dimmed for content pages) ────────────────
 
 export function AuroraBackground() {
   return (
     <div aria-hidden className="pointer-events-none">
-      <div className="fxz-blades fxz-blades-dim">
-        <div className="fxz-blade fxz-blade-1" />
-        <div className="fxz-blade fxz-blade-2" />
-        <div className="fxz-blade fxz-blade-3" />
-        <div className="fxz-blade fxz-blade-4" />
-        <div className="fxz-aurora-core" />
-      </div>
+      <div className="fxz-hd-backdrop" />
+      <div className="fxz-hd-backdrop-orb" />
       <div className="fxz-grain fxz-grain-fixed" />
-      <div className="fxz-vignette fxz-grain-fixed" />
     </div>
   );
 }
@@ -206,26 +218,26 @@ export function AuroraBackground() {
 
 export function AuroraFooter({ children }: { children?: React.ReactNode }) {
   return (
-    <footer className="mt-auto relative z-10 border-t border-white/[0.06] bg-black/40">
-      <div className="mx-auto max-w-6xl px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#7c7c7f]">
+    <footer className="mt-auto relative z-10 border-t border-crimson/20 bg-hd-deep/80 backdrop-blur-md">
+      <div className="mx-auto max-w-6xl px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-2.5">
           <AuroraGlyph size={10} />
-          <span className="text-zinc-400">FreeAIXYZ — free AI gateway</span>
+          <span className="text-[#e2e2ea]">
+            HyperDimension AI — free AI gateway
+          </span>
         </div>
         <div className="flex items-center gap-6">
-          <Link href="/chat" className="hover:text-zinc-200 transition-colors">
+          <Link href="/chat" className="hover:text-white transition-colors">
             Playground
           </Link>
-          <Link href="/models" className="hover:text-zinc-200 transition-colors">
+          <Link href="/models" className="hover:text-white transition-colors">
             Models
           </Link>
-          <Link href="/docs" className="hover:text-zinc-200 transition-colors">
+          <Link href="/docs" className="hover:text-white transition-colors">
             Docs
           </Link>
         </div>
-        <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}>
-          GET /health · GET /ready
-        </span>
+        <span className="font-mono">GET /health · GET /ready</span>
       </div>
       {children}
     </footer>
@@ -242,7 +254,6 @@ export function AuroraPageHeader({
 }: {
   eyebrow: string;
   title: string;
-  /** The ONE word rendered with the warm amber→crimson gradient. */
   gradientWord?: string;
   lede?: React.ReactNode;
 }) {
@@ -264,7 +275,9 @@ export function AuroraPageHeader({
         )}
       </h1>
       {lede && (
-        <p className="text-[15px] leading-relaxed text-[#9c9c9d] max-w-2xl">{lede}</p>
+        <p className="text-[15px] leading-relaxed text-muted-foreground max-w-2xl">
+          {lede}
+        </p>
       )}
     </div>
   );
@@ -282,7 +295,7 @@ export function AuroraShell({
   className?: string;
 }) {
   return (
-    <div className={cn("fxz-aurora-root min-h-screen flex flex-col text-white", className)}>
+    <div className={cn("fxz-aurora-root min-h-screen flex flex-col text-[#e2e2ea]", className)}>
       <AuroraBackground />
       <AuroraNav />
       <main className="relative z-10 flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 pb-16 min-w-0">

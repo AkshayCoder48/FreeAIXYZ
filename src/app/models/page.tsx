@@ -11,18 +11,22 @@ import {
   type NativeModel,
 } from "@/lib/native-catalog";
 
+// Pure static content (no dynamic APIs, no fetches) — prerendered at build
+// time and served from the CDN edge. Explicit for honesty (perf pass 3-perf).
+export const dynamic = "force-static";
+
 export const metadata = {
-  title: "Models — FreeAIXYZ",
+  title: "Models — HyperDimension AI",
   description:
     "Searchable catalog of every native model, grouped by provider with capability badges. Static registry, no API key required.",
 };
 
 /**
- * /models page (WARM AURORA design).
+ * /models page (HyperDimension AI "Crimson Orb" design).
  *
  * Layout: page title + search → provider filter tabs → provider sections,
- * each containing a responsive grid (1 / 2 / 3 cols) of dark-glass model
- * cards with warm capability badges.
+ * each containing a responsive grid (1 / 2 / 3 cols) of obsidian model
+ * cards with crimson/ember rims and mono capability badges.
  *
  * Data comes from the STATIC native registry (bundled at build time) —
  * the interactive catalog receives it via props; it never fetches.

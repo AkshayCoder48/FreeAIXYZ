@@ -88,7 +88,14 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import type { Components } from "react-markdown";
+// PrismAsyncLight ships ONLY the refractor core (~8 KB) and lazy-loads each
+// language as its own webpack chunk on first use — the full `Prism` export
+// bundles ALL ~300 language definitions (~1.2 MB min / ~250 KB gzip) into
+// the /chat client bundle. Same package, same props, same theme; unknown
+// languages render as plain code until (and unless) their chunk loads.
+import { PrismAsyncLight as SyntaxHighlighter } from "react-syntax-highlighter";
+import type { PrismTheme } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type {
   NativeModel,
@@ -205,15 +212,15 @@ const PROMPT_SUGGESTIONS = [
   "Write a TypeScript function to debounce another function.",
 ];
 
-// Phase palette — WARM aurora (amber / coral / crimson on near-black).
+// Phase palette — HyperDimension crimson orb (crimson / ember / gold on #111319).
 const PHASE_META: Record<Phase, { label: string; dot: string; text: string; pulse?: boolean }> = {
-  idle: { label: "Idle", dot: "fxz-dot-idle", text: "text-zinc-400" },
-  preparing: { label: "Preparing", dot: "fxz-dot-amber", text: "text-[#ffcf87]", pulse: true },
-  routing: { label: "Routing", dot: "fxz-dot-amber", text: "text-[#ffcf87]", pulse: true },
-  generating: { label: "Generating", dot: "fxz-dot-coral", text: "text-[#ff8a6b]", pulse: true },
-  completed: { label: "Completed", dot: "fxz-dot-amber", text: "text-[#ffcf87]" },
+  idle: { label: "Idle", dot: "fxz-dot-idle", text: "text-muted-foreground" },
+  preparing: { label: "Preparing", dot: "fxz-dot-amber", text: "text-gold", pulse: true },
+  routing: { label: "Routing", dot: "fxz-dot-amber", text: "text-gold", pulse: true },
+  generating: { label: "Generating", dot: "fxz-dot-coral", text: "text-ember", pulse: true },
+  completed: { label: "Completed", dot: "fxz-dot-amber", text: "text-ember" },
   error: { label: "Error", dot: "fxz-dot-crimson", text: "text-[#ff8a92]" },
-  cancelled: { label: "Cancelled", dot: "fxz-dot-idle", text: "text-zinc-500" },
+  cancelled: { label: "Cancelled", dot: "fxz-dot-idle", text: "text-muted-foreground/70" },
 };
 
 /** Icon per built-in tool (matches BUILTIN_TOOL_META order). */
@@ -300,6 +307,126 @@ function formatMs(ms?: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
+
+/**
+ * Strip a trailing standalone "DONE" line from assistant text before it is
+ * rendered or copied — a cosmetic artifact of the gateway's auto-continuation
+ * rounds (text arriving as "...\n\nDONE" or "``` \n\nDONE"). Display-only
+ * cleanup; the raw message state is never altered.
+ */
+function stripTrailingDone(text: string): string {
+  return text.replace(/\n+[ \t]*DONE[ \t\r\n]*$/, "");
+}
+
+/**
+ * HyperDimension syntax theme for code blocks — warm crimson/ember/gold on
+ * obsidian (derived from oneDark's shape, NO blue/indigo hues).
+ */
+const HYPERDIMENSION_THEME: PrismTheme = {
+  ...oneDark,
+  "code[class*=\"language-\"]": {
+    ...oneDark["code[class*=\"language-\"]"],
+    color: "#e2e2ea",
+    fontSize: "12px",
+  },
+  "pre[class*=\"language-\"]": {
+    ...oneDark["pre[class*=\"language-\"]"],
+    color: "#e2e2ea",
+    background: "rgba(12, 14, 19, 0.96)",
+  },
+  "token.comment": { color: "#8a5a5e", fontStyle: "italic" },
+  "token.keyword": { color: "#ff2a55", fontWeight: "600" },
+  "token.string": { color: "#ffb68a" },
+  "token.number": { color: "#ff850d" },
+  "token.function": { color: "#ff850d" },
+  "token.class-name": { color: "#ffba27" },
+  "token.operator": { color: "#e6bcbd" },
+  "token.punctuation": { color: "#e6bcbd" },
+  "token.property": { color: "#ffb3b6" },
+  "token.builtin": { color: "#ffba27" },
+  "token.boolean": { color: "#ff850d" },
+  "token.constant": { color: "#ff850d" },
+  "token.tag": { color: "#ff2a55" },
+  "token.attr-name": { color: "#ffb68a" },
+  "token.attr-value": { color: "#ffba27" },
+  "token.variable": { color: "#e2e2ea" },
+};
+
+// ─── Stable markdown component mapping ──────────────────────────────────────
+
+/**
+ * Module-level `components` map for ReactMarkdown. An inline object (as this
+ * used to be) creates a NEW `code` component type on every render, so React
+ * unmounts and remounts the entire code-block subtree per delta instead of
+ * updating it in place. A stable identity lets React reconcile code blocks
+ * across the throttled re-renders — the single biggest render-path fix here.
+ */
+const MARKDOWN_COMPONENTS: Components = {
+  code({ className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className ?? "");
+    const inline = !match && !String(children).includes("\n");
+    return !inline && match ? (
+      <SyntaxHighlighter
+        {...props}
+        style={HYPERDIMENSION_THEME}
+        language={match[1]}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: "0.5rem",
+          fontSize: "12px",
+          border: "1px solid rgba(255, 42, 85, 0.2)",
+        }}
+      >
+        {String(children).replace(/\n$/, "")}
+      </SyntaxHighlighter>
+    ) : (
+      <code
+        {...props}
+        className={cn(
+          "font-mono text-[12px] rounded px-1 py-0.5 bg-crimson/10 text-blush",
+          className,
+        )}
+      >
+        {children}
+      </code>
+    );
+  },
+};
+
+// ─── Streaming render throttle ──────────────────────────────────────────────
+
+/**
+ * Deltas accumulate in the send() closure's local mirror strings and flush
+ * into React state on this cadence (ms). ~12 markdown re-parses/s is
+ * indistinguishable from per-token rendering but turns the O(n²) total
+ * re-parse cost of a long stream into ~n²/80ms — the difference between a
+ * 3k-delta stream being smooth and freezing a low-end phone. Terminal
+ * transitions (round end / abort / error / complete) force a synchronous
+ * flush so the final render is always full-fidelity.
+ */
+const STREAM_FLUSH_MS = 80;
+
+/** Common languages warmed during idle time so the first code block in a
+ *  chat doesn't flash unhighlighted while its lazy chunk loads. */
+const WARM_LANGUAGES = [
+  "typescript",
+  "tsx",
+  "javascript",
+  "jsx",
+  "python",
+  "bash",
+  "json",
+  "yaml",
+  "markdown",
+  "css",
+  "sql",
+  "rust",
+  "go",
+  "java",
+  "cpp",
+  "c",
+];
 
 // ─── SSE stream reader ──────────────────────────────────────────────────────
 
@@ -546,6 +673,191 @@ class ToolCallAccumulator {
   }
 }
 
+// ─── Message bubble (memoized) ───────────────────────────────────────────
+
+interface ChatMessageItemProps {
+  message: ChatMessage;
+  idx: number;
+  copied: boolean;
+  reasoningOpen: boolean;
+  onToggleReasoning: (id: string) => void;
+  onCopy: (idx: number, text: string) => void;
+}
+
+/**
+ * One chat bubble. Memoized so a streaming update (throttled to
+ * ~STREAM_FLUSH_MS) re-renders ONLY the bubble whose message object
+ * changed — every earlier turn (stable object identity + stable callback
+ * props) skips React and its markdown re-parse entirely. Before this, a
+ * long conversation re-parsed EVERY message's markdown on every delta.
+ */
+const ChatMessageItem = React.memo(function ChatMessageItem({
+  message: m,
+  idx,
+  copied,
+  reasoningOpen,
+  onToggleReasoning,
+  onCopy,
+}: ChatMessageItemProps) {
+  return (
+    <div
+      className={cn(
+        "flex gap-3",
+        m.role === "user" ? "justify-end" : "justify-start",
+      )}
+    >
+      {m.role === "assistant" && (
+        <div className="fxz-avatar-bot h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+          <Bot className="h-4 w-4" />
+        </div>
+      )}
+      <div
+        className={cn(
+          "max-w-[85%] sm:max-w-[75%] rounded-xl px-3.5 py-2.5",
+          m.role === "user"
+            ? "fxz-bubble-user"
+            : "fxz-bubble-assistant",
+          m.status === "error" && "border-crimson/60",
+        )}
+      >
+        {/* Tool execution chips (§26) — compact, no arguments shown. */}
+        {m.role === "assistant" && (m.toolEvents?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {m.toolEvents!.map((ev) => (
+              <span
+                key={ev.key}
+                className={cn(
+                  "fxz-tool-chip",
+                  ev.status === "running" && "fxz-tool-running",
+                  ev.status === "ok" && "fxz-tool-ok",
+                  ev.status === "error" && "fxz-tool-error",
+                )}
+                title={ev.error ?? undefined}
+              >
+                {ev.status === "running" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : ev.status === "ok" ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <AlertCircle className="h-3 w-3" />
+                )}
+                {ev.name}
+                {ev.status === "ok" && ev.ms !== undefined && (
+                  <span className="opacity-70">{formatMs(ev.ms)}</span>
+                )}
+                {ev.status === "error" && <span>failed</span>}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Reasoning block — collapses under the same message. */}
+        {m.reasoning && m.role === "assistant" && (
+          <div className="fxz-reasoning mb-2 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => onToggleReasoning(m.id)}
+              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gold hover:bg-gold/10 transition-colors"
+              aria-expanded={reasoningOpen}
+            >
+              <Brain className="h-3 w-3" />
+              Thinking
+              {m.status === "streaming" && (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 ml-auto transition-transform",
+                  !reasoningOpen && "-rotate-90",
+                )}
+              />
+            </button>
+            {reasoningOpen && (
+              <pre className="px-3 pb-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-blush/80 font-mono max-h-56 overflow-y-auto custom-scroll">
+                {m.reasoning}
+              </pre>
+            )}
+          </div>
+        )}
+
+        {m.role === "user" ? (
+          <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+        ) : m.status === "error" && !m.content ? (
+          <div className="flex items-start gap-2 text-sm text-[#ff8a92]">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{m.error ?? "Generation failed."}</span>
+          </div>
+        ) : m.content ? (
+          <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-pre:my-2 prose-headings:my-2">
+            <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+              {/* Strip the gateway auto-continuation "DONE" artifact
+                  (display-only; raw state is untouched). */}
+              {stripTrailingDone(m.content)}
+            </ReactMarkdown>
+          </div>
+        ) : m.status === "streaming" && (m.toolEvents?.length ?? 0) > 0 ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {m.toolEvents!.some((ev) => ev.status === "running")
+              ? "Executing tools…"
+              : "Waiting for the model…"}
+          </span>
+        ) : m.status === "streaming" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Waiting for first token…
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">(empty response)</span>
+        )}
+
+        {/* Footer: model + status + copy. */}
+        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
+          {m.role === "assistant" && m.providerLabel && (
+            <span className="uppercase tracking-wide">{m.providerLabel}</span>
+          )}
+          {m.status === "streaming" && (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              streaming
+            </span>
+          )}
+          {m.status === "cancelled" && <span>stopped</span>}
+          {m.usage && m.status === "completed" && (
+            <span className="font-mono">
+              {m.usage.completion_tokens} tok
+            </span>
+          )}
+          {m.role === "assistant" && m.content && (
+            <button
+              type="button"
+              onClick={() =>
+                void onCopy(
+                  idx,
+                  m.role === "assistant" ? stripTrailingDone(m.content) : m.content,
+                )
+              }
+              className="ml-auto inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              aria-label="Copy message"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-gold" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+      {m.role === "user" && (
+        <div className="fxz-avatar-user h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+          <UserIcon className="h-4 w-4" />
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
@@ -666,6 +978,42 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       }
       generatingRef.current = false;
     };
+  }, []);
+
+  // Warm the async syntax highlighter during idle time: preload the
+  // refractor core + the common languages (each a few-KB chunk) so the
+  // first streamed code block doesn't render unhighlighted while its
+  // language chunk loads. Everything else lazy-loads on demand.
+  React.useEffect(() => {
+    const api = SyntaxHighlighter as {
+      preload?: () => Promise<unknown>;
+      loadLanguage?: (lang: string) => Promise<unknown>;
+    };
+    const warm = () => {
+      try {
+        void api.preload?.()?.catch(() => {});
+        for (const lang of WARM_LANGUAGES) {
+          void api.loadLanguage?.(lang)?.catch(() => {});
+        }
+      } catch {
+        /* best-effort — languages lazy-load on first code block anyway */
+      }
+    };
+    const ric = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+        cancelIdleCallback?: (h: number) => void;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") {
+      const handle = ric(warm, { timeout: 2500 });
+      return () =>
+        (
+          window as unknown as { cancelIdleCallback?: (h: number) => void }
+        ).cancelIdleCallback?.(handle);
+    }
+    const t = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(t);
   }, []);
 
   // ─── Derived ────────────────────────────────────────────────────────────
@@ -847,22 +1195,59 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
       // Local mirror of the assistant content — the single source of truth
       // for the fence detector inside the loop (React state is async).
+      // ── STREAMING RENDER THROTTLE ─────────────────────────────────────
+      // Deltas mutate the local mirrors IMMEDIATELY but reach React state
+      // on a ~STREAM_FLUSH_MS cadence (scheduleFlush), so the markdown
+      // tree re-parses at most ~12×/s instead of once per SSE delta (the
+      // per-delta re-parse was O(n²) over a long stream — the #1 source of
+      // UI lag). flushNow() forces a synchronous full-fidelity flush at
+      // every terminal transition (round end / abort / error / complete),
+      // so no text is ever lost and the finished message is always exact.
       let assistantContent = "";
-      const appendContent = (delta: string) => {
-        assistantContent += delta;
+      let assistantReasoning = "";
+      let contentDirty = false;
+      let reasoningDirty = false;
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flushNow = () => {
+        if (flushTimer !== null) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        if (!contentDirty && !reasoningDirty) return;
+        contentDirty = false;
+        reasoningDirty = false;
+        const content = assistantContent;
+        const reasoning = assistantReasoning;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMsg.id
-              ? { ...m, content: m.content + delta }
-              : m,
+            m.id === assistantMsg.id ? { ...m, content, reasoning } : m,
           ),
         );
       };
+      const scheduleFlush = () => {
+        if (flushTimer !== null) return; // a flush is already scheduled
+        flushTimer = setTimeout(() => {
+          flushTimer = null;
+          flushNow();
+        }, STREAM_FLUSH_MS);
+      };
+
+      const appendContent = (delta: string) => {
+        assistantContent += delta;
+        contentDirty = true;
+        scheduleFlush();
+      };
+      const appendReasoning = (delta: string) => {
+        assistantReasoning += delta;
+        reasoningDirty = true;
+        scheduleFlush();
+      };
       const replaceContent = (next: string) => {
+        // Completion-time rewrite (fence strip) — flush synchronously.
         assistantContent = next;
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: next } : m)),
-        );
+        contentDirty = true;
+        flushNow();
       };
 
       const ac = new AbortController();
@@ -1000,15 +1385,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             response,
             {
               onDelta: appendContent,
-              onReasoning: (content) => {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMsg.id
-                      ? { ...m, reasoning: (m.reasoning ?? "") + content }
-                      : m,
-                  ),
-                );
-              },
+              onReasoning: appendReasoning,
               onToolCall: (fragments) => {
                 toolAcc.consume(fragments);
               },
@@ -1028,6 +1405,11 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             },
             ac.signal,
           );
+
+          // The stream (round) is over — force a full-fidelity flush BEFORE
+          // any terminal state transition (abort / error / tool detection /
+          // completion) so `m.content` in those setMessages calls is exact.
+          flushNow();
 
           if (holder.usage) finalUsage = holder.usage;
 
@@ -1208,7 +1590,9 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
         );
       } finally {
         // ALWAYS executes — completed, cancelled, failed. No generation can
-        // remain stuck in "Generating".
+        // remain stuck in "Generating". Also drains any pending throttled
+        // flush (no-op when the round-end flush already ran).
+        flushNow();
         abortRef.current = null;
         generatingRef.current = false;
       }
@@ -1249,6 +1633,12 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     }
   }, []);
 
+  // Stable per-message callbacks for the memoized bubbles (identity must not
+  // change across renders or React.memo would re-render every bubble).
+  const toggleReasoningFor = React.useCallback((id: string) => {
+    setOpenReasoning((prev) => ({ ...prev, [id]: !(prev[id] ?? true) }));
+  }, []);
+
   // ─── Render ──────────────────────────────────────────────────────────────
 
   const isStreaming = phase === "preparing" || phase === "routing" || phase === "generating";
@@ -1256,20 +1646,20 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
   return (
     <div className="flex flex-col gap-4 min-h-0">
-      {/* Error banner (request-level failures) — warm crimson glass. */}
+      {/* Error banner (request-level failures) — crimson glass. */}
       {errorMessage && (
         <div
           role="alert"
-          className="fxz-panel flex items-center gap-3 px-4 py-3 rounded-xl border-[#ff2f3a]/40"
-          style={{ boxShadow: "0 16px 50px -20px rgba(255,47,58,0.35), inset 0 1px 0 rgba(255,255,255,0.05)" }}
+          className="fxz-panel flex items-center gap-3 px-4 py-3 rounded-xl border-crimson/45"
+          style={{ boxShadow: "0 16px 50px -20px rgba(255,42,85,0.35), inset 0 1px 0 rgba(255,255,255,0.05)" }}
         >
-          <AlertCircle className="h-4 w-4 text-[#ff6b6f] shrink-0" />
+          <AlertCircle className="h-4 w-4 text-crimson shrink-0" />
           <span className="text-sm text-[#ff9aa0] flex-1 min-w-0">{errorMessage}</span>
           <Button
             variant="outline"
             size="sm"
             onClick={retry}
-            className="h-7 shrink-0 border-[#ff2f3a]/40 text-[#ff9aa0] hover:bg-[#ff2f3a]/10 hover:text-[#ffb3b6]"
+            className="h-8 shrink-0 border-crimson/45 text-[#ff9aa0] hover:bg-crimson/10 hover:text-white"
           >
             <RotateCcw className="h-3.5 w-3.5 mr-1" /> Retry
           </Button>
@@ -1280,8 +1670,8 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] gap-3">
         <Card className="fxz-panel p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Cpu className="h-3.5 w-3.5 text-[#ff6b4a]" />
-            <span className="uppercase tracking-wider font-medium">Model</span>
+            <Cpu className="h-3.5 w-3.5 text-crimson" />
+            <span className="uppercase tracking-wider font-medium font-mono">Model</span>
             {selectedModel?.capabilities.streaming && (
               <span className="fxz-badge fxz-badge-warm ml-auto gap-1">
                 <Zap className="h-3 w-3" /> streaming
@@ -1341,21 +1731,21 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             <>
               <div className="flex flex-wrap gap-1.5">
                 {selectedModel.capabilities.streaming && (
-                  <span className="fxz-badge gap-1">
-                    <Zap className="h-3 w-3 text-[#ffb347]" /> streaming
+                  <span className="fxz-badge fxz-badge-ember gap-1">
+                    <Zap className="h-3 w-3" /> streaming
                   </span>
                 )}
                 {selectedModel.capabilities.reasoning && (
-                  <span className="fxz-badge gap-1">
-                    <Brain className="h-3 w-3 text-[#ff6b4a]" /> reasoning
+                  <span className="fxz-badge fxz-badge-warm gap-1">
+                    <Brain className="h-3 w-3" /> reasoning
                   </span>
                 )}
                 {selectedModel.capabilities.vision && (
                   <span className="fxz-badge">vision</span>
                 )}
                 {selectedModel.capabilities.tools && (
-                  <span className="fxz-badge gap-1">
-                    <Wrench className="h-3 w-3 text-[#ff6b4a]" /> tools
+                  <span className="fxz-badge fxz-badge-warm gap-1">
+                    <Wrench className="h-3 w-3" /> tools
                   </span>
                 )}
                 {selectedModel.capabilities.webSearch && (
@@ -1374,12 +1764,12 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
           )}
           {/* Live token counter while streaming. */}
           {streamTokens && (
-            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-[#9c9c9d]">
+            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-muted-foreground">
               in {streamTokens.in} · out {streamTokens.out}
             </div>
           )}
           {usage && !isStreaming && (
-            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-[#9c9c9d]">
+            <div className="fxz-code border-0 bg-transparent text-[10.5px] text-muted-foreground">
               tokens: {usage.prompt_tokens} in · {usage.completion_tokens} out
             </div>
           )}
@@ -1429,6 +1819,71 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
       {/* Messages panel. */}
       <Card className="fxz-panel p-0 flex flex-col min-h-[420px] relative overflow-hidden">
+        {/* Streaming telemetry banner (kit "STREAMING LIVE" strip). */}
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-hd-highest/50"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              {isStreaming && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-crimson opacity-80" />
+              )}
+              <span
+                className={cn(
+                  "relative inline-flex rounded-full h-2.5 w-2.5 transition-colors",
+                  isStreaming
+                    ? "bg-crimson shadow-[0_0_8px_rgba(255,42,85,0.9)]"
+                    : "bg-hd-line",
+                )}
+              />
+            </span>
+            <span
+              className={cn(
+                "font-mono text-[11px] font-bold tracking-wider truncate",
+                isStreaming ? "text-crimson" : "text-muted-foreground",
+              )}
+            >
+              {phase === "generating"
+                ? "STREAMING LIVE"
+                : phase === "routing"
+                  ? "ROUTING THROUGH GATEWAY"
+                  : phase === "preparing"
+                    ? "PREPARING PAYLOAD"
+                    : phase === "error"
+                      ? "STREAM ERROR"
+                      : messages.length > 0
+                        ? "STREAM COMPLETE"
+                        : "READY FOR DISPATCH"}
+            </span>
+            {toolStatus && (
+              <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground truncate">
+                {toolStatus}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 font-mono text-[11px] shrink-0">
+            {streamTokens ? (
+              <>
+                <span className="text-muted-foreground">
+                  TOKENS <span className="text-ember font-bold">{streamTokens.out}</span>
+                </span>
+                <span className="hidden md:inline text-muted-foreground">
+                  IN <span className="text-blush font-bold">{streamTokens.in}</span>
+                </span>
+              </>
+            ) : usage && !isStreaming ? (
+              <span className="text-muted-foreground">
+                TOKENS <span className="text-ember font-bold">{usage.completion_tokens}</span>
+              </span>
+            ) : (
+              <span className="hidden sm:inline text-muted-foreground/70">
+                SSE · /api/v1/chat/completions
+              </span>
+            )}
+          </div>
+        </div>
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-4 max-h-[60vh] min-h-[380px]"
@@ -1442,7 +1897,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                 <p className="text-sm font-medium text-white">
                   Pick a model and send a message
                 </p>
-                <p className="text-xs text-[#9c9c9d] mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Real token-by-token SSE streaming with tool calling. Free native models, no key required.
                 </p>
               </div>
@@ -1463,192 +1918,15 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             </div>
           ) : (
             messages.map((m, idx) => (
-              <div
+              <ChatMessageItem
                 key={m.id}
-                className={cn(
-                  "flex gap-3",
-                  m.role === "user" ? "justify-end" : "justify-start",
-                )}
-              >
-                {m.role === "assistant" && (
-                  <div className="fxz-avatar-bot h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="h-4 w-4" />
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    "max-w-[85%] sm:max-w-[75%] rounded-xl px-3.5 py-2.5",
-                    m.role === "user"
-                      ? "fxz-bubble-user"
-                      : "fxz-bubble-assistant",
-                    m.status === "error" && "border-[#ff2f3a]/50",
-                  )}
-                >
-                  {/* Tool execution chips (§26) — compact, no arguments shown. */}
-                  {m.role === "assistant" && (m.toolEvents?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {m.toolEvents!.map((ev) => (
-                        <span
-                          key={ev.key}
-                          className={cn(
-                            "fxz-tool-chip",
-                            ev.status === "running" && "fxz-tool-running",
-                            ev.status === "ok" && "fxz-tool-ok",
-                            ev.status === "error" && "fxz-tool-error",
-                          )}
-                          title={ev.error ?? undefined}
-                        >
-                          {ev.status === "running" ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : ev.status === "ok" ? (
-                            <Check className="h-3 w-3" />
-                          ) : (
-                            <AlertCircle className="h-3 w-3" />
-                          )}
-                          {ev.name}
-                          {ev.status === "ok" && ev.ms !== undefined && (
-                            <span className="opacity-70">{formatMs(ev.ms)}</span>
-                          )}
-                          {ev.status === "error" && <span>failed</span>}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Reasoning block — collapses under the same message. */}
-                  {m.reasoning && m.role === "assistant" && (
-                    <div className="fxz-reasoning mb-2 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOpenReasoning((prev) => ({
-                            ...prev,
-                            [m.id]: !prev[m.id],
-                          }))
-                        }
-                        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-[#ffcf87] hover:bg-[#ffb347]/10 transition-colors"
-                        aria-expanded={openReasoning[m.id] ?? true}
-                      >
-                        <Brain className="h-3 w-3" />
-                        Thinking
-                        {m.status === "streaming" && (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        )}
-                        <ChevronDown
-                          className={cn(
-                            "h-3 w-3 ml-auto transition-transform",
-                            !(openReasoning[m.id] ?? true) && "-rotate-90",
-                          )}
-                        />
-                      </button>
-                      {(openReasoning[m.id] ?? true) && (
-                        <pre className="px-3 pb-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-[#ffe0b3]/80 font-mono max-h-56 overflow-y-auto">
-                          {m.reasoning}
-                        </pre>
-                      )}
-                    </div>
-                  )}
-
-                  {m.role === "user" ? (
-                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                  ) : m.status === "error" && !m.content ? (
-                    <div className="flex items-start gap-2 text-sm text-[#ff8a92]">
-                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                      <span>{m.error ?? "Generation failed."}</span>
-                    </div>
-                  ) : m.content ? (
-                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-pre:my-2 prose-headings:my-2">
-                      <ReactMarkdown
-                        components={{
-                          code({ className, children, ...props }) {
-                            const match = /language-(\w+)/.exec(className ?? "");
-                            const inline = !match && !String(children).includes("\n");
-                            return !inline && match ? (
-                              <SyntaxHighlighter
-                                {...props}
-                                style={oneDark}
-                                language={match[1]}
-                                PreTag="div"
-                                customStyle={{
-                                  margin: 0,
-                                  borderRadius: "0.5rem",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                {String(children).replace(/\n$/, "")}
-                              </SyntaxHighlighter>
-                            ) : (
-                              <code
-                                {...props}
-                                className={cn(
-                                  "font-mono text-[12px] rounded px-1 py-0.5 bg-[#ff2f3a]/[0.08] text-[#ffd9cd]",
-                                  className,
-                                )}
-                              >
-                                {children}
-                              </code>
-                            );
-                          },
-                        }}
-                      >
-                        {m.content}
-                      </ReactMarkdown>
-                    </div>
-                  ) : m.status === "streaming" && (m.toolEvents?.length ?? 0) > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {m.toolEvents!.some((ev) => ev.status === "running")
-                        ? "Executing tools…"
-                        : "Waiting for the model…"}
-                    </span>
-                  ) : m.status === "streaming" ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Waiting for first token…
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">(empty response)</span>
-                  )}
-
-                  {/* Footer: model + status + copy. */}
-                  <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
-                    {m.role === "assistant" && m.providerLabel && (
-                      <span className="uppercase tracking-wide">{m.providerLabel}</span>
-                    )}
-                    {m.status === "streaming" && (
-                      <span className="inline-flex items-center gap-1">
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        streaming
-                      </span>
-                    )}
-                    {m.status === "cancelled" && <span>stopped</span>}
-                    {m.usage && m.status === "completed" && (
-                      <span className="font-mono">
-                        {m.usage.completion_tokens} tok
-                      </span>
-                    )}
-                    {m.role === "assistant" && m.content && (
-                      <button
-                        type="button"
-                        onClick={() => void copyMessage(idx, m.content)}
-                        className="ml-auto inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                        aria-label="Copy message"
-                      >
-                        {copiedIdx === idx ? (
-                          <Check className="h-3 w-3 text-[#ffb347]" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {m.role === "user" && (
-                  <div className="h-8 w-8 rounded-lg bg-accent/40 flex items-center justify-center shrink-0 mt-0.5">
-                    <UserIcon className="h-4 w-4 text-accent-foreground" />
-                  </div>
-                )}
-              </div>
+                message={m}
+                idx={idx}
+                copied={copiedIdx === idx}
+                reasoningOpen={openReasoning[m.id] ?? true}
+                onToggleReasoning={toggleReasoningFor}
+                onCopy={copyMessage}
+              />
             ))
           )}
         </div>
@@ -1664,7 +1942,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                 setShowJumpToLatest(false);
               }
             }}
-            className="absolute bottom-3 right-4 z-10 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-white/10 bg-black/70 backdrop-blur-md text-zinc-300 hover:text-white hover:border-[#ff6b4a]/40 transition-colors"
+            className="absolute bottom-3 right-4 z-10 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-crimson/30 bg-hd-deep/85 backdrop-blur-md text-[#e2e2ea] hover:text-white hover:border-crimson/60 transition-colors"
           >
             <ArrowDown className="h-3 w-3" /> Latest
           </button>

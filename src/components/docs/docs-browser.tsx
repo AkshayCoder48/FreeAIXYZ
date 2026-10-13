@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * DocsBrowser — the interactive /docs surface (WARM AURORA design).
+ * DocsBrowser — the interactive /docs surface (HyperDimension design).
  *
  * Layout (lg+):  sidebar (search + grouped nav)  │  content (one page)
  *               plus a right "On this page" mini-TOC on xl+.
@@ -12,8 +12,8 @@
  * clicks and in-content links all drive the same hash. Prev/next pager cards
  * walk the flat page order.
  *
- * Everything renders in the shared design language: dark-glass panels, warm
- * hairlines, mono eyebrows, keycap accents — strictly warm, no blue/purple.
+ * Everything renders in the shared design language: obsidian panels,
+ * crimson hairlines, mono eyebrows, crimson glow accents — strictly warm.
  */
 
 import * as React from "react";
@@ -133,11 +133,11 @@ export function DocsBrowser() {
     <div className="pt-10 sm:pt-14 flex flex-col gap-6 min-w-0">
       {/* ── Page header ── */}
       <div className="flex flex-col gap-3 fxz-fade-up">
-        <span className="fxz-section-eyebrow">Documentation</span>
+        <span className="fxz-section-eyebrow">Crimson core // documentation</span>
         <h1 className="fxz-page-title max-w-3xl">
           Everything, <span className="fxz-gradient-word">documented</span>.
         </h1>
-        <p className="text-[15px] leading-relaxed text-[#9c9c9d] max-w-2xl">
+        <p className="text-[15px] leading-relaxed text-muted-foreground max-w-2xl">
           {FLAT_PAGES.length} pages across {DOC_GROUPS.length} sections — the
           API, the streaming wire format, the tool-calling pipeline, every
           built-in tool, every error code, and a full cookbook. No key, no
@@ -189,12 +189,12 @@ export function DocsBrowser() {
         >
           {/* Search */}
           <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#7c7c7f] pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter pages…"
-              className="fxz-input w-full rounded-lg pl-9 pr-3 h-9 text-[13px] outline-none"
+              className="fxz-input w-full rounded-lg pl-9 pr-3 h-10 text-[13px] outline-none"
               aria-label="Filter documentation pages"
             />
           </div>
@@ -207,7 +207,7 @@ export function DocsBrowser() {
               return (
                 <div key={group.id} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2 px-2 mb-1.5">
-                    <Icon className="h-3 w-3 text-[#ff6b4a]" />
+                    <Icon className="h-3 w-3 text-crimson" />
                     <span className="fxz-docs-group-label">{group.label}</span>
                   </div>
                   {items.map((p) => {
@@ -231,7 +231,7 @@ export function DocsBrowser() {
               );
             })}
             {filteredPages.length === 0 && (
-              <p className="px-2 text-xs text-[#7c7c7f]">
+              <p className="px-2 text-xs text-muted-foreground">
                 No pages match “{query}”.
               </p>
             )}
@@ -240,7 +240,7 @@ export function DocsBrowser() {
           {/* Sidebar footer */}
           <div className="mt-6 pt-4 border-t border-white/[0.06] px-2">
             <p
-              className="text-[10px] text-[#7c7c7f] leading-relaxed"
+              className="text-[10px] text-muted-foreground leading-relaxed"
               style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
             >
               {FLAT_PAGES.length} pages · {DOC_GROUPS.length} sections
@@ -258,7 +258,7 @@ export function DocsBrowser() {
               <span className="fxz-badge fxz-badge-warm font-mono">
                 doc-{page.id}
               </span>
-              <span className="text-[11px] text-[#7c7c7f]">
+              <span className="text-[11px] text-muted-foreground">
                 {DOC_GROUPS.find((g) => g.id === page.group)?.label}
               </span>
             </div>
@@ -269,7 +269,7 @@ export function DocsBrowser() {
             >
               {page.title}
             </h2>
-            <p className="text-[14px] text-[#9c9c9d] leading-relaxed max-w-2xl">
+            <p className="text-[14px] text-muted-foreground leading-relaxed max-w-2xl">
               {page.description}
             </p>
           </header>
@@ -292,9 +292,9 @@ export function DocsBrowser() {
                 onClick={() => navigate(prev)}
                 className="fxz-docs-pager flex items-center gap-3 text-left"
               >
-                <ChevronLeft className="h-4 w-4 text-[#ff8a6b] shrink-0" />
+                <ChevronLeft className="h-4 w-4 text-crimson shrink-0" />
                 <span className="min-w-0">
-                  <span className="block text-[10px] uppercase tracking-[0.15em] text-[#7c7c7f]">
+                  <span className="block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
                     Previous
                   </span>
                   <span className="block text-sm font-medium text-white truncate">
@@ -312,14 +312,14 @@ export function DocsBrowser() {
                 className="fxz-docs-pager flex items-center justify-end gap-3 text-right"
               >
                 <span className="min-w-0">
-                  <span className="block text-[10px] uppercase tracking-[0.15em] text-[#7c7c7f]">
+                  <span className="block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
                     Next
                   </span>
                   <span className="block text-sm font-medium text-white truncate">
                     {next.title}
                   </span>
                 </span>
-                <ChevronRight className="h-4 w-4 text-[#ff8a6b] shrink-0" />
+                <ChevronRight className="h-4 w-4 text-crimson shrink-0" />
               </button>
             )}
           </nav>
@@ -353,14 +353,14 @@ export function DocsBrowser() {
                 <a
                   key={h.id}
                   href={`#${h.id}`}
-                  className="block text-[12.5px] leading-snug text-[#9c9c9d] hover:text-[#ff8a6b] transition-colors pl-3 border-l border-white/[0.08] hover:border-[#ff6b4a]/50 truncate"
+                  className="block text-[12.5px] leading-snug text-muted-foreground hover:text-crimson transition-colors pl-3 border-l border-white/[0.08] hover:border-crimson/50 truncate"
                 >
                   {h.text}
                 </a>
               ))}
               <a
                 href={`#doc-${page.id}`}
-                className="block text-[12.5px] text-[#9c9c9d] hover:text-[#ff8a6b] transition-colors pl-3 border-l border-white/[0.08] hover:border-[#ff6b4a]/50 mt-1"
+                className="block text-[12.5px] text-muted-foreground hover:text-crimson transition-colors pl-3 border-l border-white/[0.08] hover:border-crimson/50 mt-1"
               >
                 ↑ Back to top
               </a>

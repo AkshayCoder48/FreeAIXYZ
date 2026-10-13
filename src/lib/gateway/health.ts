@@ -65,10 +65,26 @@ const PROVIDER_BREAKER_THRESHOLDS: Record<string, number> = {
   // account within seconds. A 5-failure breaker would amplify a single
   // rotation hiccup into a 60s full-provider outage.
   nsfwgf: 10,
+  // GPT-AI import (Task 4): free scraper-backed chat sites flap under
+  // shared cloud egress IPs (Cloudflare challenges, transient 5xx, upstream
+  // litellm retries). Gentle breakers (10 failures / 10s cooldown) so a
+  // flaky minute doesn't cascade into a 60s provider outage.
+  goody2: 10,
+  chatsmith: 10,
+  chatwithfiction: 10,
+  bookai: 10,
+  publicai: 10,
+  dopple: 10,
 };
 const PROVIDER_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
   toolbaz: 10 * 1000,
   nsfwgf: 10 * 1000,
+  goody2: 10 * 1000,
+  chatsmith: 10 * 1000,
+  chatwithfiction: 10 * 1000,
+  bookai: 10 * 1000,
+  publicai: 10 * 1000,
+  dopple: 10 * 1000,
 };
 // Per-MODEL breaker overrides, keyed by provider id. The model id is
 // canonical (`<shortId>/<upstream>`) — the provider is resolved via
@@ -77,10 +93,22 @@ const PROVIDER_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
 const MODEL_BREAKER_THRESHOLDS_BY_PROVIDER: Record<string, number> = {
   toolbaz: 10,
   nsfwgf: 10,
+  goody2: 10,
+  chatsmith: 10,
+  chatwithfiction: 10,
+  bookai: 10,
+  publicai: 10,
+  dopple: 10,
 };
 const MODEL_COOLDOWN_OVERRIDES_MS: Record<string, number> = {
   toolbaz: 10 * 1000,
   nsfwgf: 10 * 1000,
+  goody2: 10 * 1000,
+  chatsmith: 10 * 1000,
+  chatwithfiction: 10 * 1000,
+  bookai: 10 * 1000,
+  publicai: 10 * 1000,
+  dopple: 10 * 1000,
 };
 
 type BreakerState = "closed" | "open" | "half_open";

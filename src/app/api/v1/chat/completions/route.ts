@@ -68,6 +68,7 @@ import {
   type ProviderAdapter,
 } from "@/lib/gateway";
 import { ensureGateway, resolveAdapterForModel } from "@/lib/gateway/route-helpers";
+import { completeWithAutoContinue } from "@/lib/gateway/auto-continue";
 import {
   isNativeToolProvider,
   TOOL_AVAILABILITY_SYSTEM_PROMPT,
@@ -798,7 +799,10 @@ async function handleCanonicalRequest(
   let completeErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await adapter.complete(chatReq);
+      // GENERIC AUTO-CONTINUE — if the provider cuts the text mid-code
+      // (unclosed fence / unbalanced brackets), transparently continue
+      // through the same adapter until the text looks complete.
+      const result = await completeWithAutoContinue(adapter, chatReq);
       text = result.text;
       completeErr = null;
       break;
@@ -821,7 +825,7 @@ async function handleCanonicalRequest(
       const fb = fallbacks[0];
       const fbReq = buildFailoverChatReq(chatReq, fb.model);
       try {
-        const result = await fb.adapter.complete(fbReq);
+        const result = await completeWithAutoContinue(fb.adapter, fbReq);
         text = result.text;
         usedFallback = fb;
       } catch (err2) {

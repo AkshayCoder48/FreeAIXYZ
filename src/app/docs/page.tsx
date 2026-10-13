@@ -7,11 +7,12 @@ import { DOC_PAGES } from "@/lib/docs/content";
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: "Docs — FreeAIXYZ",
+  title: "Docs — HyperDimension AI",
   description:
-    "The complete FreeAIXYZ documentation: quickstart, streaming SSE format, the tool-calling pipeline, the full API reference, built-in tools, error codes, examples, FAQ and changelog.",
+    "The complete HyperDimension AI (FreeAIXYZ) documentation: quickstart, streaming SSE format, the tool-calling pipeline, the full API reference, built-in tools, error codes, examples, FAQ and changelog.",
   keywords: [
     "FreeAIXYZ docs",
+    "HyperDimension AI docs",
     "free AI API documentation",
     "OpenAI compatible API docs",
     "tool calling guide",
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * /docs — the documentation section (WARM AURORA design).
+ * /docs — the documentation section (HyperDimension "Crimson Orb" design).
  *
  * RSC shell; the interactive browser (hash-routed pages, sidebar search,
  * on-this-page TOC, prev/next pager) is the client island. Content is the
@@ -31,10 +32,7 @@ export default function DocsPage() {
     <AuroraShell
       footer={
         <div className="mx-auto max-w-6xl px-6 pb-4 -mt-3">
-          <span
-            className="text-[10.5px] text-[#7c7c7f]"
-            style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
-          >
+          <span className="font-mono text-[10.5px] text-muted-foreground">
             {DOC_PAGES.length} pages · updated with every deploy
           </span>
         </div>

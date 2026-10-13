@@ -36,7 +36,7 @@ export async function generateMetadata({
   const id = decodeParam(model);
   const entry = findNativeModel(id);
   return {
-    title: entry ? `${entry.name} — FreeAIXYZ` : "Model — FreeAIXYZ",
+    title: entry ? `${entry.name} — HyperDimension AI` : "Model — HyperDimension AI",
     description: entry?.description ?? "Native model detail page.",
   };
 }
@@ -97,17 +97,15 @@ export default async function ModelDetailPage({ params }: PageProps) {
         <div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/models"
-            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors inline-flex items-center gap-1.5"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
+            className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-white transition-colors inline-flex items-center gap-1.5"
           >
             <ArrowLeft className="h-3 w-3" />
             All models
           </Link>
-          <span className="text-[#5c5c5f]">/</span>
+          <span className="text-hd-line">/</span>
           <Link
             href={`/models/${encodeURIComponent(entry.providerId)}`}
-            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
+            className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-white transition-colors"
           >
             {entry.providerName}
           </Link>
@@ -120,18 +118,18 @@ export default async function ModelDetailPage({ params }: PageProps) {
             <span className="fxz-badge fxz-badge-warm">native</span>
             <span className="fxz-badge fxz-badge-warm">free</span>
             {caps.streaming && (
-              <span className="fxz-badge gap-1">
-                <Zap className="h-3 w-3 text-[#ffb347]" /> streaming
+              <span className="fxz-badge fxz-badge-ember gap-1">
+                <Zap className="h-3 w-3" /> streaming
               </span>
             )}
             {caps.reasoning && (
-              <span className="fxz-badge gap-1">
-                <Brain className="h-3 w-3 text-[#ff6b4a]" /> reasoning
+              <span className="fxz-badge fxz-badge-warm gap-1">
+                <Brain className="h-3 w-3" /> reasoning
               </span>
             )}
             {caps.tools && (
-              <span className="fxz-badge gap-1">
-                <Wrench className="h-3 w-3 text-[#ff6b4a]" /> tools
+              <span className="fxz-badge fxz-badge-warm gap-1">
+                <Wrench className="h-3 w-3" /> tools
               </span>
             )}
           </div>
@@ -139,7 +137,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
             {entry.name}
           </h1>
           {entry.description && (
-            <p className="text-[15px] text-[#9c9c9d] max-w-3xl leading-relaxed">
+            <p className="text-[15px] text-muted-foreground max-w-3xl leading-relaxed">
               {entry.description}
             </p>
           )}
@@ -161,16 +159,16 @@ export default async function ModelDetailPage({ params }: PageProps) {
                     <span
                       className={
                         row.ok
-                          ? "text-[#ff6b4a]"
-                          : "text-[#5c5c5f]"
+                          ? "text-crimson"
+                          : "text-hd-line"
                       }
                     >
                       {row.ok ? (
-                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-[#ff6b4a]/30 bg-[#ff2f3a]/[0.08]">
+                        <span className="fxz-icon-tile h-7 w-7">
                           {row.icon}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-white/[0.07] bg-white/[0.02] text-[#5c5c5f]">
+                        <span className="inline-flex items-center justify-center h-7 w-7 rounded-xl border border-white/[0.07] bg-white/[0.02] text-hd-line">
                           {row.icon}
                         </span>
                       )}
@@ -178,16 +176,16 @@ export default async function ModelDetailPage({ params }: PageProps) {
                     <span
                       className={
                         row.ok
-                          ? "text-zinc-100"
-                          : "text-[#7c7c7f] line-through"
+                          ? "text-[#e2e2ea]"
+                          : "text-muted-foreground line-through"
                       }
                     >
                       {row.label}
                     </span>
                     {row.ok ? (
-                      <Check className="h-3.5 w-3.5 text-[#ffb347] ml-auto shrink-0" />
+                      <Check className="h-3.5 w-3.5 text-gold ml-auto shrink-0" />
                     ) : (
-                      <X className="h-3.5 w-3.5 text-[#5c5c5f] ml-auto shrink-0" />
+                      <X className="h-3.5 w-3.5 text-hd-line ml-auto shrink-0" />
                     )}
                   </div>
                 ))}
@@ -200,24 +198,24 @@ export default async function ModelDetailPage({ params }: PageProps) {
               </h2>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
-                  <span className="text-[#9c9c9d]">Provider</span>
+                  <span className="text-muted-foreground">Provider</span>
                   <span className="font-medium text-white">{entry.providerName}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-[#9c9c9d]">Upstream id</span>
+                  <span className="text-muted-foreground">Upstream id</span>
                   <span className="fxz-code">{entry.upstreamId}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-[#9c9c9d]">Context window</span>
-                  <span className="font-mono text-zinc-200">
+                  <span className="text-muted-foreground">Context window</span>
+                  <span className="font-mono text-[#e2e2ea]">
                     {entry.contextWindow > 0
                       ? `${entry.contextWindow.toLocaleString()} tokens`
                       : "unknown"}
                   </span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-[#9c9c9d]">Access</span>
-                  <span className="text-[#ffb347] font-medium">
+                  <span className="text-muted-foreground">Access</span>
+                  <span className="text-gold font-medium">
                     Free · no API key required
                   </span>
                 </div>
@@ -253,7 +251,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
                 </code>
                 <div className="flex items-center gap-2 flex-wrap">
                   <CopyIdButton value={entry.id} />
-                  <span className="text-[11px] text-[#9c9c9d]">
+                  <span className="text-[11px] text-muted-foreground">
                     Use this id with <span className="fxz-code">POST /api/v1/chat/completions</span>
                   </span>
                 </div>

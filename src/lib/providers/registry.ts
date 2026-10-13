@@ -35,7 +35,13 @@ export type ProviderId =
   | "uncloseai"
   | "free2gpt"
   | "nova"
-  | "nsfwgf";
+  | "nsfwgf"
+  | "goody2"
+  | "chatsmith"
+  | "chatwithfiction"
+  | "bookai"
+  | "publicai"
+  | "dopple";
 
 export interface ModelCapabilities {
   /** Returns token-by-token SSE deltas (true upstream streaming). */
@@ -289,6 +295,16 @@ export const MODELS: readonly GatewayModel[] = [
   ngf("ngf-nemo", "lfm-7b", "NSFWGF Nemo — Mistral Nemo 12B via uncensored companion backend, auto-rotated accounts, real SSE streaming, 20/20 reliability", "unrestricted", 32000),
   ngf("ngf-lunaris-8b", "llama3-8b", "NSFWGF Lunaris — L3-Lunaris 8B (uncensored Llama-3 roleplay) via companion backend, auto-rotated accounts, real SSE streaming, 20/20 reliability", "unrestricted", 32000),
   ngf("ngf-mimo-flash", "sft-7b", "NSFWGF MiMo Flash — xiaomi MiMo-v2-Flash via companion backend, auto-rotated accounts, real SSE streaming, 18/20 reliability", "unrestricted", 32000),
+
+  // ─── GPT-AI import (github.com/OshekharO/GPT-AI) — live-tested 2026-10-13 ──
+  // 15 scraper-backed chat upstreams probed; 9 dead/key-walled, 6 imported.
+  // v4 unlimitedai skipped (existing "unlimitedai" provider covers it).
+  go2("g2-goody2", "goody2", "Goody2 — the world's most responsible AI (novelty): refuses everything by design, real SSE token streaming (via GPT-AI/OshekharO)", "sfw", 4000),
+  csm("cs-gpt-4o-mini", "gpt-4o-mini", "Chat Smith — real GPT-4o-mini via the Vulcan Labs app backend, system prompts + multi-turn, auto device-token refresh (via GPT-AI/OshekharO)", "professional", 128000),
+  cwf("cf-harry-potter", "harry-potter", "Chat With Fiction — Harry Potter persona chat, real plain-text streaming, multi-turn history via prevMessages (via GPT-AI/OshekharO)", "sfw", 16000),
+  bka("bk-gpt-3-5-turbo", "gpt-3.5-turbo", "BookAI — GPT-3.5 Turbo book assistant, system prompts + multi-turn, per-request chat reset (via GPT-AI/OshekharO)", "professional", 16000),
+  pai("pa-apertus", "apertus-1.5-70b", "PublicAI — Apertus 1.5 70B (Swiss AI Initiative), real SSE text-delta streaming, system prompts + multi-turn (via GPT-AI/OshekharO)", "professional", 32000),
+  dpp("dp-dopple", "dopple", "Dopple AI — GPT-4-class companion chat, fresh chat identity per request, no signup (via GPT-AI/OshekharO)", "sfw", 8000),
 ];
 
 /** Toolbaz model helper (audit G1: streaming=true — gateway emits real SSE). */
@@ -762,7 +778,7 @@ function nv(
 /** NSFWGF model helper. Uncensored companion-chat backend (nsfwgirlfriend
  * .com → OpenRouter free pool) with automated disposable-email account
  * rotation (mail.tm magic-link signin; each fresh account = 50 free
- * messages, rotated at 44). Real OpenAI-shaped SSE streaming; tools via
+ * messages, rotated at 25). Real OpenAI-shaped SSE streaming; tools via
  * the gateway's emulated fence/bare-JSON pipeline. Upstream caps replies
  * at ~300 completion tokens (companion-style short answers). */
 function ngf(
@@ -784,6 +800,176 @@ function ngf(
       tools: true,
       systemPrompt: true,
       multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** Goody2 model helper (GPT-AI import). "World's most responsible AI" —
+ * refuses every request by design; single-prompt upstream (conversation
+ * flattened into one labelled message), real SSE token streaming. */
+function go2(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "goody2",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: false,
+      systemPrompt: false, // folded into the flattened prompt
+      multiTurn: false, // upstream takes a single message blob
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** Chat Smith model helper (GPT-AI import). Real GPT-4o-mini via the
+ * Vulcan Labs app backend; system + multi-turn verified; non-streaming
+ * JSON response (one honest yield); emulated tools via fence pipeline. */
+function csm(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "chatsmith",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: false,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** ChatWithFiction model helper (GPT-AI import). Harry Potter persona chat;
+ * real plain-text streaming with wrapper-quote stripping; multi-turn via
+ * prevMessages; system prompts folded into the prompt (upstream ignores
+ * system prevMessages — verified). */
+function cwf(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "chatwithfiction",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: false,
+      systemPrompt: false, // folded into the prompt
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** BookAI model helper (GPT-AI import). GPT-3.5-Turbo book assistant;
+ * per-request chat reset (init:true) + full history in messages; system
+ * role verified; non-streaming (one honest yield); emulated tools. */
+function bka(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "bookai",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: false,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** PublicAI model helper (GPT-AI import). Apertus 70B behind a litellm
+ * pool; real SSE text-delta streaming; system prompt via the top-level
+ * `system` field (system-in-messages breaks the upstream); one retry on
+ * intermittent litellm flakes; emulated tools. */
+function pai(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "publicai",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: true,
+      systemPrompt: true,
+      multiTurn: true,
+      vision: false,
+      webSearch: false,
+    },
+  };
+}
+
+/** Dopple AI model helper (GPT-AI import). GPT-4-class companion chat with
+ * a fresh chat identity minted per request (no shared server state);
+ * conversation flattened into one userQuery; non-streaming (one yield). */
+function dpp(
+  id: string,
+  upstream: string,
+  description: string,
+  category: GatewayModel["category"],
+  contextWindow: number,
+): GatewayModel {
+  return {
+    id,
+    provider: "dopple",
+    upstream,
+    description,
+    category,
+    contextWindow,
+    capabilities: {
+      streaming: false,
+      tools: false,
+      systemPrompt: false, // folded into the flattened userQuery
+      multiTurn: false, // upstream takes a single userQuery blob
       vision: false,
       webSearch: false,
     },
@@ -902,5 +1088,29 @@ export const PROVIDER_INFO: Record<
   "unlimitedai": {
     name: "UnlimitedAI",
     description: "Uncensored reasoning + web search, NDJSON token streaming",
+  },
+  "goody2": {
+    name: "Goody2",
+    description: "The world's most responsible AI — refuses every request by design (novelty); real SSE streaming (via GPT-AI/OshekharO)",
+  },
+  "chatsmith": {
+    name: "Chat Smith",
+    description: "Real GPT-4o-mini via the Vulcan Labs Chat Smith app backend — anonymous device-token auth, system prompts, multi-turn (via GPT-AI/OshekharO)",
+  },
+  "chatwithfiction": {
+    name: "ChatWithFiction",
+    description: "Harry Potter persona chat with real plain-text streaming and multi-turn history (via GPT-AI/OshekharO)",
+  },
+  "bookai": {
+    name: "BookAI",
+    description: "GPT-3.5 Turbo book assistant — system prompts, multi-turn, per-request chat reset (via GPT-AI/OshekharO)",
+  },
+  "publicai": {
+    name: "PublicAI",
+    description: "Apertus 1.5 70B (Swiss AI Initiative) via publicai.co — real SSE text-delta streaming, system prompts, multi-turn (via GPT-AI/OshekharO)",
+  },
+  "dopple": {
+    name: "Dopple AI",
+    description: "GPT-4-class companion chat with per-request fresh chat identity — no signup, no key (via GPT-AI/OshekharO)",
   },
 };

@@ -22,6 +22,14 @@ import { uncloseAiProvider } from "./uncloseai";
 import { free2GptProvider } from "./free2gpt";
 import { novaProvider } from "./nova";
 import { nsfwgfProvider } from "./nsfwgf";
+// Task 4 (GPT-AI import, github.com/OshekharO/GPT-AI): scraper-backed free
+// chat upstreams, live-tested 2026-10-13.
+import { goody2Provider } from "./gptai-goody2";
+import { chatSmithProvider } from "./gptai-chatsmith";
+import { chatWithFictionProvider } from "./gptai-chatwithfiction";
+import { bookaiProvider } from "./gptai-bookai";
+import { publicaiProvider } from "./gptai-publicai";
+import { doppleProvider } from "./gptai-dopple";
 // FreeGPT provider is NOT imported here — it uses Node.js APIs (eval("require"),
 // fs, path) that break Edge runtime. It's imported directly in the Node.js
 // proxy route: /api/v1/chat/freegpt-proxy
@@ -47,6 +55,13 @@ export const PROVIDERS: Partial<Record<ProviderId, Provider>> = {
   free2gpt: free2GptProvider,
   nova: novaProvider,
   nsfwgf: nsfwgfProvider,
+  // Task 4 (GPT-AI import): new free providers.
+  goody2: goody2Provider,
+  chatsmith: chatSmithProvider,
+  chatwithfiction: chatWithFictionProvider,
+  bookai: bookaiProvider,
+  publicai: publicaiProvider,
+  dopple: doppleProvider,
   // freegpt is handled via Node.js proxy route, not here
 };
 

@@ -27,7 +27,7 @@ export async function generateMetadata({
   const id = decodeProvider(provider);
   const entry = NATIVE_PROVIDERS.find((p) => p.id === id || p.shortId === id);
   return {
-    title: `${entry?.name ?? id} — FreeAIXYZ Models`,
+    title: `${entry?.name ?? id} — HyperDimension AI Models`,
     description: `All native models under ${entry?.name ?? id} — capability badges and direct copy of the canonical model id.`,
   };
 }
@@ -79,8 +79,7 @@ export default async function ProviderModelsPage({ params }: PageProps) {
         <div>
           <Link
             href="/models"
-            className="text-xs uppercase tracking-[0.15em] text-[#9c9c9d] hover:text-white transition-colors inline-flex items-center gap-1.5"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
+            className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-white transition-colors inline-flex items-center gap-1.5"
           >
             <ArrowLeft className="h-3 w-3" />
             All models

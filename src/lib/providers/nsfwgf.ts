@@ -57,6 +57,12 @@
  */
 
 import type { Provider, ProviderCompletionRequest, ProviderMessage } from "./types";
+import {
+  continueInstruction,
+  looksIncomplete,
+  overlapTrimLen,
+  OVERLAP_WINDOW,
+} from "@/lib/gateway/completeness";
 
 const SITE = "https://www.nsfwgirlfriend.com";
 const CHAT_URL = `${SITE}/api/openai/chat/completions`;
@@ -669,32 +675,33 @@ async function* segment(
  */
 const SEGMENT_CAP_CHARS = 1000; // finish=stop segment ≥ this ⇒ likely a cap hit
 const MAX_CONTINUATION_ROUNDS = 24; // ≈ 7k tokens total — effectively unlimited
+/** Attempts per continuation ROUND (fresh upstream session each attempt —
+ *  a failed round used to END the stream mid-code; now it is retried with a
+ *  fresh account before giving up). */
+const ROUND_ATTEMPTS = 3;
 const DONE_MARKER_RE = /^DONE\b/i;
 /** Head/tail overlap window — models often re-emit the last few tokens of
  *  the cut-off text at the start of a continuation (e.g. segment ends
  *  "const directionalLight" and the continuation starts
  *  "const directionalLight = new …"). Trim that duplicated prefix. */
-const OVERLAP_WINDOW = 600;
-const CONTINUE_INSTRUCTION =
-  "Continue your previous response EXACTLY from its last character — begin mid-word or mid-line if that is where it stopped. Do not repeat any text you already wrote. Output ONLY the continuation, no commentary. If the previous response was already complete, reply with exactly: DONE";
 
-/** Longest suffix of `acc` that is also a prefix of `cont` (≥ 8 chars). */
-function overlapTrimLen(acc: string, cont: string): number {
-  const max = Math.min(acc.length, cont.length, OVERLAP_WINDOW);
-  for (let k = max; k >= 8; k--) {
-    if (acc.endsWith(cont.slice(0, k))) return k;
-  }
-  return 0;
-}
-
-function shouldContinue(roundText: string, finishReason: string | null): boolean {
+function shouldContinue(
+  roundText: string,
+  finishReason: string | null,
+  accumulated: string,
+): boolean {
   if (!roundText.trim()) return false;
   if (finishReason === "length") return true; // definitive cap signal
   // The upstream sometimes reports "stop" on cap hits (observed once per
   // model); capped segments land in a tight ~1050–1200 char band, so treat
   // near-cap-length stop segments as capped too. The DONE-marker swallow
   // makes the occasional false positive harmless (one wasted round).
-  return roundText.length >= SEGMENT_CAP_CHARS;
+  if (roundText.length >= SEGMENT_CAP_CHARS) return true;
+  // STRONGEST signal: the accumulated text is structurally incomplete
+  // (unclosed code fence / unbalanced brackets) — the model was cut mid-code
+  // no matter what the finish_reason claims.
+  if (looksIncomplete(accumulated)) return true;
+  return false;
 }
 
 async function* streamWithAutoContinue(
@@ -711,7 +718,7 @@ async function* streamWithAutoContinue(
 
   for (let round = 1; round <= MAX_CONTINUATION_ROUNDS; round++) {
     if (req.signal?.aborted) return;
-    if (!shouldContinue(roundText, roundFinish)) {
+    if (!shouldContinue(roundText, roundFinish, accumulated)) {
       console.error(`[NSFWGF-CONT] round ${round}: stopping (roundLen=${roundText.length} finish=${roundFinish})`);
       return;
     }
@@ -719,77 +726,108 @@ async function* streamWithAutoContinue(
 
     const contReq: ProviderCompletionRequest = {
       ...req,
+      // Tail-anchored instruction (shared with the generic gateway layer):
+      // quoting the model's own ending verbatim measurably reduces seam
+      // artifacts where the model re-emits from an earlier token.
       messages: [
         ...baseMessages,
         { role: "assistant", content: accumulated },
-        { role: "user", content: CONTINUE_INSTRUCTION },
+        { role: "user", content: continueInstruction(accumulated) },
       ],
     };
 
-    const gen = segment(contReq);
-    let pending = ""; // hold-back buffer for DONE-marker + overlap detection
-    let holding = true;
+    // ROUND_ATTEMPTS per round — a failed round used to END the stream
+    // mid-code ("the AI stops whenever it wants"); now each attempt gets a
+    // fresh upstream session (fetchUpstream rotates accounts on quota
+    // codes), and only exhausting all attempts ends the stream gracefully.
     let contText = ""; // RAW text of this round (for cap detection)
     let yieldedText = ""; // what the client actually sees (post-trim)
     let contFinish: string | null = null;
     let swallowed = false;
-    try {
-      while (true) {
-        const n = await gen.next();
-        if (n.done) {
-          contFinish = (n.value as SegmentResult | undefined)?.finishReason ?? null;
-          if (holding && pending) {
+    let roundSettled = false;
+
+    for (let attempt = 1; attempt <= ROUND_ATTEMPTS && !roundSettled; attempt++) {
+      const gen = segment(contReq);
+      let pending = ""; // hold-back buffer for DONE-marker + overlap detection
+      let holding = true;
+      let streamedAny = false;
+      try {
+        while (true) {
+          const n = await gen.next();
+          if (n.done) {
+            contFinish = (n.value as SegmentResult | undefined)?.finishReason ?? null;
+            if (holding && pending) {
+              if (DONE_MARKER_RE.test(pending.trimStart())) {
+                swallowed = true;
+              } else {
+                const trim = overlapTrimLen(accumulated, pending);
+                const out = pending.slice(trim);
+                if (out) {
+                  yieldedText += out;
+                  streamedAny = true;
+                  yield out;
+                }
+              }
+            }
+            break;
+          }
+          const delta = n.value as string;
+          contText += delta;
+          if (holding) {
+            pending += delta;
             if (DONE_MARKER_RE.test(pending.trimStart())) {
               swallowed = true;
-            } else {
+              break;
+            }
+            if (pending.length >= OVERLAP_WINDOW) {
+              // Full window available — decide the one-time trim, then flush.
               const trim = overlapTrimLen(accumulated, pending);
               const out = pending.slice(trim);
               if (out) {
                 yieldedText += out;
+                streamedAny = true;
                 yield out;
               }
+              holding = false;
+              pending = "";
             }
+          } else {
+            yieldedText += delta;
+            streamedAny = true;
+            yield delta;
           }
-          break;
         }
-        const delta = n.value as string;
-        contText += delta;
-        if (holding) {
-          pending += delta;
-          if (DONE_MARKER_RE.test(pending.trimStart())) {
-            swallowed = true;
-            break;
-          }
-          if (pending.length >= OVERLAP_WINDOW) {
-            // Full window available — decide the one-time trim, then flush.
-            const trim = overlapTrimLen(accumulated, pending);
-            const out = pending.slice(trim);
-            if (out) {
-              yieldedText += out;
-              yield out;
-            }
-            holding = false;
-            pending = "";
-          }
-        } else {
-          yieldedText += delta;
-          yield delta;
+        roundSettled = true;
+      } catch (err) {
+        // A failed continuation round must NOT error the stream — the client
+        // already holds a coherent (long) text. Retry with a fresh session
+        // when nothing was streamed yet; otherwise end gracefully.
+        console.error(`[NSFWGF-CONT] round ${round} attempt ${attempt}: FAILED — ${err instanceof Error ? err.message : String(err)}`);
+        if (streamedAny) {
+          console.error(`[NSFWGF-CONT] round ${round}: partial content already streamed — ending gracefully`);
+          return;
         }
-      }
-    } catch (err) {
-      // A failed continuation round must NOT error the stream — the client
-      // already holds a coherent (long) text; end gracefully instead.
-      console.error(`[NSFWGF-CONT] round ${round}: FAILED — ${err instanceof Error ? err.message : String(err)}`);
-      return;
-    } finally {
-      try {
-        // Cast: gen.return()'s parameter must match the declared return type,
-        // but we only ever use it to run the segment's cleanup path.
-        await gen.return(undefined as unknown as SegmentResult);
-      } catch {
-        /* best-effort cleanup */
+        if (attempt < ROUND_ATTEMPTS) {
+          // Nothing streamed — safe to retry cleanly: drop the failed
+          // attempt's held-back raw text so it cannot pollute the retry.
+          contText = "";
+          contFinish = null;
+          await sleep(700);
+          continue;
+        }
+        console.error(`[NSFWGF-CONT] round ${round}: all ${ROUND_ATTEMPTS} attempts failed — ending gracefully`);
+        return;
+      } finally {
+        try {
+          // Cast: gen.return()'s parameter must match the declared return type,
+          // but we only ever use it to run the segment's cleanup path.
+          await gen.return(undefined as unknown as SegmentResult);
+        } catch {
+          /* best-effort cleanup */
+        }
       }
     }
+    if (!roundSettled) return;
 
     if (swallowed) {
       console.error(`[NSFWGF-CONT] round ${round}: model replied DONE — natural end`);

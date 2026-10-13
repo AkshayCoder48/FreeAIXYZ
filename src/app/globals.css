@@ -8,7 +8,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
-  --font-display: var(--font-display), Georgia, serif;
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,93 +45,98 @@
   --radius-xl: 16px;
 }
 
-/* ─── Warm Aurora Theme — near-black ground + crimson/coral/amber accents ──── */
-/* The whole app shares the landing's cinematic dark design language:          */
-/*   ground #07080a · text #f4f4f5 · muted #9c9c9d · accent coral #ff6b4a      */
-/*   accent-secondary amber #ffb347 · destructive crimson #ff2f3a             */
-/* Strictly WARM — no blue/indigo/violet anywhere. Both :root and .dark map   */
-/* to the same palette so the aurora look is deterministic on every page.      */
+/* ═══ HYPERDIMENSION AI — "CRIMSON ORB" DESIGN SYSTEM ════════════════════════
+ * Extracted from the Stitch 3D AI interface kit
+ * (stitch_3d_ai_interface_system/*_crimson_orb).
+ *
+ * Palette:
+ *   ground #111319 (surface-dim) · deep #0c0e13 (container-lowest)
+ *   low #191c21 · container #1d2025 · high #282a30 · highest #33353b
+ *   text #e2e2ea · muted-rose #e6bcbd (on-surface-variant)
+ *   primary crimson #ff2a55 (glow rgba(255,42,85,.85))
+ *   secondary ember #ff850d · tertiary gold #ffba27 · blush #ffb68a
+ *
+ * Type: Space Grotesk (display) · Geist (body) · JetBrains Mono (code/ids).
+ * Strictly warm — no blue/indigo anywhere. Both :root and .dark map to the
+ * same palette so the look is deterministic on every page.
+ */
 :root {
   --radius: 12px;
-  --background: #07080a;
-  --foreground: #f4f4f5;
-  --card: #0d0e12;
-  --card-foreground: #f4f4f5;
-  --popover: #0d0e12;
-  --popover-foreground: #f4f4f5;
-  --primary: #ff6b4a;
-  --primary-foreground: #170b08;
-  --secondary: rgba(255, 255, 255, 0.05);
-  --secondary-foreground: #e8e8ea;
-  --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: #9c9c9d;
-  --accent: #ff6b4a;
-  --accent-secondary: #ffb347;
-  --accent-foreground: #170b08;
-  --destructive: #ff2f3a;
+  --background: #111319;
+  --foreground: #e2e2ea;
+  --card: #0c0e13;
+  --card-foreground: #e2e2ea;
+  --popover: #0c0e13;
+  --popover-foreground: #e2e2ea;
+  --primary: #ff2a55;
+  --primary-foreground: #ffffff;
+  --secondary: #191c21;
+  --secondary-foreground: #e2e2ea;
+  --muted: #191c21;
+  --muted-foreground: #e6bcbd;
+  --accent: #1d2025;
+  --accent-secondary: #ff850d;
+  --accent-foreground: #e2e2ea;
+  --destructive: #ff2a55;
   --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.09);
-  --input: rgba(255, 255, 255, 0.10);
-  --ring: #ff6b4a;
-  --chart-1: #ff2f3a;
-  --chart-2: #ff6b4a;
-  --chart-3: #ffb347;
-  --chart-4: #9c9c9d;
-  --chart-5: #6b6b6e;
-  --sidebar: #0d0e12;
-  --sidebar-foreground: #f4f4f5;
-  --sidebar-primary: #ff6b4a;
-  --sidebar-primary-foreground: #170b08;
-  --sidebar-accent: rgba(255, 107, 74, 0.12);
-  --sidebar-accent-foreground: #ff8a6b;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #ff6b4a;
-  /* Accent shadows / glows (warm) */
-  --shadow-accent: 0 4px 14px rgba(255, 47, 58, 0.28);
-  --shadow-accent-lg: 0 8px 24px rgba(255, 71, 58, 0.35);
-  /* Display / Mono font vars (set by next/font in layout.tsx) */
-  --font-display: var(--font-display), Georgia, serif;
-  --font-mono: var(--font-mono), ui-monospace, monospace;
-  --font-body: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --border: rgba(255, 42, 85, 0.16);
+  --input: rgba(255, 42, 85, 0.22);
+  --ring: #ff2a55;
+  --chart-1: #ff2a55;
+  --chart-2: #ff850d;
+  --chart-3: #ffba27;
+  --chart-4: #ffb68a;
+  --chart-5: #5d3f40;
+  --sidebar: #0c0e13;
+  --sidebar-foreground: #e2e2ea;
+  --sidebar-primary: #ff2a55;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 42, 85, 0.12);
+  --sidebar-accent-foreground: #ffb68a;
+  --sidebar-border: rgba(255, 42, 85, 0.18);
+  --sidebar-ring: #ff2a55;
+  /* Accent shadows / glows (crimson / ember). */
+  --shadow-accent: 0 4px 14px rgba(255, 42, 85, 0.35);
+  --shadow-accent-lg: 0 0 24px rgba(255, 42, 85, 0.5);
 }
 
-/* Aurora design is dark-only: .dark mirrors :root exactly. */
+/* HyperDimension is dark-only: .dark mirrors :root exactly. */
 .dark {
-  --background: #07080a;
-  --foreground: #f4f4f5;
-  --card: #0d0e12;
-  --card-foreground: #f4f4f5;
-  --popover: #0d0e12;
-  --popover-foreground: #f4f4f5;
-  --primary: #ff6b4a;
-  --primary-foreground: #170b08;
-  --secondary: rgba(255, 255, 255, 0.05);
-  --secondary-foreground: #e8e8ea;
-  --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: #9c9c9d;
-  --accent: #ff6b4a;
-  --accent-secondary: #ffb347;
-  --accent-foreground: #170b08;
-  --destructive: #ff2f3a;
+  --background: #111319;
+  --foreground: #e2e2ea;
+  --card: #0c0e13;
+  --card-foreground: #e2e2ea;
+  --popover: #0c0e13;
+  --popover-foreground: #e2e2ea;
+  --primary: #ff2a55;
+  --primary-foreground: #ffffff;
+  --secondary: #191c21;
+  --secondary-foreground: #e2e2ea;
+  --muted: #191c21;
+  --muted-foreground: #e6bcbd;
+  --accent: #1d2025;
+  --accent-secondary: #ff850d;
+  --accent-foreground: #e2e2ea;
+  --destructive: #ff2a55;
   --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.09);
-  --input: rgba(255, 255, 255, 0.10);
-  --ring: #ff6b4a;
-  --chart-1: #ff2f3a;
-  --chart-2: #ff6b4a;
-  --chart-3: #ffb347;
-  --chart-4: #9c9c9d;
-  --chart-5: #6b6b6e;
-  --sidebar: #0d0e12;
-  --sidebar-foreground: #f4f4f5;
-  --sidebar-primary: #ff6b4a;
-  --sidebar-primary-foreground: #170b08;
-  --sidebar-accent: rgba(255, 107, 74, 0.12);
-  --sidebar-accent-foreground: #ff8a6b;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #ff6b4a;
-  --shadow-accent: 0 4px 14px rgba(255, 47, 58, 0.28);
-  --shadow-accent-lg: 0 8px 24px rgba(255, 71, 58, 0.35);
+  --border: rgba(255, 42, 85, 0.16);
+  --input: rgba(255, 42, 85, 0.22);
+  --ring: #ff2a55;
+  --chart-1: #ff2a55;
+  --chart-2: #ff850d;
+  --chart-3: #ffba27;
+  --chart-4: #ffb68a;
+  --chart-5: #5d3f40;
+  --sidebar: #0c0e13;
+  --sidebar-foreground: #e2e2ea;
+  --sidebar-primary: #ff2a55;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 42, 85, 0.12);
+  --sidebar-accent-foreground: #ffb68a;
+  --sidebar-border: rgba(255, 42, 85, 0.18);
+  --sidebar-ring: #ff2a55;
+  --shadow-accent: 0 4px 14px rgba(255, 42, 85, 0.35);
+  --shadow-accent-lg: 0 0 24px rgba(255, 42, 85, 0.5);
 }
 
 @layer base {
@@ -145,10 +150,10 @@
     -moz-osx-font-smoothing: grayscale;
     color-scheme: dark;
   }
-  /* Aurora type system: ONE sans (Inter) — hierarchy from size+weight. */
+  /* HyperDimension type: Space Grotesk display headings, Geist body. */
   h1, h2, h3 {
-    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-    font-weight: 600;
+    font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
     letter-spacing: -0.02em;
     color: #ffffff;
   }
@@ -156,7 +161,7 @@
     font-family: var(--font-mono), ui-monospace, monospace;
   }
   ::selection {
-    background: rgba(255, 107, 74, 0.35);
+    background: #ff2a55;
     color: #ffffff;
   }
 }
@@ -175,12 +180,12 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle 600px at 0% 0%, rgba(255, 47, 58, 0.14), transparent 60%),
-    radial-gradient(circle 600px at 100% 100%, rgba(255, 179, 71, 0.08), transparent 60%);
+    radial-gradient(circle 600px at 0% 0%, rgba(255, 42, 85, 0.16), transparent 60%),
+    radial-gradient(circle 600px at 100% 100%, rgba(255, 133, 13, 0.09), transparent 60%);
   z-index: 0;
 }
 
-/* ─── Custom Scrollbar ────────────────────────────────────────────────────────── */
+/* ─── Custom Scrollbar (crimson-tinted) ────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -189,22 +194,22 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: #33353b;
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  background: #5d3f40;
 }
 
 .custom-scroll::-webkit-scrollbar {
   width: 6px;
 }
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 107, 74, 0.35);
+  background: rgba(255, 42, 85, 0.4);
   border-radius: 999px;
 }
 .custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
+  background: #ff2a55;
 }
 
 /* ─── Keyframes (continuous animations) ───────────────────────────────────────── */
@@ -266,134 +271,141 @@
   outline: none;
   box-shadow:
     0 0 0 2px var(--background),
-    0 0 0 4px var(--accent);
+    0 0 0 4px var(--primary);
 }
 
 /* ─── Gradient utility classes ─────────────────────────────────────────────────── */
 .bg-accent-gradient {
-  background-image: linear-gradient(to right, #ff2f3a, #ff6b4a, #ffb347);
+  background-image: linear-gradient(to right, #ff2a55, #ff5168, #ff850d);
 }
 .text-accent-gradient {
-  background-image: linear-gradient(to right, #ff2f3a, #ff6b4a, #ffb347);
+  background-image: linear-gradient(to right, #ff2a55, #ff5168, #ff850d);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
 .border-accent-gradient {
-  border-image: linear-gradient(to bottom right, #ff2f3a, #ff6b4a, #ff2f3a) 1;
+  border-image: linear-gradient(to bottom right, #ff2a55, #ff850d, #ff2a55) 1;
 }
 
-/* ─── Warm Aurora landing hero (light-blades on #07080a) ───────────────────── */
-/* Strictly WARM: crimson #ff2f3a → coral #ff6b4a → amber #ffb347.             */
-/* No purple/indigo/violet anywhere. Pure-CSS keyframes; 0% = full bloom.      */
+/* ═══ CRIMSON ORB — the HyperDimension hero motif ════════════════════════════ */
+/* Pure-CSS underpaint + ambient glows. The animated core is a tiny <canvas>
+   (see src/components/aurora/crimson-orb.tsx) layered on top; this CSS layer
+   guarantees the orb renders (statically) even before/without JS. */
 
 .fxz-aurora-root {
-  background: #07080a;
+  background: #111319;
 }
 
-/* Light-blades: long soft-focus diagonal gradients, screen-blended. */
-.fxz-blade {
+/* Soft ambient blobs above the hero (kit: -top-40 left-1/4 w-96 h-96 /15). */
+.fxz-glow-a {
   position: absolute;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  will-change: transform, opacity;
+  top: -10rem;
+  left: 12%;
+  width: 26rem;
+  height: 26rem;
   border-radius: 9999px;
-}
-
-.fxz-blade-1 {
-  width: 150vw; height: 34vh; top: -6%; left: -22%;
-  background: linear-gradient(100deg,
-    transparent 0%,
-    rgba(255, 47, 58, 0) 18%,
-    rgba(255, 47, 58, 0.50) 46%,
-    rgba(255, 107, 74, 0.38) 62%,
-    rgba(255, 179, 71, 0.22) 78%,
-    transparent 100%);
-  filter: blur(70px);
-  transform: translate(-6%, -3%) rotate(-16deg);
-  animation: fxz-drift-1 18s ease-in-out infinite;
-}
-.fxz-blade-2 {
-  width: 130vw; height: 26vh; top: 26%; left: 8%;
-  background: linear-gradient(280deg,
-    transparent 0%,
-    rgba(255, 47, 58, 0) 20%,
-    rgba(255, 47, 58, 0.36) 48%,
-    rgba(255, 107, 74, 0.30) 64%,
-    rgba(255, 179, 71, 0.16) 80%,
-    transparent 100%);
-  filter: blur(80px);
-  transform: translate(4%, 2%) rotate(-11deg);
-  animation: fxz-drift-2 22s ease-in-out infinite;
-}
-.fxz-blade-3 {
-  width: 120vw; height: 22vh; bottom: 6%; left: -18%;
-  background: linear-gradient(75deg,
-    transparent 0%,
-    rgba(255, 107, 74, 0) 22%,
-    rgba(255, 107, 74, 0.34) 50%,
-    rgba(255, 179, 71, 0.26) 68%,
-    rgba(255, 179, 71, 0.10) 84%,
-    transparent 100%);
-  filter: blur(60px);
-  transform: translate(0%, 4%) rotate(-20deg);
-  animation: fxz-drift-3 16s ease-in-out infinite;
-}
-.fxz-blade-4 {
-  width: 90vw; height: 18vh; top: 46%; right: -30%;
-  background: linear-gradient(190deg,
-    transparent 0%,
-    rgba(255, 47, 58, 0) 25%,
-    rgba(255, 47, 58, 0.30) 55%,
-    rgba(255, 179, 71, 0.18) 75%,
-    transparent 100%);
+  background: rgba(255, 42, 85, 0.14);
   filter: blur(64px);
-  transform: translate(-2%, -2%) rotate(-14deg);
-  animation: fxz-drift-4 20s ease-in-out infinite;
-}
-
-/* Drift + breathe; 0% keyframe = full bloom (richest single still). */
-@keyframes fxz-drift-1 {
-  0%   { transform: translate(-6%, -3%) rotate(-16deg) scale(1);    opacity: 0.95; }
-  50%  { transform: translate(5%, 4%)  rotate(-11deg) scale(1.14);  opacity: 0.55; }
-  100% { transform: translate(-6%, -3%) rotate(-16deg) scale(1);    opacity: 0.95; }
-}
-@keyframes fxz-drift-2 {
-  0%   { transform: translate(4%, 2%) rotate(-11deg) scale(1.08);   opacity: 0.9; }
-  50%  { transform: translate(-5%, -4%) rotate(-15deg) scale(1);    opacity: 0.5; }
-  100% { transform: translate(4%, 2%) rotate(-11deg) scale(1.08);   opacity: 0.9; }
-}
-@keyframes fxz-drift-3 {
-  0%   { transform: translate(0%, 4%) rotate(-20deg) scale(1);      opacity: 0.85; }
-  50%  { transform: translate(6%, -3%) rotate(-16deg) scale(1.12);  opacity: 0.45; }
-  100% { transform: translate(0%, 4%) rotate(-20deg) scale(1);      opacity: 0.85; }
-}
-@keyframes fxz-drift-4 {
-  0%   { transform: translate(-2%, -2%) rotate(-14deg) scale(1.05); opacity: 0.9; }
-  50%  { transform: translate(4%, 3%)  rotate(-18deg) scale(1);     opacity: 0.4; }
-  100% { transform: translate(-2%, -2%) rotate(-14deg) scale(1.05); opacity: 0.9; }
-}
-
-/* Warm ambient glow (deep crimson core behind the content). */
-.fxz-aurora-core {
-  position: absolute;
-  left: 50%; top: 42%;
-  width: 820px; height: 520px;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(ellipse at center,
-    rgba(255, 47, 58, 0.14) 0%,
-    rgba(255, 107, 74, 0.07) 45%,
-    transparent 72%);
-  filter: blur(40px);
   pointer-events: none;
+}
+.fxz-glow-b {
+  position: absolute;
+  top: -8rem;
+  right: 10%;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 9999px;
+  background: rgba(255, 133, 13, 0.12);
+  filter: blur(64px);
+  pointer-events: none;
+}
+
+/* The orb stage — square, relative; holds halo + body + canvas. */
+.fxz-orb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  pointer-events: none;
+}
+/* Outer halo — deep wine + crimson bloom. */
+.fxz-orb-halo {
+  position: absolute;
+  inset: -32%;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 50% 50%,
+      rgba(255, 42, 85, 0.30) 0%,
+      rgba(255, 133, 13, 0.14) 38%,
+      rgba(92, 0, 26, 0.16) 58%,
+      transparent 74%);
+  filter: blur(18px);
+}
+/* Orb body — incandescent core → crimson → wine → void (kit shader stops). */
+.fxz-orb-body {
+  position: absolute;
+  inset: 7%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 34% 28%,
+    #fff3e2 0%,
+    #ffcf9e 7%,
+    #ff850d 19%,
+    #ff2a55 46%,
+    #92002a 70%,
+    #2c020b 90%,
+    rgba(12, 14, 19, 0) 100%);
+  box-shadow:
+    0 0 46px rgba(255, 42, 85, 0.5),
+    0 0 120px rgba(255, 133, 13, 0.28),
+    inset 0 0 52px rgba(255, 42, 85, 0.42);
+}
+/* Canvas overlay paints the living (animated) orb on top of the static body. */
+.fxz-orb canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Content-page backdrop: CSS-only ambient crimson field (no canvas needed). */
+.fxz-hd-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 56% 42% at 50% -8%, rgba(255, 42, 85, 0.17), transparent 70%),
+    radial-gradient(ellipse 34% 26% at 88% 8%, rgba(255, 133, 13, 0.08), transparent 70%),
+    radial-gradient(ellipse 30% 24% at 8% 14%, rgba(255, 42, 85, 0.08), transparent 70%),
+    linear-gradient(to bottom, #101218 0%, #111319 42%, #0d0f14 100%);
+}
+/* Dim static orb bloom sitting behind the floating nav on content pages. */
+.fxz-hd-backdrop-orb {
+  position: fixed;
+  top: -170px;
+  left: 50%;
+  width: 460px;
+  height: 460px;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 40% 34%,
+      rgba(255, 133, 13, 0.16) 0%,
+      rgba(255, 42, 85, 0.22) 34%,
+      rgba(92, 0, 26, 0.18) 62%,
+      transparent 78%);
+  filter: blur(26px);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Film grain — SVG feTurbulence data URI, overlaid. */
 .fxz-grain {
   position: absolute; inset: 0;
   pointer-events: none;
-  opacity: 0.05;
+  opacity: 0.04;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -405,119 +417,130 @@
   background:
     radial-gradient(ellipse 120% 90% at 50% 40%,
       transparent 42%,
-      rgba(7, 8, 10, 0.5) 100%),
+      rgba(12, 14, 19, 0.5) 100%),
     linear-gradient(to bottom,
-      rgba(7, 8, 10, 0.55) 0%,
+      rgba(12, 14, 19, 0.5) 0%,
       transparent 18%,
       transparent 72%,
-      #07080a 100%);
+      #111319 100%);
 }
 
-/* ─── Keycap-raised button (near-white tactile key) ────────────────────────── */
+/* Grain + vignette pinned to the viewport on content pages. */
+.fxz-grain-fixed {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Primary crimson button (kit CTA: #ff2a55 + glow, mono label) ──────── */
 .fxz-keycap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
-  background: #e6e6e6;
-  color: #2f3031;
-  border-radius: 8px;
-  padding: 0.75rem 1.4rem;
-  font-weight: 500;
+  background: #ff2a55;
+  color: #ffffff;
+  border: 1px solid rgba(255, 81, 104, 0.6);
+  border-radius: 12px;
+  padding: 0.8rem 1.4rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 700;
   font-size: 14px;
   line-height: 1;
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 14px rgba(255, 255, 255, 0.19),
-    0 10px 30px -10px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
-  transition: transform 160ms ease, box-shadow 160ms ease;
+    0 0 24px rgba(255, 42, 85, 0.5),
+    0 8px 24px -10px rgba(0, 0, 0, 0.8),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 .fxz-keycap:hover {
   transform: translateY(-1px);
+  background: #ff1f47;
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 22px rgba(255, 255, 255, 0.3),
-    0 14px 34px -10px rgba(0, 0, 0, 0.85),
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+    0 0 36px rgba(255, 133, 13, 0.7),
+    0 0 18px rgba(255, 42, 85, 0.9),
+    0 12px 30px -10px rgba(0, 0, 0, 0.85),
+    inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 .fxz-keycap:active {
   transform: translateY(1px);
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 8px rgba(255, 255, 255, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    0 0 14px rgba(255, 42, 85, 0.45),
+    inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.fxz-keycap:disabled {
+  filter: grayscale(0.55) brightness(0.6);
+  cursor: not-allowed;
 }
 
-/* Small near-white pill CTA (nav "Download"-style button). */
+/* Small crimson pill CTA (nav button — kit "Generate key" mini style). */
 .fxz-nav-cta {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: #f4f4f4;
-  color: #17181a;
+  background: #ff2a55;
+  color: #ffffff;
+  border: 1px solid rgba(255, 81, 104, 0.55);
   border-radius: 9999px;
-  padding: 0.42rem 0.9rem;
+  padding: 0.46rem 1rem;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   box-shadow:
-    0 0 0 1.5px rgba(0, 0, 0, 0.85),
-    0 0 10px rgba(255, 255, 255, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+    0 0 16px rgba(255, 42, 85, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 .fxz-nav-cta:hover {
   transform: translateY(-1px);
+  background: #ff1f47;
   box-shadow:
-    0 0 0 1.5px rgba(0, 0, 0, 0.85),
-    0 0 16px rgba(255, 255, 255, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+    0 0 24px rgba(255, 133, 13, 0.6),
+    0 0 14px rgba(255, 42, 85, 0.85),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55);
 }
 
-/* ─── Hero headline (scoped class + !important — survives host resets) ────── */
+/* ─── Hero headline (Space Grotesk extrabold — kit display-hero) ─────────── */
 .fxz-hero-title {
-  font-size: clamp(2.5rem, 5.2vw, 3.75rem) !important;
-  font-weight: 600 !important;
-  line-height: 1.08 !important;
-  letter-spacing: -0.02em !important;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif !important;
+  font-size: clamp(2.35rem, 6vw, 4rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.06 !important;
+  letter-spacing: -0.03em !important;
   color: #ffffff !important;
 }
 
-/* Warm gradient accent word (amber → coral → crimson). */
+/* Crimson→ember gradient accent word (kit hero gradient). */
 .fxz-gradient-word {
-  background-image: linear-gradient(105deg, #ffb347 0%, #ff6b4a 55%, #ff2f3a 100%);
+  background-image: linear-gradient(100deg, #ff2a55 0%, #ff5168 48%, #ff850d 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
 
-/* ─── Command-bar mockup ───────────────────────────────────────────────────── */
+/* ─── Obsidian terminal / code card (kit quickstart panel) ───────────────── */
 .fxz-cmdbar {
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 11, 13, 0.62);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 42, 85, 0.25);
+  background: rgba(12, 14, 19, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow:
-    0 30px 90px -28px rgba(255, 47, 58, 0.28),
-    0 12px 40px -12px rgba(0, 0, 0, 0.9),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 20px 50px rgba(0, 0, 0, 0.85),
+    0 0 24px rgba(255, 42, 85, 0.15),
+    inset 0 1px 1px rgba(255, 255, 255, 0.07);
 }
 
-/* Blinking warm caret. */
+/* Blinking crimson caret. */
 .fxz-caret {
   display: inline-block;
   width: 2px;
   height: 1.05em;
   margin-left: 2px;
   vertical-align: text-bottom;
-  background: #ff6b4a;
+  background: #ff2a55;
+  box-shadow: 0 0 8px rgba(255, 42, 85, 0.8);
   animation: fxz-caret-blink 1.1s steps(1) infinite;
 }
 @keyframes fxz-caret-blink {
@@ -525,60 +548,69 @@
   50%, 95% { opacity: 0; }
 }
 
-/* Active (selected) result row — warm aurora tint, never purple. */
+/* Active (selected) result row — crimson tint. */
 .fxz-cmd-row-active {
   background: linear-gradient(90deg,
-    rgba(255, 47, 58, 0.16) 0%,
-    rgba(255, 107, 74, 0.10) 55%,
-    rgba(255, 179, 71, 0.05) 100%);
-  border-color: rgba(255, 107, 74, 0.35) !important;
+    rgba(255, 42, 85, 0.18) 0%,
+    rgba(255, 42, 85, 0.10) 55%,
+    rgba(255, 133, 13, 0.05) 100%);
+  border-color: rgba(255, 42, 85, 0.38) !important;
 }
 
 /* Keyboard shortcut chip (mono). */
 .fxz-kbd {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10.5px;
-  color: #9c9c9d;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e6bcbd;
+  border: 1px solid rgba(255, 42, 85, 0.35);
   border-bottom-width: 2px;
   border-radius: 5px;
   padding: 1.5px 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 42, 85, 0.08);
   white-space: nowrap;
 }
 
-/* Ghost pill (low-emphasis secondary link). */
+/* Frosted glass pill (secondary CTA — kit "Read docs" button). */
 .fxz-ghost-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #a7a7a9;
-  border-radius: 9999px;
-  padding: 0.55rem 1.25rem;
+  border: 1px solid rgba(255, 42, 85, 0.3);
+  color: #ffb68a;
+  border-radius: 12px;
+  padding: 0.6rem 1.25rem;
   font-size: 13.5px;
+  font-weight: 500;
+  background: rgba(40, 42, 48, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-  background: transparent;
 }
 .fxz-ghost-pill:hover {
-  border-color: rgba(255, 107, 74, 0.5);
-  color: #f0f0f0;
-  background: rgba(255, 47, 58, 0.06);
+  border-color: rgba(255, 133, 13, 0.5);
+  color: #ffffff;
+  background: rgba(51, 53, 59, 0.7);
 }
 
-/* Eyebrow chip. */
+/* Badge chip (hero eyebrow — kit "Tier 0 Gateway" pill). */
 .fxz-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(10px);
-  color: #ffd9cd;
+  border: 1px solid rgba(255, 42, 85, 0.32);
+  background: rgba(40, 42, 48, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffb68a;
   border-radius: 9999px;
-  padding: 0.36rem 0.95rem;
-  font-size: 12.5px;
-  font-weight: 500;
+  padding: 0.38rem 0.95rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(255, 42, 85, 0.2);
 }
 
 /* Fade-up entrance for hero content. */
@@ -591,283 +623,280 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fxz-blade, .fxz-caret, .fxz-fade-up { animation: none !important; }
+  .fxz-caret, .fxz-fade-up { animation: none !important; }
 }
 
-/* ═══ WARM AURORA APP DESIGN SYSTEM (shared by playground/models/docs) ═══════ */
+/* ═══ HYPERDIMENSION APP DESIGN SYSTEM (playground/models/docs) ═════════════ */
 
-/* Aurora blade container — FIXED so the light stays pinned to the viewport
-   while long content (docs) scrolls over it. `.fxz-blades-dim` softens the
-   blades for reading surfaces (content pages) — scales the whole group. */
-.fxz-blades {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-}
-.fxz-blades-dim {
-  opacity: 0.45;
-  filter: saturate(0.92);
-}
-
-/* Grain + vignette pinned to the viewport on content pages. */
-.fxz-grain-fixed {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ─── Dark-glass panel (Cards, toolbars, message bubbles) ───────────────── */
+/* ─── Obsidian panel (Cards, toolbars, message surfaces) ────────────────── */
 .fxz-panel {
   position: relative;
-  background: rgba(10, 11, 13, 0.66);
+  background: rgba(12, 14, 19, 0.85);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 42, 85, 0.22);
   box-shadow:
-    0 16px 50px -20px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 12px 32px rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
 }
 .fxz-panel-solid {
-  background: #0d0e12;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 16px 50px -22px rgba(0, 0, 0, 0.75);
+  background: #0c0e13;
+  border: 1px solid rgba(255, 42, 85, 0.22);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
 }
 .fxz-panel-hover {
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 .fxz-panel-hover:hover {
-  border-color: rgba(255, 107, 74, 0.32);
+  border-color: rgba(255, 42, 85, 0.65);
   box-shadow:
-    0 20px 60px -22px rgba(0, 0, 0, 0.85),
-    0 0 24px -8px rgba(255, 47, 58, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 16px 36px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(255, 42, 85, 0.22),
+    inset 0 1px 1px rgba(255, 255, 255, 0.09);
 }
 
-/* ─── Glass input (textareas, search, select triggers) ──────────────────── */
+/* ─── Deep-well input (textareas, search, select triggers) ───────────────── */
 .fxz-input {
-  background: rgba(255, 255, 255, 0.035) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  color: #f4f4f5 !important;
-  caret-color: #ff6b4a;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: rgba(12, 14, 19, 0.9) !important;
+  border: 1px solid rgba(255, 42, 85, 0.22) !important;
+  color: #e2e2ea !important;
+  caret-color: #ff2a55;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    0 1px 0 rgba(255, 255, 255, 0.05);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 .fxz-input::placeholder {
-  color: #7c7c7f;
+  color: #5d3f40;
 }
 .fxz-input:focus-visible {
-  border-color: rgba(255, 107, 74, 0.45) !important;
-  box-shadow: 0 0 0 3px rgba(255, 47, 58, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 42, 85, 0.55) !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 42, 85, 0.16),
+    inset 0 2px 6px rgba(0, 0, 0, 0.8);
 }
 .fxz-input:focus {
-  border-color: rgba(255, 107, 74, 0.45) !important;
+  border-color: rgba(255, 42, 85, 0.55) !important;
 }
 
-/* ─── Warm pill chip (filter tabs, tool toggles, suggestions) ───────────── */
+/* ─── Mono chip (filter tabs, tool toggles, suggestions) ─────────────────── */
 .fxz-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #9c9c9d;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 9999px;
-  padding: 0.32rem 0.85rem;
+  border: 1px solid rgba(93, 63, 64, 0.45);
+  color: #e6bcbd;
+  background: rgba(29, 32, 37, 0.7);
+  border-radius: 8px;
+  padding: 0.36rem 0.85rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 12px;
   font-weight: 500;
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
   white-space: nowrap;
 }
 .fxz-chip:hover {
-  color: #f0f0f0;
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  border-color: rgba(255, 42, 85, 0.5);
+  background: rgba(40, 42, 48, 0.85);
 }
 .fxz-chip-active {
-  color: #ffd9cd;
-  border-color: rgba(255, 107, 74, 0.45);
-  background: linear-gradient(90deg,
-    rgba(255, 47, 58, 0.16) 0%,
-    rgba(255, 107, 74, 0.12) 55%,
-    rgba(255, 179, 71, 0.07) 100%);
+  color: #ff2a55;
+  border-color: rgba(255, 42, 85, 0.55);
+  background: rgba(255, 42, 85, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 42, 85, 0.3),
+    0 0 10px rgba(255, 42, 85, 0.25);
+  font-weight: 600;
 }
 .fxz-chip-active:hover {
-  color: #ffe4db;
-  border-color: rgba(255, 107, 74, 0.6);
+  color: #ff5168;
+  border-color: rgba(255, 42, 85, 0.75);
+  background: rgba(255, 42, 85, 0.2);
 }
 
-/* ─── Small warm badge (capability tags) ────────────────────────────────── */
+/* ─── Small badge (capability tags — kit FREE TIER chips) ────────────────── */
 .fxz-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #b9b9bc;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
-  padding: 1.5px 7px;
+  border: 1px solid rgba(93, 63, 64, 0.5);
+  color: #e6bcbd;
+  background: rgba(29, 32, 37, 0.65);
+  border-radius: 9999px;
+  padding: 1.5px 8px;
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 .fxz-badge-warm {
-  color: #ff8a6b;
-  border-color: rgba(255, 107, 74, 0.35);
-  background: rgba(255, 47, 58, 0.08);
+  color: #ff2a55;
+  border-color: rgba(255, 42, 85, 0.45);
+  background: rgba(255, 42, 85, 0.14);
+  box-shadow: 0 0 10px rgba(255, 42, 85, 0.18);
+}
+.fxz-badge-ember {
+  color: #ff850d;
+  border-color: rgba(255, 133, 13, 0.45);
+  background: rgba(255, 133, 13, 0.12);
+  box-shadow: 0 0 10px rgba(255, 133, 13, 0.15);
 }
 
-/* ─── Warm monospace code pill (model ids, endpoints) ───────────────────── */
+/* ─── Mono code pill (model ids, endpoints — kit key chips) ──────────────── */
 .fxz-code {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 11px;
-  color: #d9c8b8;
-  background: rgba(255, 47, 58, 0.06);
-  border: 1px solid rgba(255, 107, 74, 0.18);
+  color: #ffb3b6;
+  background: rgba(17, 19, 25, 0.9);
+  border: 1px solid rgba(255, 42, 85, 0.4);
   border-radius: 6px;
   padding: 2px 7px;
   white-space: nowrap;
+  box-shadow: 0 0 10px rgba(255, 42, 85, 0.12);
 }
 .fxz-code-block {
   font-family: var(--font-mono), ui-monospace, monospace;
-  background: rgba(10, 11, 13, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 14, 19, 0.92);
+  border: 1px solid rgba(255, 42, 85, 0.2);
   border-radius: 10px;
-  color: #e2e2e4;
+  color: #e2e2ea;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
-.fxz-code-warm { color: #ffb347; }
-.fxz-code-hot { color: #ff6b4a; }
-.fxz-code-key { color: #ffd9cd; }
+.fxz-code-warm { color: #ff850d; }
+.fxz-code-hot { color: #ff2a55; }
+.fxz-code-key { color: #ffb68a; }
 
-/* ─── Section eyebrow (uppercase mono label above page titles) ──────────── */
+/* ─── Section eyebrow (mono caps ember label — kit amber eyebrows) ───────── */
 .fxz-section-eyebrow {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #ff6b4a;
+  color: #ff850d;
 }
 
-/* ─── Page title (content pages share the hero type scale, one size down) ─ */
+/* ─── Page title (Space Grotesk, one step under the hero) ────────────────── */
 .fxz-page-title {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif !important;
   font-size: clamp(1.9rem, 3.6vw, 2.75rem) !important;
-  font-weight: 600 !important;
-  line-height: 1.12 !important;
-  letter-spacing: -0.02em !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+  letter-spacing: -0.025em !important;
   color: #ffffff !important;
-  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* ─── Send keycap (composer primary action — tactile, keycap-raised) ────── */
+/* ─── Send button (crimson glow — kit "Run Stream" tactile) ──────────────── */
 .fxz-send {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: #e6e6e6;
-  color: #2f3031;
-  border-radius: 10px;
-  font-weight: 600;
+  background: #ff2a55;
+  color: #ffffff;
+  border: 1px solid rgba(255, 81, 104, 0.55);
+  border-radius: 12px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 700;
   font-size: 14px;
   line-height: 1;
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 14px rgba(255, 255, 255, 0.14),
+    0 4px 20px rgba(255, 42, 85, 0.55),
+    0 2px 0 #920028,
     0 8px 24px -10px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
-  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+    inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 .fxz-send:hover:not(:disabled) {
   transform: translateY(-1px);
+  background: #ff1f47;
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 22px rgba(255, 255, 255, 0.24),
-    0 12px 28px -10px rgba(0, 0, 0, 0.85),
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+    0 6px 26px rgba(255, 133, 13, 0.6),
+    0 4px 20px rgba(255, 42, 85, 0.85),
+    0 2px 0 #920028,
+    inset 0 1px 1px rgba(255, 255, 255, 0.55);
 }
 .fxz-send:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(2px);
+  box-shadow:
+    0 2px 10px rgba(255, 42, 85, 0.4),
+    0 1px 0 #920028;
 }
 .fxz-send:disabled {
   filter: grayscale(0.6) brightness(0.55);
   cursor: not-allowed;
 }
 
-/* ─── Stop keycap (crimson — destructive tactile key) ───────────────────── */
+/* ─── Stop button (dark slab + crimson rim — distinct from send) ─────────── */
 .fxz-stop {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: linear-gradient(180deg, #ff4d4d 0%, #e51d28 100%);
-  color: #ffffff;
-  border-radius: 10px;
-  font-weight: 600;
+  background: rgba(12, 14, 19, 0.95);
+  color: #ff2a55;
+  border: 1px solid rgba(255, 42, 85, 0.5);
+  border-radius: 12px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 700;
   font-size: 14px;
   line-height: 1;
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 18px rgba(255, 47, 58, 0.35),
-    0 8px 24px -10px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
-  transition: transform 150ms ease, box-shadow 150ms ease;
+    0 0 16px rgba(255, 42, 85, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 .fxz-stop:hover {
-  transform: translateY(-1px);
+  background: rgba(255, 42, 85, 0.14);
   box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.92),
-    0 0 26px rgba(255, 47, 58, 0.5),
-    0 12px 28px -10px rgba(0, 0, 0, 0.85),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    0 0 26px rgba(255, 42, 85, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 .fxz-stop:active {
   transform: translateY(1px);
 }
 
-/* ─── Warm status dots (phase indicator) ────────────────────────────────── */
-.fxz-dot-idle      { background: #6b6b6e; }
-.fxz-dot-amber     { background: #ffb347; }
-.fxz-dot-coral     { background: #ff6b4a; }
-.fxz-dot-crimson   { background: #ff2f3a; }
+/* ─── Status dots (phase indicator — kit palette) ────────────────────────── */
+.fxz-dot-idle      { background: #5d3f40; }
+.fxz-dot-amber     { background: #ffba27; }
+.fxz-dot-coral     { background: #ff850d; }
+.fxz-dot-crimson   { background: #ff2a55; }
 .fxz-dot-pulse {
   animation: fxz-dot-pulse 1.6s ease-in-out infinite;
 }
 @keyframes fxz-dot-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 107, 74, 0.5); }
-  50%      { transform: scale(1.25); opacity: 0.75; box-shadow: 0 0 0 4px rgba(255, 107, 74, 0); }
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 42, 85, 0.55); }
+  50%      { transform: scale(1.25); opacity: 0.75; box-shadow: 0 0 0 5px rgba(255, 42, 85, 0); }
 }
 
 /* ─── User / assistant message bubbles ──────────────────────────────────── */
 .fxz-bubble-user {
-  background: linear-gradient(135deg, rgba(255, 47, 58, 0.92) 0%, rgba(255, 107, 74, 0.92) 55%, rgba(255, 179, 71, 0.88) 100%);
+  background: linear-gradient(135deg, #ff2a55 0%, #ff5168 52%, #ff7b00 100%);
   color: #ffffff;
-  border: 1px solid rgba(255, 107, 74, 0.5);
+  border: 1px solid rgba(255, 81, 104, 0.55);
   box-shadow:
-    0 10px 30px -12px rgba(255, 47, 58, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    0 10px 30px -12px rgba(255, 42, 85, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .fxz-bubble-assistant {
-  background: rgba(12, 13, 16, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 14, 19, 0.92);
+  border: 1px solid rgba(93, 63, 64, 0.4);
   backdrop-filter: blur(10px);
-  box-shadow: 0 12px 34px -18px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 12px 34px -18px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* ─── Reasoning fold (amber-tinted dark glass) ──────────────────────────── */
+/* ─── Reasoning fold (gold-tinted dark glass) ────────────────────────────── */
 .fxz-reasoning {
-  background: rgba(255, 179, 71, 0.05);
-  border: 1px solid rgba(255, 179, 71, 0.22);
+  background: rgba(255, 186, 39, 0.05);
+  border: 1px solid rgba(255, 186, 39, 0.24);
   border-radius: 8px;
 }
 
-/* ─── Tool status chips (§26, warm palette) ─────────────────────────────── */
+/* ─── Tool status chips (mono, crimson/ember states) ─────────────────────── */
 .fxz-tool-chip {
   display: inline-flex;
   align-items: center;
@@ -876,52 +905,61 @@
   font-size: 10.5px;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #b9b9bc;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(93, 63, 64, 0.5);
+  color: #e6bcbd;
+  background: rgba(29, 32, 37, 0.65);
 }
 .fxz-tool-running {
-  border-color: rgba(255, 179, 71, 0.45);
-  color: #ffcf87;
-  background: rgba(255, 179, 71, 0.08);
+  border-color: rgba(255, 133, 13, 0.5);
+  color: #ff850d;
+  background: rgba(255, 133, 13, 0.1);
 }
 .fxz-tool-ok {
-  border-color: rgba(255, 107, 74, 0.4);
-  color: #ff9d7f;
-  background: rgba(255, 107, 74, 0.09);
+  border-color: rgba(255, 42, 85, 0.45);
+  color: #ff2a55;
+  background: rgba(255, 42, 85, 0.1);
 }
 .fxz-tool-error {
-  border-color: rgba(255, 47, 58, 0.5);
+  border-color: rgba(255, 42, 85, 0.65);
   color: #ff8a92;
-  background: rgba(255, 47, 58, 0.10);
+  background: rgba(146, 0, 10, 0.18);
 }
 
-/* ─── Warm-avatar squares (user/assistant glyphs) ───────────────────────── */
+/* ─── Avatar squares (user/assistant glyphs) ─────────────────────────────── */
 .fxz-avatar-user {
-  background: linear-gradient(135deg, #ff2f3a 0%, #ff6b4a 60%, #ffb347 100%);
-  box-shadow: 0 6px 18px -8px rgba(255, 47, 58, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: linear-gradient(135deg, #ff2a55 0%, #ff5168 55%, #ff850d 100%);
+  box-shadow:
+    0 6px 18px -8px rgba(255, 42, 85, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
   color: #ffffff;
 }
 .fxz-avatar-bot {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  color: #ff8a6b;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: rgba(40, 42, 48, 0.9);
+  border: 1px solid rgba(255, 42, 85, 0.35);
+  color: #ff2a55;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* ─── Warm glow icon tile (feature icons, empty-state glyphs) ───────────── */
+/* ─── Glow icon tile (feature icons, empty-state glyphs — kit slab icons) ── */
 .fxz-icon-tile {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  color: #ff6b4a;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  background: rgba(40, 42, 48, 0.9);
+  border: 1px solid rgba(255, 42, 85, 0.35);
+  color: #ff2a55;
+  box-shadow:
+    0 0 10px rgba(255, 42, 85, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.fxz-icon-tile-ember {
+  border-color: rgba(255, 133, 13, 0.4);
+  color: #ff850d;
+  box-shadow: 0 0 10px rgba(255, 133, 13, 0.18);
 }
 
-/* ═══ DOCS SECTION (same warm aurora design language) ═════════════════════ */
+/* ═══ DOCS SECTION (same HyperDimension language) ══════════════════════════ */
 
 /* Sidebar group label. */
 .fxz-docs-group-label {
@@ -930,7 +968,7 @@
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7c7c7f;
+  color: #e6bcbd;
 }
 
 /* Sidebar nav item. */
@@ -942,46 +980,48 @@
   padding: 0.42rem 0.7rem;
   font-size: 13px;
   font-weight: 400;
-  color: #9c9c9d;
+  color: #e6bcbd;
   border: 1px solid transparent;
   transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
   text-align: left;
   width: 100%;
 }
 .fxz-docs-navitem:hover {
-  color: #e8e8ea;
-  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  background: rgba(40, 42, 48, 0.7);
 }
 .fxz-docs-navitem-active {
-  color: #ffd9cd;
-  background: linear-gradient(90deg,
-    rgba(255, 47, 58, 0.16) 0%,
-    rgba(255, 107, 74, 0.10) 60%,
-    rgba(255, 179, 71, 0.05) 100%);
-  border-color: rgba(255, 107, 74, 0.30);
+  color: #ffffff;
+  background: rgba(255, 42, 85, 0.14);
+  border-color: rgba(255, 42, 85, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 42, 85, 0.3),
+    0 0 10px rgba(255, 42, 85, 0.18);
   font-weight: 500;
 }
 
-/* Docs prose typography (ONE sans for prose, mono for code). */
+/* Docs prose typography (Geist prose, Space Grotesk headings, mono code). */
 .fxz-docs-prose {
   font-size: 14.5px;
   line-height: 1.75;
-  color: #b9b9bc;
+  color: #e6bcbd;
 }
 .fxz-docs-prose h2 {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.02em;
   color: #ffffff;
 }
 .fxz-docs-prose h3 {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
   font-size: 17px;
   font-weight: 600;
   color: #ffffff;
   letter-spacing: -0.01em;
 }
 
-/* Docs table (warm hairlines, mono cells). */
+/* Docs table (crimson hairlines, mono headers). */
 .fxz-docs-table {
   width: 100%;
   border-collapse: collapse;
@@ -993,64 +1033,64 @@
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #ff8a6b;
+  color: #ff850d;
   text-align: left;
   padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid rgba(255, 107, 74, 0.25);
+  border-bottom: 1px solid rgba(255, 42, 85, 0.3);
   white-space: nowrap;
 }
 .fxz-docs-table td {
   padding: 0.6rem 0.85rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #b9b9bc;
+  color: #e6bcbd;
   vertical-align: top;
 }
 .fxz-docs-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 42, 85, 0.04);
 }
 .fxz-docs-table td:first-child {
-  color: #e8e8ea;
+  color: #e2e2ea;
   white-space: nowrap;
 }
 
 /* Docs callouts. */
 .fxz-docs-callout {
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(93, 63, 64, 0.5);
+  background: rgba(12, 14, 19, 0.75);
   padding: 0.85rem 1.1rem;
   font-size: 13.5px;
   line-height: 1.65;
-  color: #b9b9bc;
+  color: #e6bcbd;
 }
 .fxz-docs-callout-info {
-  border-color: rgba(255, 107, 74, 0.3);
-  background: linear-gradient(90deg, rgba(255, 47, 58, 0.07), rgba(255, 107, 74, 0.04) 70%, transparent);
+  border-color: rgba(255, 42, 85, 0.32);
+  background: linear-gradient(90deg, rgba(255, 42, 85, 0.09), rgba(255, 42, 85, 0.03) 70%, transparent);
 }
 .fxz-docs-callout-warn {
-  border-color: rgba(255, 179, 71, 0.35);
-  background: linear-gradient(90deg, rgba(255, 179, 71, 0.08), rgba(255, 179, 71, 0.03) 70%, transparent);
+  border-color: rgba(255, 133, 13, 0.38);
+  background: linear-gradient(90deg, rgba(255, 133, 13, 0.09), rgba(255, 133, 13, 0.03) 70%, transparent);
 }
 .fxz-docs-callout-tip {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.045), transparent 70%);
+  border-color: rgba(255, 186, 39, 0.3);
+  background: linear-gradient(90deg, rgba(255, 186, 39, 0.06), transparent 70%);
 }
 
 /* Prev / next pager cards. */
 .fxz-docs-pager {
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 42, 85, 0.2);
+  background: rgba(12, 14, 19, 0.8);
   padding: 0.9rem 1.1rem;
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 .fxz-docs-pager:hover {
-  border-color: rgba(255, 107, 74, 0.4);
-  background: rgba(255, 47, 58, 0.05);
+  border-color: rgba(255, 42, 85, 0.55);
+  background: rgba(255, 42, 85, 0.07);
   transform: translateY(-1px);
 }
 
-/* Reduced motion for the new animations. */
+/* Reduced motion for the pulse animations. */
 @media (prefers-reduced-motion: reduce) {
-  .fxz-dot-pulse, .fxz-blade { animation: none !important; }
+  .fxz-dot-pulse { animation: none !important; }
 }
