@@ -133,7 +133,7 @@ export function DocsBrowser() {
     <div className="pt-10 sm:pt-14 flex flex-col gap-6 min-w-0">
       {/* ── Page header ── */}
       <div className="flex flex-col gap-3 fxz-fade-up">
-        <span className="fxz-section-eyebrow">Crimson core // documentation</span>
+        <span className="fxz-section-eyebrow">FreeAIXYZ // documentation</span>
         <h1 className="fxz-page-title max-w-3xl">
           Everything, <span className="fxz-gradient-word">documented</span>.
         </h1>

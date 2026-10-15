@@ -1,13 +1,16 @@
 /**
  * GET /api/v1/models — OpenAI-compatible model listing.
  *
- * Lists every native model from the STATIC catalog (hand-curated MODELS[]
- * registry — no network fetch, no discovery). Only models whose provider has
- * a registered adapter and that are not delisted appear by default.
+ * THE PUBLIC LISTING IS THE ONYX FLEET — every entry is a public onyx-* id
+ * (clean display names live in the UI; "onyx" only ever appears in the id).
+ * The old provider-prefixed ids (tb/…, ng/…, l7/…) are NOT listed any more —
+ * they still ROUTE internally (fleet slots map onto them), but the public
+ * surface is fleet-only. `?all=true` adds the underlying catalog back for
+ * debugging.
  *
  * Query params:
  *   - ?health=true   — include capabilities + status + contextWindow
- *   - ?all=true      — include degraded + offline (delisted) models too
+ *   - ?all=true      — fleet + underlying catalog (debug view)
  */
 
 import { NextResponse } from "next/server";
@@ -20,6 +23,8 @@ import { isDelistedModel } from "@/lib/gateway/delisted";
 import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
 import { withCors, corsPreflight } from "@/lib/api/cors";
+import { FLEET_MODELS, FLEET_PROVIDER_NAME } from "@/lib/onyx/fleet";
+import { findNativeModel } from "@/lib/native-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +37,7 @@ function ownedBy(m: DiscoveredModel): string {
   return m.providerName || m.providerId;
 }
 
-/** Whether to include a model in the listing given the showAll flag. */
+/** Whether to include an underlying model in the debug listing. */
 function shouldInclude(m: DiscoveredModel, showAll: boolean): boolean {
   if (showAll) return true;
   // Default listing hides offline models (don't permanently hide — just
@@ -78,6 +83,17 @@ function capabilityList(m: DiscoveredModel): string[] {
   return out;
 }
 
+/** Capabilities for a fleet entry, derived from its underlying route. */
+function fleetCapabilities(route: string): string[] {
+  const underlying = findNativeModel(route);
+  if (!underlying) return ["text"];
+  const out: string[] = ["text"];
+  if (underlying.capabilities.vision) out.push("vision");
+  if (underlying.capabilities.tools) out.push("tools");
+  if (underlying.capabilities.streaming) out.push("streaming");
+  return out;
+}
+
 /** GET /api/v1/models (CORS-wrapped). */
 export async function GET(request: Request): Promise<Response> {
   return withCors(await listModels(request));
@@ -103,48 +119,82 @@ async function listModels(request: Request): Promise<Response> {
   let gatewayModels: DiscoveredModel[];
   try {
     const catalog = catalogStore.getCatalog();
-    gatewayModels = catalog.models.filter((m) => shouldInclude(m, showAll));
+    gatewayModels = catalog.models;
   } catch (err) {
     console.error("[/v1/models] catalog read failed:", err);
     gatewayModels = [];
   }
 
-  // Only list models whose provider has a registered adapter.
-  const visible = gatewayModels.filter((m) => providerRegistry.get(m.providerId));
+  // ─── THE FLEET — the public listing (onyx ids, Onyx AI branding) ────────
+  const byRoute = new Map(gatewayModels.map((m) => [m.id, m]));
+  const fleetData = FLEET_MODELS.map((f) => {
+    const underlying = byRoute.get(f.route) ?? null;
+    const base = {
+      id: f.id,
+      object: "model" as const,
+      created: CREATED_EPOCH,
+      owned_by: FLEET_PROVIDER_NAME,
+      capabilities: fleetCapabilities(f.route),
+      free: true,
+    };
+    if (!showHealth) return base;
+    const entry: Record<string, unknown> = { ...base };
+    if (underlying) {
+      entry.capability_flags = underlying.capabilities;
+      entry.status = healthStatus(underlying);
+      entry.internal_status = underlying.status;
+      entry.context_window = underlying.metadata?.contextWindow ?? null;
+      entry.last_checked = underlying.lastVerifiedAt ?? underlying.discoveredAt;
+      const healthEntry = catalogStore.getModelHealth(underlying.id);
+      if (healthEntry) entry.health = healthEntry;
+    } else {
+      entry.status = "down";
+      entry.internal_status = "offline";
+    }
+    return entry as unknown as {
+      id: string;
+      object: "model";
+      created: number;
+      owned_by: string;
+    };
+  });
+
+  // ─── Underlying catalog — only in the ?all=true debug view ──────────────
+  const visible = gatewayModels
+    .filter((m) => shouldInclude(m, showAll))
+    .filter((m) => providerRegistry.get(m.providerId));
+
+  const underlyingData = visible.map((m) => {
+    const base = {
+      id: m.id,
+      object: "model" as const,
+      created: CREATED_EPOCH,
+      owned_by: ownedBy(m),
+      capabilities: capabilityList(m),
+      free: m.free !== false,
+    };
+    if (!showHealth) return base;
+    const entry: Record<string, unknown> = { ...base };
+    entry.capability_flags = m.capabilities;
+    entry.status = healthStatus(m);
+    entry.internal_status = m.status;
+    entry.context_window = m.metadata?.contextWindow ?? null;
+    entry.last_checked = m.lastVerifiedAt ?? m.discoveredAt;
+    entry.discovery_mode = m.discoveryMode;
+    entry.free = m.free !== false;
+    const healthEntry = catalogStore.getModelHealth(m.id);
+    if (healthEntry) entry.health = healthEntry;
+    return entry as unknown as {
+      id: string;
+      object: "model";
+      created: number;
+      owned_by: string;
+    };
+  });
 
   const payload: OAIModelList = {
     object: "list",
-    data: visible.map((m) => {
-      const base = {
-        id: m.id,
-        object: "model" as const,
-        created: CREATED_EPOCH,
-        owned_by: ownedBy(m),
-        // FIX B — capability tag ALWAYS present (clients can filter
-        // tool-capable models without the health flag).
-        capabilities: capabilityList(m),
-        free: m.free !== false,
-      };
-      if (!showHealth) return base;
-      // ?health=true → include status + context window + the full
-      // capability-flag object (the plain capabilities ARRAY stays canonical).
-      const entry: Record<string, unknown> = { ...base };
-      entry.capability_flags = m.capabilities;
-      entry.status = healthStatus(m);
-      entry.internal_status = m.status;
-      entry.context_window = m.metadata?.contextWindow ?? null;
-      entry.last_checked = m.lastVerifiedAt ?? m.discoveredAt;
-      entry.discovery_mode = m.discoveryMode;
-      entry.free = m.free !== false;
-      const healthEntry = catalogStore.getModelHealth(m.id);
-      if (healthEntry) entry.health = healthEntry;
-      return entry as unknown as {
-        id: string;
-        object: "model";
-        created: number;
-        owned_by: string;
-      };
-    }),
+    data: showAll ? [...fleetData, ...underlyingData] : fleetData,
   };
   return NextResponse.json(payload);
 }

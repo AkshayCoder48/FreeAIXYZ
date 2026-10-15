@@ -75,6 +75,33 @@ export const DELISTED_MODELS: ReadonlySet<string> = new Set<string>([
 
   // ─── vexa — gpt-4.1-nano not routable upstream ───────────────────────────
   "vx/gpt-4.1-nano",
+
+  // ─── 2026-08 onyx-fleet hard-test sweep (26-model battery + live evidence;
+  //     see gateway-tests/onyx-hardtest-results.json) ─────────────────────────
+  // miklium — upstream degraded to canned API-doc boilerplate on every slot
+  // (adapter only forwards the last user message; system prompt ignored).
+  "mk/all",
+  "mk/female",
+  "mk/male",
+  "mk/miklium",
+  "mk/personalityless",
+  // swarm — Nemo persistent 502 empty-response
+  "sw/Nemo",
+  // spicywriter — Qwen3.5-9B persistent HTTP 500
+  "sm/Qwen3.5-9B-Q4_K_M.gguf",
+  // uncloseai — Lorbus 404 model-not-found (dead slot)
+  "un/Lorbus/Qwen3.6-27B-int4-AutoRound",
+  // jollygen — persistent network failure (upstream unreachable)
+  "jg/jollygen",
+  // swiftsync — 410 "export-only while winding down" (both public slots)
+  "ss/gpt-5.4-mini-no-login",
+  "ss/gpt-o4-mini-no-login",
+  // opencode — big-pickle 403 rejected upstream
+  "oc/big-pickle",
+  // llm7 — lowercase deepseek-v4-flash variant 401 (sibling of the caps entry)
+  "l7/deepseek-v4-flash:0731",
+  // toolbaz — codestral-latest persistent HTTP 500 (fleet smoke round)
+  "tb/codestral-latest",
 ]);
 
 /** True if a canonical model id is on the delisted list. */

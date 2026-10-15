@@ -2,14 +2,14 @@
 
 /**
  * AuroraShell — the shared app chrome for every content page (playground,
- * models, docs), skinned in the HyperDimension AI "Crimson Orb" design system.
+ * models, docs), skinned in the FreeAIXYZ warm crimson/ember design system.
  *
- * Design language (Stitch 3D UI kit):
- *   - ground #111319 with a dim, static crimson orb bloom + ambient ember
+ * Design language:
+ *   - ground #111319 with a dim, static crimson bloom + ambient ember
  *     glows pinned behind the content (pure CSS, no canvas on content pages);
  *   - a floating dark-glass PILL NAV (backdrop-blur, crimson hairline,
- *     inner-top highlight) with the glowing orb glyph + Space Grotesk
- *     wordmark and the mono "Crimson Core Matrix" tagline;
+ *     inner-top highlight) with the glowing glyph + Space Grotesk
+ *     wordmark and the mono "Free AI Gateway" tagline;
  *   - JetBrains Mono captions, crimson active states, ember accents;
  *   - strictly WARM — no blue/indigo anywhere.
  *
@@ -32,7 +32,7 @@ const NAV_LINKS = [
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];
 
-/** Glowing crimson orb glyph — the HyperDimension brand mark. */
+/** Glowing crimson glyph — the FreeAIXYZ brand mark. */
 export function AuroraGlyph({ size = 14 }: { size?: number }) {
   return (
     <span
@@ -99,10 +99,10 @@ export function AuroraNav() {
             <AuroraGlyph size={16} />
             <span className="flex flex-col leading-none">
               <span className="font-display text-[15px] font-bold tracking-tight text-white">
-                HyperDimension<span className="text-crimson">AI</span>
+                FreeAI<span className="text-crimson">XYZ</span>
               </span>
               <span className="font-mono text-[8.5px] uppercase tracking-[0.22em] text-muted-foreground mt-1">
-                Crimson Core Matrix
+                Free AI Gateway
               </span>
             </span>
           </Link>
@@ -145,7 +145,7 @@ export function AuroraNav() {
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-crimson/25 text-muted-foreground hover:text-white transition-colors"
+              className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-full border border-crimson/25 text-muted-foreground hover:text-white transition-colors"
               aria-label={open ? "Close menu" : "Open menu"}
               aria-expanded={open}
             >
@@ -202,7 +202,7 @@ export function AuroraNav() {
   );
 }
 
-// ─── Fixed HyperDimension backdrop (dimmed for content pages) ────────────────
+// ─── Fixed FreeAIXYZ backdrop (dimmed for content pages) ────────────────
 
 export function AuroraBackground() {
   return (
@@ -223,7 +223,7 @@ export function AuroraFooter({ children }: { children?: React.ReactNode }) {
         <div className="flex items-center gap-2.5">
           <AuroraGlyph size={10} />
           <span className="text-[#e2e2ea]">
-            HyperDimension AI — free AI gateway
+            FreeAIXYZ — free AI gateway
           </span>
         </div>
         <div className="flex items-center gap-6">

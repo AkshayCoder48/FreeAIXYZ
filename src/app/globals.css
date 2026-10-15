@@ -45,7 +45,7 @@
   --radius-xl: 16px;
 }
 
-/* ═══ HYPERDIMENSION AI — "CRIMSON ORB" DESIGN SYSTEM ════════════════════════
+/* ═══ FREEAIXYZ — "CRIMSON EMBER" DESIGN SYSTEM ════════════════════════════
  * Extracted from the Stitch 3D AI interface kit
  * (stitch_3d_ai_interface_system/*_crimson_orb).
  *
@@ -100,7 +100,7 @@
   --shadow-accent-lg: 0 0 24px rgba(255, 42, 85, 0.5);
 }
 
-/* HyperDimension is dark-only: .dark mirrors :root exactly. */
+/* FreeAIXYZ is dark-only: .dark mirrors :root exactly. */
 .dark {
   --background: #111319;
   --foreground: #e2e2ea;
@@ -150,7 +150,7 @@
     -moz-osx-font-smoothing: grayscale;
     color-scheme: dark;
   }
-  /* HyperDimension type: Space Grotesk display headings, Geist body. */
+  /* FreeAIXYZ type: Space Grotesk display headings, Geist body. */
   h1, h2, h3 {
     font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
     font-weight: 700;
@@ -289,10 +289,10 @@
   border-image: linear-gradient(to bottom right, #ff2a55, #ff850d, #ff2a55) 1;
 }
 
-/* ═══ CRIMSON ORB — the HyperDimension hero motif ════════════════════════════ */
-/* Pure-CSS underpaint + ambient glows. The animated core is a tiny <canvas>
-   (see src/components/aurora/crimson-orb.tsx) layered on top; this CSS layer
-   guarantees the orb renders (statically) even before/without JS. */
+/* ═══ FREEAIXYZ AMBIENT FIELD (warm crimson/ember kit) ══════════════════════ */
+/* Pure-CSS ambient glows. The animated hero orb was retired; the ambient
+   field (hero blobs + the fixed content-page backdrop below) keeps the
+   warm kit atmosphere on every page. */
 
 .fxz-aurora-root {
   background: #111319;
@@ -322,52 +322,6 @@
   pointer-events: none;
 }
 
-/* The orb stage — square, relative; holds halo + body + canvas. */
-.fxz-orb {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  pointer-events: none;
-}
-/* Outer halo — deep wine + crimson bloom. */
-.fxz-orb-halo {
-  position: absolute;
-  inset: -32%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(circle at 50% 50%,
-      rgba(255, 42, 85, 0.30) 0%,
-      rgba(255, 133, 13, 0.14) 38%,
-      rgba(92, 0, 26, 0.16) 58%,
-      transparent 74%);
-  filter: blur(18px);
-}
-/* Orb body — incandescent core → crimson → wine → void (kit shader stops). */
-.fxz-orb-body {
-  position: absolute;
-  inset: 7%;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 34% 28%,
-    #fff3e2 0%,
-    #ffcf9e 7%,
-    #ff850d 19%,
-    #ff2a55 46%,
-    #92002a 70%,
-    #2c020b 90%,
-    rgba(12, 14, 19, 0) 100%);
-  box-shadow:
-    0 0 46px rgba(255, 42, 85, 0.5),
-    0 0 120px rgba(255, 133, 13, 0.28),
-    inset 0 0 52px rgba(255, 42, 85, 0.42);
-}
-/* Canvas overlay paints the living (animated) orb on top of the static body. */
-.fxz-orb canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
 /* Content-page backdrop: CSS-only ambient crimson field (no canvas needed). */
 .fxz-hd-backdrop {
   position: fixed;
@@ -380,7 +334,7 @@
     radial-gradient(ellipse 30% 24% at 8% 14%, rgba(255, 42, 85, 0.08), transparent 70%),
     linear-gradient(to bottom, #101218 0%, #111319 42%, #0d0f14 100%);
 }
-/* Dim static orb bloom sitting behind the floating nav on content pages. */
+/* Dim static crimson bloom sitting behind the floating nav on content pages. */
 .fxz-hd-backdrop-orb {
   position: fixed;
   top: -170px;
@@ -626,7 +580,7 @@
   .fxz-caret, .fxz-fade-up { animation: none !important; }
 }
 
-/* ═══ HYPERDIMENSION APP DESIGN SYSTEM (playground/models/docs) ═════════════ */
+/* ═══ FREEAIXYZ APP DESIGN SYSTEM (playground/models/docs) ════════════════ */
 
 /* ─── Obsidian panel (Cards, toolbars, message surfaces) ────────────────── */
 .fxz-panel {
@@ -742,6 +696,36 @@
   border-color: rgba(255, 133, 13, 0.45);
   background: rgba(255, 133, 13, 0.12);
   box-shadow: 0 0 10px rgba(255, 133, 13, 0.15);
+}
+
+/* ─── 18+ uncensored badge (hard-test-verified fleet slots only) ─────────── */
+/* Stronger than fxz-badge-warm: a full crimson glow pill that reads at a
+   glance on catalog cards, in the picker, and beside model meta lines. */
+.fxz-badge-nsfw {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(255, 42, 85, 0.7);
+  color: #ff8a92;
+  background: rgba(255, 42, 85, 0.18);
+  border-radius: 9999px;
+  padding: 2px 9px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow:
+    0 0 14px rgba(255, 42, 85, 0.4),
+    inset 0 1px 0 rgba(255, 138, 146, 0.28);
+}
+.fxz-badge-nsfw:hover {
+  border-color: rgba(255, 42, 85, 0.95);
+  background: rgba(255, 42, 85, 0.26);
+  box-shadow:
+    0 0 20px rgba(255, 42, 85, 0.55),
+    inset 0 1px 0 rgba(255, 138, 146, 0.34);
 }
 
 /* ─── Mono code pill (model ids, endpoints — kit key chips) ──────────────── */
@@ -959,7 +943,7 @@
   box-shadow: 0 0 10px rgba(255, 133, 13, 0.18);
 }
 
-/* ═══ DOCS SECTION (same HyperDimension language) ══════════════════════════ */
+/* ═══ DOCS SECTION (same FreeAIXYZ design language) ═══════════════════════ */
 
 /* Sidebar group label. */
 .fxz-docs-group-label {

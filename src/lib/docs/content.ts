@@ -169,7 +169,7 @@ client  ◀─ SSE chunks + data: [DONE]`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "tb/gpt-5",
+    "model": "onyx-core-v1",
     "messages": [{"role": "user", "content": "Say hello in one sentence."}],
     "stream": true
   }'`,
@@ -193,7 +193,7 @@ client  ◀─ SSE chunks + data: [DONE]`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "oc/gpt-5.6",
+    "model": "onyx-forge-v1",
     "messages": [{"role": "user", "content": "What is 12345 times 6789?"}],
     "stream": true,
     "tools": [{
@@ -244,7 +244,7 @@ client = OpenAI(
 )
 
 stream = client.chat.completions.create(
-    model="tb/gpt-5",
+    model="onyx-core-v1",
     messages=[{"role": "user", "content": "Say hello in one sentence."}],
     stream=True,
 )
@@ -416,7 +416,7 @@ for chunk in stream:
         title: "wire format",
         lang: "text",
         code: `data: {"id":"chatcmpl-…","object":"chat.completion.chunk",
-       "model":"oc/gpt-5.6",
+       "model":"onyx-core-v1",
        "choices":[{"index":0,
          "delta":{"role":"assistant"},
          "finish_reason":null}]}
@@ -643,7 +643,7 @@ const calls = [...acc.values()].map((c) => ({
     blocks: [
       {
         kind: "p",
-        text: "Every model has one **canonical id** of the form `<providerShortId>/<upstreamId>` — e.g. `oc/gpt-5.6` or `tb/gpt-5`. Cross-provider duplicates stay distinct: the same upstream model behind two providers is two ids with two adapters and two health profiles.",
+        text: "Every model has one **fleet id** of the form `onyx-<line>-<version>` — e.g. `onyx-core-v1` or `onyx-forge-v2`. The id is the public contract: `GET /api/v1/models` lists exactly these ids, and every response echoes the id you called.",
       },
       {
         kind: "h3",
@@ -698,37 +698,23 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
 
   {
     id: "providers",
-    title: "Providers",
+    title: "The Onyx Fleet",
     description:
-      "The 17 native adapters behind the gateway — what each one is and does.",
+      "The 24 public models — three lines, one fleet, every slot hard-tested.",
     group: "guides",
-    keywords: ["provider", "upstream", "adapter", "native"],
+    keywords: ["fleet", "model", "onyx", "uncensored", "catalog"],
     blocks: [
       {
         kind: "p",
-        text: "Each provider is a hand-written adapter with its own request shaping, SSE quirks and capability flags. The catalog is **static** — bundled at build time, no dynamic fetching, no stale caches; every id maps to a live adapter.",
+        text: "Every public model is an **Onyx Fleet** slot: a clean name, a public `onyx-*` id, and a fresh brief. The fleet is **static** — bundled at build time, no dynamic fetching, no stale caches — and every id routes to a live adapter. The underlying infrastructure is an internal detail and is never exposed.",
       },
       {
         kind: "table",
-        head: ["Short id", "Provider", "Notes"],
+        head: ["Line", "Slots", "Focus"],
         rows: [
-          ["tb", "Toolbaz", "Large general-purpose free pool (15+)"],
-          ["oc", "OpenCode.ai", "DeepSeek/Ling/Nemotron-class, streaming + tools"],
-          ["kg", "Kilo Code", "16 free models, real SSE streaming"],
-          ["sw", "Swarm", "Community GGUF models (Qwen 3.5/3.6), streaming + tools"],
-          ["ua", "UnlimitedAI", "GPT/Gemini/DeepSeek/Claude/Grok-class, web search + vision"],
-          ["llm7", "LLM7.io", "Anonymous no-key access, GPT-OSS/Minimax/Codestral"],
-          ["go", "GPT-OSS", "120B reasoning + 20B fast, reasoning_content support"],
-          ["un", "UncloseAI", "Qwen 3.6 27B (int4) uncensored, token streaming"],
-          ["fg", "FreeGPT.tech", "50 models: GPT-5.x, Claude, Grok, Gemini, DeepSeek"],
-          ["jg", "JollyGen", "Unrestricted roleplay"],
-          ["vx", "Vexa AI", "15+ models via multi-provider routing"],
-          ["au", "AuroraAI", "Uncensored LLaMA-3 roleplay, real token streaming"],
-          ["sp", "SpicyWriter", "Ling 2.6 Flash / Nemo, anonymous SSE"],
-          ["fg2", "Free2GPT", "Signed-request chat API, server-routed"],
-          ["fc", "FreeChat", "Single community model via llmproxy"],
-          ["mi", "Miklium", "Personality models"],
-          ["fx", "FreeAIXYZ Text API", "First-party proxy with tool emulation"],
+          ["Uncensored · 18+", "10", "Verified unrestricted NSFW slots — badged only after live hard tests (2/2 explicit prompts, zero refusals). Never faked."],
+          ["General", "10", "Daily drivers, reasoning, coding and research: Core, Spark, Nova, Pulse, Forge, Architect, Sentinel, Echo."],
+          ["Creative", "4", "Non-explicit writing and roleplay: Muse, Storyweaver, Persona, Vision."],
         ],
       },
       {
@@ -739,11 +725,11 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
       },
       {
         kind: "h3",
-        text: "Native tool providers",
+        text: "Tools across the fleet",
       },
       {
         kind: "p",
-        text: "The providers whose upstreams accept the OpenAI tools API natively (and therefore get real `tools` forwarding): OpenCode, Kilo Code, LLM7, GPT-OSS, Swarm, UncloseAI, FreeGPT and the first-party FX proxy. Every other provider gets the fenced tool-call emulation described in [Tool calling](#doc-tool-calling).",
+        text: "Fleet slots whose routes accept the OpenAI tools API natively get real `tools` forwarding. Every other route gets the fenced tool-call emulation described in [Tool calling](#doc-tool-calling).",
       },
     ],
   },
@@ -768,8 +754,8 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
   "error": {
     "type": "upstream_error",
     "message": "Upstream unavailable (HTTP 503). Retry later.",
-    "provider": "opencode",
-    "model": "oc/gpt-5.6",
+    "provider": "onyx",
+    "model": "onyx-core-v1",
     "request_id": "req_a1b2c3",
     "code": "PROVIDER_UNAVAILABLE",
     "status": 503
@@ -927,7 +913,7 @@ Content-Type: application/json`,
         kind: "table",
         head: ["Parameter", "Type", "Default", "Description"],
         rows: [
-          ["model", "string", "— (required)", "Canonical id, e.g. `oc/gpt-5.6`. Unknown ids → 404 MODEL_NOT_FOUND"],
+          ["model", "string", "— (required)", "Fleet id, e.g. `onyx-core-v1`. Unknown ids → 404 MODEL_NOT_FOUND"],
           ["messages", "array", "— (required)", "OpenAI-shaped: system / user / assistant / tool roles"],
           ["stream", "boolean", "false", "true → SSE chunks + `[DONE]`"],
           ["tools", "array", "—", "OpenAI function-tool definitions. Validated, then forwarded 1:1"],
@@ -955,7 +941,7 @@ Content-Type: application/json`,
         code: `{
   "id": "chatcmpl-…",
   "object": "chat.completion",
-  "model": "oc/gpt-5.6",
+  "model": "onyx-core-v1",
   "choices": [{
     "index": 0,
     "message": {
@@ -986,7 +972,7 @@ Content-Type: application/json`,
         lang: "bash",
         code: `curl -s https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
-  -d '{"model":"tb/gpt-5",
+  -d '{"model":"onyx-core-v1",
        "messages":[{"role":"user","content":"Hi"}]}'`,
       },
       {
@@ -997,7 +983,7 @@ Content-Type: application/json`,
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "oc/gpt-5.6",
+    model: "onyx-forge-v1",
     messages: [{ role: "user", content: "What is 12345 * 6789?" }],
     stream: true,
     tools: [{
@@ -1053,10 +1039,10 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true"`,
   "object": "list",
   "data": [
     {
-      "id": "tb/gpt-5",
+      "id": "onyx-core-v1",
       "object": "model",
       "created": 1788250097,
-      "owned_by": "Toolbaz"
+      "owned_by": "Onyx AI"
     }
   ]
 }`,
@@ -1190,8 +1176,8 @@ Content-Type: application/json
         code: `{
   "registry": ["calculator", "web_search", "get_current_time"],
   "traces": [{
-    "model": "oc/gpt-5.6",
-    "provider": "opencode",
+    "model": "onyx-core-v1",
+    "provider": "onyx",
     "streaming": true,
     "toolsRequested": 1,
     "toolsForwarded": 1,
@@ -1459,7 +1445,7 @@ max(3, 7, 5) + pow(2, 10) → 1031`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "oc/gpt-5.6",
+    "model": "onyx-forge-v1",
     "messages": [{"role":"user","content":"Search the web for the latest Next.js release and summarize it."}],
     "stream": true,
     "tools": [{
@@ -1494,7 +1480,7 @@ const client = new OpenAI({
 });
 
 const stream = await client.chat.completions.create({
-  model: "tb/gpt-5",
+  model: "onyx-core-v1",
   messages: [{ role: "user", content: "Write a haiku about streaming." }],
   stream: true,
 });
@@ -1533,7 +1519,7 @@ tools = [{
 }]
 
 res = client.chat.completions.create(
-    model="oc/gpt-5.6",
+    model="onyx-forge-v1",
     messages=[{"role": "user", "content": "What is 12345 times 6789?"}],
     tools=tools,
     tool_choice="auto",
@@ -1566,7 +1552,7 @@ async function chatWithTools(userMessage: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "oc/gpt-5.6",
+        model: "onyx-forge-v1",
         messages,
         stream: true,
         tools: TOOLS,

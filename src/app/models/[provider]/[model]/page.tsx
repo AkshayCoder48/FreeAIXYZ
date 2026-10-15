@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import {
   ArrowLeft,
@@ -16,8 +16,8 @@ import {
 
 import { AuroraShell } from "@/components/aurora/shell";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
-import { findNativeModel } from "@/lib/native-catalog";
-import { getProviderEntry } from "@/lib/gateway/ids";
+import { fleetGroupLabel } from "@/components/explorer/fleet-meta";
+import { findFleetCatalogModel } from "@/lib/native-catalog";
 
 export const dynamic = "force-static";
 
@@ -34,10 +34,10 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { model } = await params;
   const id = decodeParam(model);
-  const entry = findNativeModel(id);
+  const entry = findFleetCatalogModel(id);
   return {
-    title: entry ? `${entry.name} — HyperDimension AI` : "Model — HyperDimension AI",
-    description: entry?.description ?? "Native model detail page.",
+    title: entry ? `${entry.name} — FreeAIXYZ` : "Model — FreeAIXYZ",
+    description: entry?.brief ?? "Onyx AI fleet model detail page.",
   };
 }
 
@@ -51,23 +51,31 @@ function decodeParam(raw: string): string {
 
 // ─── Page component ──────────────────────────────────────────────────────────
 
-export default async function ModelDetailPage({ params }: PageProps) {
+/**
+ * /models/[provider]/[model] — one Onyx fleet model's detail page.
+ *
+ * The model slug accepts ONLY public onyx-* fleet ids; anything else
+ * (legacy provider-prefixed ids like "gpt-5") redirects to /models. The
+ * provider segment must be the model's fleet-group slug — mismatches are
+ * canonicalised to /models/<group>/<id>.
+ */
+export default async function FleetModelDetailPage({ params }: PageProps) {
   const { provider, model } = await params;
   const modelId = decodeParam(model);
   const providerParam = decodeParam(provider);
 
-  const entry = findNativeModel(modelId);
-  if (!entry) notFound();
-  // Cross-check: the provider segment in the URL must match the model.
-  const providerEntry = getProviderEntry(entry.providerId);
-  if (
-    providerParam !== entry.providerId &&
-    providerParam !== providerEntry?.shortId
-  ) {
-    notFound();
+  const entry = findFleetCatalogModel(modelId);
+  if (!entry) {
+    // Non-onyx slugs (old provider-prefixed ids) are no longer public.
+    redirect("/models");
+  }
+  if (providerParam !== entry.group) {
+    // Canonicalise the URL to the model's fleet-group segment.
+    redirect(`/models/${entry.group}/${encodeURIComponent(entry.id)}`);
   }
 
   const caps = entry.capabilities;
+  const groupLabel = fleetGroupLabel(entry.group);
 
   const capabilityRows: Array<{
     label: string;
@@ -104,19 +112,29 @@ export default async function ModelDetailPage({ params }: PageProps) {
           </Link>
           <span className="text-hd-line">/</span>
           <Link
-            href={`/models/${encodeURIComponent(entry.providerId)}`}
+            href={`/models/${entry.group}`}
             className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-white transition-colors"
           >
-            {entry.providerName}
+            {groupLabel}
           </Link>
         </div>
 
         {/* Header */}
         <header className="flex flex-col gap-3">
-          <span className="fxz-section-eyebrow">Model · {entry.providerName}</span>
+          <span className="fxz-section-eyebrow">
+            {entry.providerName} · {groupLabel}
+          </span>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="fxz-badge fxz-badge-warm">native</span>
+            <span className="fxz-badge fxz-badge-warm">fleet</span>
             <span className="fxz-badge fxz-badge-warm">free</span>
+            {entry.uncensored && (
+              <span
+                className="fxz-badge-nsfw gap-1.5"
+                title="Hard-test verified uncensored · adults only"
+              >
+                18+ uncensored
+              </span>
+            )}
             {caps.streaming && (
               <span className="fxz-badge fxz-badge-ember gap-1">
                 <Zap className="h-3 w-3" /> streaming
@@ -136,6 +154,9 @@ export default async function ModelDetailPage({ params }: PageProps) {
           <h1 className="fxz-page-title" style={{ overflowWrap: "anywhere" }}>
             {entry.name}
           </h1>
+          <p className="text-[15px] text-white/90 max-w-3xl leading-relaxed font-medium">
+            {entry.brief}
+          </p>
           {entry.description && (
             <p className="text-[15px] text-muted-foreground max-w-3xl leading-relaxed">
               {entry.description}
@@ -202,8 +223,12 @@ export default async function ModelDetailPage({ params }: PageProps) {
                   <span className="font-medium text-white">{entry.providerName}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Upstream id</span>
-                  <span className="fxz-code">{entry.upstreamId}</span>
+                  <span className="text-muted-foreground">Fleet line</span>
+                  <span className="font-medium text-white">{groupLabel}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Model id</span>
+                  <span className="fxz-code">{entry.id}</span>
                 </div>
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Context window</span>
@@ -234,8 +259,12 @@ export default async function ModelDetailPage({ params }: PageProps) {
                 className="fxz-keycap w-full"
               >
                 <MessageSquare className="h-4 w-4" />
-                Open in Playground
+                Try in chat
               </Link>
+              <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
+                Opens the playground with <span className="fxz-code">{entry.id}</span>{" "}
+                preselected.
+              </p>
             </div>
 
             <div className="fxz-panel rounded-xl p-5 sm:p-6">

@@ -7,12 +7,12 @@ import { DOC_PAGES } from "@/lib/docs/content";
 export const dynamic = "force-static";
 
 export const metadata: Metadata = {
-  title: "Docs — HyperDimension AI",
+  title: "Docs — FreeAIXYZ",
   description:
-    "The complete HyperDimension AI (FreeAIXYZ) documentation: quickstart, streaming SSE format, the tool-calling pipeline, the full API reference, built-in tools, error codes, examples, FAQ and changelog.",
+    "The complete FreeAIXYZ documentation: quickstart, streaming SSE format, the tool-calling pipeline, the full API reference, built-in tools, error codes, examples, FAQ and changelog.",
   keywords: [
     "FreeAIXYZ docs",
-    "HyperDimension AI docs",
+    "Onyx AI fleet docs",
     "free AI API documentation",
     "OpenAI compatible API docs",
     "tool calling guide",
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * /docs — the documentation section (HyperDimension "Crimson Orb" design).
+ * /docs — the documentation section (FreeAIXYZ warm crimson design).
  *
  * RSC shell; the interactive browser (hash-routed pages, sidebar search,
  * on-this-page TOC, prev/next pager) is the client island. Content is the

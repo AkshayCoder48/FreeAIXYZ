@@ -5,54 +5,46 @@ import {
   ModelsCatalog,
   type ModelsCatalogData,
 } from "@/components/explorer/models-catalog";
-import {
-  OFFERED_MODELS,
-  NATIVE_PROVIDERS,
-  type NativeModel,
-} from "@/lib/native-catalog";
+import { FLEET_CATALOG, type FleetCatalogModel } from "@/lib/native-catalog";
 
 // Pure static content (no dynamic APIs, no fetches) — prerendered at build
 // time and served from the CDN edge. Explicit for honesty (perf pass 3-perf).
 export const dynamic = "force-static";
 
 export const metadata = {
-  title: "Models — HyperDimension AI",
+  title: "Models — FreeAIXYZ",
   description:
-    "Searchable catalog of every native model, grouped by provider with capability badges. Static registry, no API key required.",
+    "The Onyx AI fleet: 24 free models across three lines — Uncensored (18+), General and Creative. Streaming, reasoning, tools, web search. No API key required.",
 };
 
 /**
- * /models page (HyperDimension AI "Crimson Orb" design).
+ * /models page (FreeAIXYZ design).
  *
- * Layout: page title + search → provider filter tabs → provider sections,
- * each containing a responsive grid (1 / 2 / 3 cols) of obsidian model
- * cards with crimson/ember rims and mono capability badges.
- *
- * Data comes from the STATIC native registry (bundled at build time) —
- * the interactive catalog receives it via props; it never fetches.
+ * The ONLY public model surface. Built entirely from the static Onyx fleet
+ * catalog (FLEET_CATALOG): clean display names, onyx-* ids as mono pills,
+ * "Onyx AI" attribution everywhere. Provider-prefixed routes are never
+ * listed — the underlying registry stays internal.
  */
 export default function ModelsPage() {
   const data: ModelsCatalogData = {
-    models: OFFERED_MODELS.map((m: NativeModel) => ({
+    models: FLEET_CATALOG.map((m: FleetCatalogModel) => ({
       id: m.id,
       name: m.name,
-      providerId: m.providerId,
-      providerName: m.providerName,
+      brief: m.brief,
       description: m.description,
-      category: m.category,
+      group: m.group,
+      uncensored: m.uncensored,
+      providerName: m.providerName,
       capabilities: {
         streaming: m.capabilities.streaming,
         reasoning: m.capabilities.reasoning,
         vision: m.capabilities.vision,
         tools: m.capabilities.tools,
         webSearch: m.capabilities.webSearch,
+        multiTurn: m.capabilities.multiTurn,
+        systemPrompt: m.capabilities.systemPrompt,
       },
       contextWindow: m.contextWindow,
-    })),
-    providers: NATIVE_PROVIDERS.map((p) => ({
-      id: p.id,
-      shortId: p.shortId,
-      name: p.name,
     })),
   };
 

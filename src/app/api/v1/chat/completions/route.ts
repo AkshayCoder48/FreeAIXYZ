@@ -30,6 +30,7 @@ import {
 } from "@/lib/providers";
 import type { ProviderTool } from "@/lib/providers/types";
 import { ToolbazError } from "@/lib/toolbaz";
+import { resolveFleetModel } from "@/lib/onyx/fleet";
 import {
   generateCompletionId,
   generateToolCallId,
@@ -547,6 +548,43 @@ async function handleChatCompletions(request: Request): Promise<Response> {
     const wantsStream = body.stream === true;
     const useTools = toolParams.tools.length > 0;
 
+    // ─── ONYX FLEET RESOLUTION (public onyx-* ids → underlying routes) ────────
+    // Fleet ids never exist in the provider catalog: rewrite the body to the
+    // underlying canonical id + inject the slot's persona/system prompt as the
+    // first system message. Everything downstream (failover, tools, the fx
+    // proxy special-case, retries) then runs on the real id unchanged. The
+    // original onyx id is threaded through as clientModelId so API responses
+    // echo the id the caller actually used (OpenAI semantics).
+    const fleetEntry = resolveFleetModel(body.model);
+    if (fleetEntry) {
+      const clientModelId: string = body.model;
+      body = {
+        ...body,
+        model: fleetEntry.route,
+        messages: fleetEntry.systemPrompt
+          ? [
+              { role: "system", content: fleetEntry.systemPrompt },
+              ...(body.messages ?? []),
+            ]
+          : body.messages,
+      };
+      const fleetResolved = resolveAdapterForModel(body.model);
+      if (fleetResolved) {
+        return handleCanonicalRequest(
+          body,
+          request,
+          fleetResolved.model,
+          fleetResolved.adapter,
+          toolParams,
+          wantsStream,
+          clientModelId,
+        );
+      }
+      // A fleet slot whose underlying id no longer resolves (provider sweep
+      // etc.) — restore the ONYX id so the legacy 404 names what the user sent.
+      body = { ...body, model: clientModelId };
+    }
+
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {
@@ -578,8 +616,13 @@ async function handleCanonicalRequest(
   adapter: ProviderAdapter,
   toolParams: ValidatedToolParams,
   wantsStream: boolean,
+  /** The id the CALLER used (onyx-* fleet id) — echoed in API responses. */
+  clientModelId?: string,
 ): Promise<Response> {
   const useTools = toolParams.tools.length > 0;
+  // Echo id: what the client asked for (onyx-lust-v1), not the underlying
+  // route (tb/L3-70B-…). OpenAI semantics — responses name the requested id.
+  const echoId = clientModelId ?? model.id;
   // Circuit-breaker check (PRD §121, §122, R-8).
   //
   // R-8: the breaker is keyed per-ROUTE (model id), NOT just per-provider.
@@ -592,9 +635,9 @@ async function handleCanonicalRequest(
   if (providerHealthService.isModelOpen(model.id)) {
     const err = new GatewayError({
       type: "PROVIDER_UNAVAILABLE",
-      message: `Model "${model.id}" is temporarily unavailable (circuit open). Retry later.`,
+      message: `Model "${echoId}" is temporarily unavailable (circuit open). Retry later.`,
       provider: model.providerId,
-      model: model.id,
+      model: echoId,
     });
     return gatewayErrorResponse(err);
   }
@@ -603,7 +646,7 @@ async function handleCanonicalRequest(
       type: "PROVIDER_UNAVAILABLE",
       message: `Provider "${model.providerId}" is temporarily unavailable (circuit open). Retry later.`,
       provider: model.providerId,
-      model: model.id,
+      model: echoId,
     });
     return gatewayErrorResponse(err);
   }
@@ -616,9 +659,9 @@ async function handleCanonicalRequest(
     return gatewayErrorResponse(
       new GatewayError({
         type: "TOOL_UNSUPPORTED",
-        message: `Model "${model.id}" does not support tool calling. Remove the "tools" field for this model.`,
+        message: `Model "${echoId}" does not support tool calling. Remove the "tools" field for this model.`,
         provider: model.providerId,
-        model: model.id,
+        model: echoId,
       }),
     );
   }
@@ -648,7 +691,7 @@ async function handleCanonicalRequest(
       new GatewayError({
         type: "INVALID_REQUEST",
         message: "No usable messages after serialization.",
-        model: model.id,
+        model: echoId,
         provider: model.providerId,
       }),
     );
@@ -735,7 +778,7 @@ async function handleCanonicalRequest(
   }
 
   const chatReq: ChatRequest = {
-    modelId: model.id,
+    modelId: echoId,
     upstreamId: model.upstreamId,
     messages,
     stream: wantsStream,
@@ -838,7 +881,7 @@ async function handleCanonicalRequest(
           status: 502,
           message: `Both primary (${model.id} via ${adapter.id}) and fallback (${fb.model.id} via ${fb.adapter.id}) failed. Primary: ${primaryErr.message}. Fallback: ${fbErr.message}.`,
           provider: adapter.id,
-          model: model.id,
+          model: echoId,
           requestId,
         });
         metricsService.recordRequest({
@@ -934,7 +977,7 @@ async function handleCanonicalRequest(
         id: generateCompletionId(),
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
-        model: finalModel.id,
+        model: echoId,
         choices: [
           {
             index: 0,
@@ -965,7 +1008,7 @@ async function handleCanonicalRequest(
     id: generateCompletionId(),
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
-    model: finalModel.id,
+    model: echoId,
     choices: [
       {
         index: 0,
@@ -1084,7 +1127,7 @@ async function handleLegacyRequest(
     return gatewayErrorResponse(
       new GatewayError({
         type: "MODEL_NOT_FOUND",
-        message: `Model "${body.model}" was not found in the catalog. Check GET /api/v1/models for the list of available canonical ids (e.g. "tb/gpt-5", "au/llama3-8b", "l7/minimax-m2.7").`,
+        message: `Model "${body.model}" was not found in the fleet. Check GET /api/v1/models for the list of available ids (e.g. "onyx-core-v1", "onyx-lust-v1", "onyx-forge-v2").`,
         status: 404,
       }),
     );

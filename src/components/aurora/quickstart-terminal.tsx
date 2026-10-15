@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * QuickstartTerminal — the HyperDimension hero terminal (kit "Interactive
- * Live SDK Terminal"): traffic dots, cURL / Python / Node.js tabs, crimson +
- * ember syntax tints, and a copy button. A pure client island on the
- * otherwise-static homepage.
+ * QuickstartTerminal — the FreeAIXYZ hero terminal: traffic dots,
+ * cURL / Python / Node.js tabs, crimson + ember syntax tints, and a copy
+ * button. A pure client island on the otherwise-static homepage. Uses the
+ * default Onyx fleet id (onyx-core-v1) in every example.
  */
 
 import * as React from "react";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 const ENDPOINT = "https://freeaixyz4all.vercel.app/api/v1/chat/completions";
 const BASE_URL = "https://freeaixyz4all.vercel.app/api/v1";
-const DEMO_MODEL = "oc/gpt-5.6";
+const DEMO_MODEL = "onyx-core-v1";
 
 type Lang = "curl" | "python" | "node";
 
@@ -39,7 +39,7 @@ const PLAIN: Record<Lang, string> = {
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${DEMO_MODEL}",
-    "messages": [{"role": "user", "content": "Hello HyperDimension"}],
+    "messages": [{"role": "user", "content": "Hello FreeAIXYZ"}],
     "stream": true
   }'`,
   python: `from openai import OpenAI
@@ -48,7 +48,7 @@ client = OpenAI(base_url="${BASE_URL}", api_key="not-needed")
 
 stream = client.chat.completions.create(
     model="${DEMO_MODEL}",
-    messages=[{"role": "user", "content": "Hello HyperDimension"}],
+    messages=[{"role": "user", "content": "Hello FreeAIXYZ"}],
     stream=True,
 )
 for chunk in stream:
@@ -62,7 +62,7 @@ const client = new OpenAI({
 
 const stream = await client.chat.completions.create({
   model: "${DEMO_MODEL}",
-  messages: [{ role: "user", content: "Hello HyperDimension" }],
+  messages: [{ role: "user", content: "Hello FreeAIXYZ" }],
   stream: true,
 });
 for await (const chunk of stream) {
@@ -93,7 +93,7 @@ export function QuickstartTerminal() {
           <span className="h-3 w-3 rounded-full bg-ember inline-block shadow-[0_0_8px_rgba(255,133,13,0.7)]" />
           <span className="h-3 w-3 rounded-full bg-gold inline-block" />
           <span className="ml-2 text-[11px] text-muted-foreground truncate font-mono">
-            terminal@hyperdimension: ~
+            terminal@freeaixyz: ~
           </span>
         </div>
         <div
@@ -130,7 +130,7 @@ export function QuickstartTerminal() {
               {"\n"}  -H <S>&quot;Content-Type: application/json&quot;</S> {"\\"}
               {"\n"}  -d <span className="text-crimson">&apos;{"{"}</span>
               {"\n"}    <S>&quot;model&quot;</S>: <S>&quot;{DEMO_MODEL}&quot;</S>,
-              {"\n"}    <S>&quot;messages&quot;</S>: [{"{"}<S>&quot;role&quot;</S>: <S>&quot;user&quot;</S>, <S>&quot;content&quot;</S>: <S>&quot;Hello HyperDimension&quot;</S>{"}"}],
+              {"\n"}    <S>&quot;messages&quot;</S>: [{"{"}<S>&quot;role&quot;</S>: <S>&quot;user&quot;</S>, <S>&quot;content&quot;</S>: <S>&quot;Hello FreeAIXYZ&quot;</S>{"}"}],
               {"\n"}    <S>&quot;stream&quot;</S>: <K>true</K>
               {"\n"}  <span className="text-crimson">{"}"}&apos;</span>
             </code>
@@ -141,7 +141,7 @@ export function QuickstartTerminal() {
               client = OpenAI(base_url=<S>&quot;{BASE_URL}&quot;</S>, api_key=<S>&quot;not-needed&quot;</S>){"\n\n"}
               stream = client.chat.completions.create({"\n"}
               {"    "}model=<S>&quot;{DEMO_MODEL}&quot;</S>,{"\n"}
-              {"    "}messages=[{"{"}<S>&quot;role&quot;</S>: <S>&quot;user&quot;</S>, <S>&quot;content&quot;</S>: <S>&quot;Hello HyperDimension&quot;</S>{"}"}],{"\n"}
+              {"    "}messages=[{"{"}<S>&quot;role&quot;</S>: <S>&quot;user&quot;</S>, <S>&quot;content&quot;</S>: <S>&quot;Hello FreeAIXYZ&quot;</S>{"}"}],{"\n"}
               {"    "}stream=<K>True</K>,{"\n"}
               ){"\n"}
               <K>for</K> chunk <K>in</K> stream:{"\n"}
@@ -157,7 +157,7 @@ export function QuickstartTerminal() {
               {"}"});{"\n\n"}
               <K>const</K> stream = <K>await</K> client.chat.completions.create({"{"}{"\n"}
               {"  "}model: <S>&quot;{DEMO_MODEL}&quot;</S>,{"\n"}
-              {"  "}messages: [{"{"} role: <S>&quot;user&quot;</S>, content: <S>&quot;Hello HyperDimension&quot;</S> {"}"}],{"\n"}
+              {"  "}messages: [{"{"} role: <S>&quot;user&quot;</S>, content: <S>&quot;Hello FreeAIXYZ&quot;</S> {"}"}],{"\n"}
               {"  "}stream: <K>true</K>,{"\n"}
               {"}"});{"\n"}
               <K>for await</K> (<K>const</K> chunk <K>of</K> stream) {"{"}{"\n"}

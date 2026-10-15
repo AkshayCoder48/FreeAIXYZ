@@ -22,6 +22,14 @@ import {
 import { getProviderEntry, shortIdFor } from "@/lib/gateway/ids";
 import { DELISTED_PROVIDERS } from "@/lib/gateway/adapters/legacy";
 import { isDelistedModel } from "@/lib/gateway/delisted";
+import {
+  FLEET_MODELS,
+  FLEET_PROVIDER_NAME,
+  type FleetGroup,
+  type FleetModel,
+} from "@/lib/onyx/fleet";
+
+export type { FleetGroup, FleetModel };
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -188,3 +196,73 @@ export const DEFAULT_MODEL_ID: string =
   OFFERED_MODELS.find((m) => m.capabilities.streaming)?.id ??
   OFFERED_MODELS[0]?.id ??
   "";
+
+// ─── Onyx fleet — the PUBLIC model identity layer ────────────────────────────
+// Public onyx-* ids mapped onto the existing catalog entries above. The
+// fleet is what the UI lists; capabilities + context windows are inherited
+// from the underlying route. The underlying provider names are NEVER shown.
+
+export interface FleetCatalogModel {
+  /** Public fleet id (onyx-*) — the ONLY place "onyx" appears. */
+  id: string;
+  /** Clean display name (no "onyx"). */
+  name: string;
+  /** One-line brief. */
+  brief: string;
+  /** Longer description. */
+  description: string;
+  group: FleetGroup;
+  /** 18+ badge — only on hard-test-verified slots. */
+  uncensored: boolean;
+  /** Always "Onyx AI" — original providers are never shown. */
+  providerName: string;
+  capabilities: NativeModelCapabilities;
+  contextWindow: number;
+  /** Underlying canonical id (internal routing only). */
+  route: string;
+}
+
+const FLEET_FALLBACK_CAPS: NativeModelCapabilities = {
+  text: true,
+  reasoning: false,
+  vision: false,
+  tools: false,
+  webSearch: false,
+  streaming: true,
+  systemPrompt: true,
+  multiTurn: true,
+};
+
+export const FLEET_CATALOG: readonly FleetCatalogModel[] = FLEET_MODELS.map(
+  (f) => {
+    const underlying = ALL_MODELS.find((m) => m.id === f.route) ?? null;
+    return {
+      id: f.id,
+      name: f.name,
+      brief: f.brief,
+      description: f.description,
+      group: f.group,
+      uncensored: f.uncensored,
+      providerName: FLEET_PROVIDER_NAME,
+      capabilities: underlying?.capabilities ?? FLEET_FALLBACK_CAPS,
+      contextWindow: underlying?.contextWindow ?? 0,
+      route: f.route,
+    };
+  },
+);
+
+/** Fleet entries grouped for catalog pages (insertion order preserved). */
+export function fleetByGroup(
+  group: FleetGroup,
+): readonly FleetCatalogModel[] {
+  return FLEET_CATALOG.filter((m) => m.group === group);
+}
+
+/** Look up a fleet entry by its public id. */
+export function findFleetCatalogModel(id: string): FleetCatalogModel | null {
+  if (!id) return null;
+  return FLEET_CATALOG.find((m) => m.id === id) ?? null;
+}
+
+/** The default fleet model for the playground. */
+export const DEFAULT_FLEET_MODEL_ID = "onyx-core-v1";

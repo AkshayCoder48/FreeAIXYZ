@@ -97,10 +97,7 @@ import type { Components } from "react-markdown";
 import { PrismAsyncLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import type { PrismTheme } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import type {
-  NativeModel,
-  NativeModelCapabilities,
-} from "@/lib/native-catalog";
+import type { NativeModelCapabilities } from "@/lib/native-catalog";
 import type { OAITool, OAIToolCall } from "@/lib/openai-types";
 import {
   BUILTIN_TOOL_DEFINITIONS,
@@ -115,17 +112,24 @@ import { parseToolCalls } from "@/lib/tool-calls";
 export interface PlaygroundModel {
   id: string;
   name: string;
-  providerId: string;
-  providerShortId: string;
-  providerName: string;
+  /** One-line fleet brief (picker / info card subtitle). */
+  brief: string;
+  /** Longer description (detail pages). */
   description: string;
-  category: "professional" | "sfw" | "unrestricted" | "reasoning";
+  /** Fleet line — the picker groups by this. */
+  group: "uncensored" | "general" | "creative";
+  /** 18+ badge — hard-test-verified uncensored slots only. */
+  uncensored: boolean;
+  /** Always "Onyx AI" — the fleet's public provider label. */
+  providerName: string;
   capabilities: NativeModelCapabilities;
   contextWindow: number;
 }
 
 export interface ChatPlaygroundData {
   models: PlaygroundModel[];
+  /** Server-validated ?model= deep link (fallback already applied). */
+  initialModelId?: string;
 }
 
 type Phase =
@@ -230,9 +234,17 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   get_current_time: Clock,
 };
 
-/** Maximum items per provider group in the dropdown (Radix Select doesn't
- *  virtualize — capping keeps the DOM manageable; the full list lives at /models). */
-const MAX_ITEMS_PER_GROUP = 30;
+/** Fleet-line order + labels for the picker groups (provider = Onyx AI). */
+const FLEET_GROUP_ORDER: Array<PlaygroundModel["group"]> = [
+  "uncensored",
+  "general",
+  "creative",
+];
+const FLEET_GROUP_LABELS: Record<PlaygroundModel["group"], string> = {
+  uncensored: "Onyx AI · Uncensored — 18+",
+  general: "Onyx AI · General",
+  creative: "Onyx AI · Creative",
+};
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -258,40 +270,15 @@ function parseToolArgs(raw: string): Record<string, unknown> {
   }
 }
 
+/** Group the fleet by its line (fixed display order, catalog order within). */
 function groupModels(
   models: PlaygroundModel[],
-): Array<{ providerId: string; providerName: string; items: PlaygroundModel[]; hidden: number }> {
-  const buckets = new Map<string, { providerId: string; providerName: string; items: PlaygroundModel[] }>();
-  for (const m of models) {
-    const entry = buckets.get(m.providerId);
-    if (entry) {
-      entry.items.push(m);
-    } else {
-      buckets.set(m.providerId, {
-        providerId: m.providerId,
-        providerName: m.providerName,
-        items: [m],
-      });
-    }
-  }
-  return Array.from(buckets.values())
-    .map((b) => {
-      // Sort: streaming + reasoning models first, then by name. Cap per group.
-      const sorted = [...b.items].sort((a, b2) => {
-        const aScore = (a.capabilities.streaming ? 2 : 0) + (a.capabilities.reasoning ? 1 : 0);
-        const bScore = (b2.capabilities.streaming ? 2 : 0) + (b2.capabilities.reasoning ? 1 : 0);
-        if (aScore !== bScore) return bScore - aScore;
-        return (a.name || a.id).localeCompare(b2.name || b2.id);
-      });
-      const visible = sorted.slice(0, MAX_ITEMS_PER_GROUP);
-      return {
-        providerId: b.providerId,
-        providerName: b.providerName,
-        items: visible,
-        hidden: Math.max(0, sorted.length - visible.length),
-      };
-    })
-    .sort((a, b) => a.providerName.localeCompare(b.providerName));
+): Array<{ group: PlaygroundModel["group"]; label: string; items: PlaygroundModel[] }> {
+  return FLEET_GROUP_ORDER.map((group) => ({
+    group,
+    label: FLEET_GROUP_LABELS[group],
+    items: models.filter((m) => m.group === group),
+  })).filter((g) => g.items.length > 0);
 }
 
 /** Format a token count compactly. */
@@ -864,8 +851,14 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   const { models } = data;
   const groups = React.useMemo(() => groupModels(models), [models]);
 
-  // Selected model + messages.
-  const [selectedModelId, setSelectedModelId] = React.useState<string>("");
+  // Selected model + messages. The initial selection comes from the
+  // server-resolved ?model= deep link (validated against FLEET_CATALOG with
+  // the default fleet model as fallback).
+  const [selectedModelId, setSelectedModelId] = React.useState<string>(
+    data.initialModelId && models.some((m) => m.id === data.initialModelId)
+      ? data.initialModelId
+      : "",
+  );
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState<string>("");
   const [system, setSystem] = React.useState<string>("");
@@ -890,7 +883,6 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
   // Misc UI state.
   const [copiedIdx, setCopiedIdx] = React.useState<number | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = React.useState<boolean>(false);
-  const [initialModelResolved, setInitialModelResolved] = React.useState<boolean>(false);
 
   // Refs.
   const abortRef = React.useRef<AbortController | null>(null);
@@ -921,37 +913,14 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
     enabledToolsRef.current = enabledTools;
   }, [enabledTools]);
 
-  // Auto-select the first model on first mount if no ?model= param.
-  // Also resolve a `?model=...` deep-link (URL-encoded).
+  // Safety net: if the initial selection is missing from the catalog (e.g.
+  // a stale deep link), fall back to the first fleet model.
   React.useEffect(() => {
-    if (initialModelResolved) return;
-    setInitialModelResolved(true);
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const modelParam = params.get("model");
-      if (modelParam) {
-        const decoded = decodeURIComponent(modelParam);
-        if (models.some((m) => m.id === decoded)) {
-          setSelectedModelId(decoded);
-          return;
-        }
-      }
-    } catch {
-      // window.location not available (SSR) — skip.
-    }
+    if (selectedModelId && models.some((m) => m.id === selectedModelId)) return;
     if (models.length > 0) {
-      // Prefer a streaming + tools model (the tool pipeline is a headline
-      // feature — the default model should exercise it).
-      setSelectedModelId(
-        (
-          models.find((m) => m.capabilities.streaming && m.capabilities.tools) ??
-          models.find((m) => m.capabilities.streaming) ??
-          models[0]
-        ).id,
-      );
+      setSelectedModelId(models[0].id);
     }
-  }, [models, initialModelResolved]);
+  }, [models, selectedModelId]);
 
   // Auto-scroll the messages list to the bottom when new content arrives
   // (unless the user has scrolled up — then show a "Jump to latest" pill).
@@ -1688,44 +1657,56 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             </SelectTrigger>
             <SelectContent className="max-h-[340px]">
               {groups.map((g, gi) => (
-                <React.Fragment key={g.providerId}>
+                <React.Fragment key={g.group}>
                   {gi > 0 && <SelectSeparator />}
                   <SelectGroup>
                     <SelectLabel className="text-xs">
-                      {g.providerName}
+                      {g.label}
                       <span className="ml-1 text-muted-foreground">
-                        ({g.items.length}
-                        {g.hidden > 0 ? `+${g.hidden}` : ""})
+                        ({g.items.length})
                       </span>
                     </SelectLabel>
                     {g.items.map((m) => (
                       <SelectItem key={m.id} value={m.id} className="text-sm">
-                        {m.name}
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="truncate">{m.name}</span>
+                          {m.uncensored && (
+                            <span
+                              className="fxz-badge-nsfw shrink-0"
+                              title="Hard-test verified uncensored · 18+"
+                            >
+                              18+
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </React.Fragment>
               ))}
-              {groups.some((g) => g.hidden > 0) && (
-                <p className="px-2 py-1.5 text-[11px] text-muted-foreground border-t border-border mt-1">
-                  Some models are hidden here — see the full list at /models.
-                </p>
-              )}
             </SelectContent>
           </Select>
           {selectedModel && (
             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-              {selectedModel.description}
+              {selectedModel.brief}
             </p>
           )}
         </Card>
 
         {/* Model capability card. */}
         <Card className="fxz-panel p-3 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="uppercase tracking-wider font-medium">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+            <span className="uppercase tracking-wider font-medium truncate">
               {selectedModel?.providerName ?? "Model info"}
             </span>
+            {selectedModel?.uncensored && (
+              <span
+                className="fxz-badge-nsfw shrink-0"
+                title="Hard-test verified uncensored · 18+"
+              >
+                18+ uncensored
+              </span>
+            )}
           </div>
           {selectedModel ? (
             <>
@@ -1898,7 +1879,8 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
                   Pick a model and send a message
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Real token-by-token SSE streaming with tool calling. Free native models, no key required.
+                  Real token-by-token SSE streaming with tool calling. The free
+                  Onyx fleet — no key required.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-2 max-w-xl">

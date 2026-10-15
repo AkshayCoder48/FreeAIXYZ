@@ -5,7 +5,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
 /**
- * HyperDimension AI — "Crimson Orb" typography (Stitch UI kit):
+ * FreeAIXYZ typography (warm crimson/ember kit):
  *   - Space Grotesk — display / headlines
  *   - Geist          — body
  *   - JetBrains Mono — code, model ids, telemetry labels
@@ -30,9 +30,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HyperDimension AI — Free OpenAI-Compatible AI Gateway",
+  title: "FreeAIXYZ — Free OpenAI-Compatible AI Gateway",
   description:
-    "HyperDimension AI (FreeAIXYZ): a free, observable, dynamically-discovering AI gateway. OpenAI-compatible API with 80+ models across 17+ providers. Real end-to-end SSE streaming, tool calling, no API key required.",
+    "FreeAIXYZ: a free, observable AI gateway. OpenAI-compatible API with the 24-model Onyx AI fleet across 3 lines — uncensored, general and creative. Real end-to-end SSE streaming, tool calling, no API key required.",
   keywords: [
     "free AI",
     "OpenAI compatible API",
@@ -43,17 +43,17 @@ export const metadata: Metadata = {
     "no auth AI",
     "AI playground",
     "SSE streaming",
-    "model discovery",
-    "HyperDimension AI",
+    "FreeAIXYZ",
+    "Onyx AI fleet",
   ],
-  authors: [{ name: "HyperDimension AI" }],
+  authors: [{ name: "FreeAIXYZ" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
-    title: "HyperDimension AI — Free OpenAI-Compatible AI Gateway",
+    title: "FreeAIXYZ — Free OpenAI-Compatible AI Gateway",
     description:
-      "Free AI inference with 80+ models. OpenAI-compatible, real SSE streaming, dynamic discovery, no key required.",
+      "Free AI inference with the 24-model Onyx fleet. OpenAI-compatible, real SSE streaming, tool calling, no key required.",
     type: "website",
   },
 };

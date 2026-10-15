@@ -1,203 +1,62 @@
 "use client";
 
 /**
- * ModelsCatalog — /models catalog (static data, HyperDimension design).
+ * ModelsCatalog — /models fleet catalog (static data, FreeAIXYZ design).
  *
- * Receives the static native model list via props (serialized from the RSC
- * — no network fetch, no discovery, no pricing).
+ * Receives the serialized Onyx fleet via props (RSC-serialized from the
+ * static FLEET_CATALOG — no network fetch, no discovery, no credentials).
+ * The fleet is the ONLY public model surface: clean display names, onyx-*
+ * ids, and "Onyx AI" attribution everywhere. Provider-prefixed routes are
+ * never listed here.
  *
  * Layout:
  *   - Eyebrow + headline (one crimson gradient word) + search
- *   - Provider filter pills (crimson active state)
- *   - One section per provider with a responsive grid of obsidian cards
+ *   - Fleet-line filter pills (All / Uncensored · 18+ / General / Creative)
+ *   - One section per fleet line with a responsive grid of obsidian cards;
+ *     the Uncensored section carries a group-level 18+ warning chip.
  *
- * Card (obsidian, crimson/ember alternating rims, hover glow):
- *   - Model display name (clickable → /models/[provider]/[model])
- *   - Description (line-clamped to 2 lines)
- *   - Capability badges (mono chips)
- *   - Model id (crimson code pill) + Copy button
- *   - "Try in playground" crimson link (→ /chat?model=…)
- *
- * Overflow hardening: normal document flow (flex column), `min-w-0` on
- * card roots, `overflow-wrap: anywhere` on long ids, wrapping badge rows.
+ * Card (FleetCard): display name → detail page, brief, capability chips,
+ * onyx id pill + copy, "Try in chat" → /chat?model=<id>, and a prominent
+ * crimson-glow 18+ UNCENSORED badge on hard-test-verified slots.
  */
 
 import * as React from "react";
-import Link from "next/link";
-import { Search, Copy, Check, MessageSquare, Zap, Brain, Wrench, Eye, Globe } from "lucide-react";
+import { Search, AlertTriangle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { FleetCard } from "@/components/explorer/fleet-card";
+import {
+  FLEET_GROUP_META,
+  type CatalogFleetModel,
+  type FleetGroupSlug,
+} from "@/components/explorer/fleet-meta";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-export interface CatalogModel {
-  id: string;
-  name: string;
-  providerId: string;
-  providerName: string;
-  description: string;
-  category: "professional" | "sfw" | "unrestricted" | "reasoning";
-  capabilities: {
-    streaming: boolean;
-    reasoning: boolean;
-    vision: boolean;
-    tools: boolean;
-    webSearch: boolean;
-  };
-  contextWindow: number;
-}
-
-export interface CatalogProvider {
-  id: string;
-  shortId: string;
-  name: string;
-}
+export type { CatalogFleetModel };
 
 export interface ModelsCatalogData {
-  models: CatalogModel[];
-  providers: CatalogProvider[];
+  models: CatalogFleetModel[];
 }
 
-// ─── Card (memoized) ─────────────────────────────────────────────────────────
-
-/**
- * One catalog card. Memoized so search keystrokes and provider-filter
- * changes re-render ONLY the cards whose set changed — the 87 model
- * objects have stable identities (static catalog → memoized `groups`),
- * and `copyId`/`copied` are stable per card, so untouched cards skip
- * React entirely instead of re-diffing ~25 DOM nodes each per keystroke.
- */
-const ModelCard = React.memo(function ModelCard({
-  m,
-  emberRim,
-  copied,
-  onCopy,
-}: {
-  m: CatalogModel;
-  emberRim: boolean;
-  copied: boolean;
-  onCopy: (id: string) => void;
-}) {
-  return (
-    <div
-      className={
-        "fxz-panel p-4 flex flex-col gap-2.5 min-w-0 rounded-xl transition-all " +
-        (emberRim
-          ? "border-ember/25 hover:border-ember/70 hover:shadow-[0_16px_36px_rgba(255,133,13,0.22),inset_0_1px_1px_rgba(255,255,255,0.09)]"
-          : "border-crimson/25 hover:border-crimson/70 hover:shadow-[0_16px_36px_rgba(255,42,85,0.25),inset_0_1px_1px_rgba(255,255,255,0.09)]")
-      }
-    >
-      <div className="flex items-start justify-between gap-2 min-w-0">
-        <Link
-          href={`/models/${m.providerId}/${encodeURIComponent(m.id)}`}
-          className="text-sm font-semibold text-white hover:text-crimson transition-colors leading-snug"
-          style={{ overflowWrap: "anywhere" }}
-        >
-          {m.name}
-        </Link>
-        {m.capabilities.streaming && (
-          <span className="fxz-badge fxz-badge-ember gap-1 shrink-0">
-            <Zap className="h-2.5 w-2.5" /> stream
-          </span>
-        )}
-      </div>
-      <p
-        className="text-xs text-muted-foreground leading-relaxed line-clamp-2"
-        title={m.description}
-      >
-        {m.description}
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {m.capabilities.reasoning && (
-          <span className="fxz-badge fxz-badge-warm gap-1">
-            <Brain className="h-2.5 w-2.5" /> reasoning
-          </span>
-        )}
-        {m.capabilities.vision && (
-          <span className="fxz-badge gap-1">
-            <Eye className="h-2.5 w-2.5" /> vision
-          </span>
-        )}
-        {m.capabilities.tools && (
-          <span className="fxz-badge fxz-badge-warm gap-1">
-            <Wrench className="h-2.5 w-2.5" /> tools
-          </span>
-        )}
-        {m.capabilities.webSearch && (
-          <span className="fxz-badge gap-1">
-            <Globe className="h-2.5 w-2.5" /> web search
-          </span>
-        )}
-        {m.contextWindow > 0 && (
-          <span className="fxz-badge font-mono">
-            {m.contextWindow >= 1000
-              ? `${Math.round(m.contextWindow / 1000)}k ctx`
-              : `${m.contextWindow} ctx`}
-          </span>
-        )}
-      </div>
-      <div className="mt-auto flex items-center gap-2 pt-1">
-        <code
-          className="fxz-code flex-1 min-w-0 truncate"
-          title={m.id}
-        >
-          {m.id}
-        </code>
-        <button
-          type="button"
-          onClick={() => onCopy(m.id)}
-          className="shrink-0 inline-flex items-center justify-center h-10 w-10 rounded-md border border-crimson/25 text-muted-foreground hover:text-crimson hover:border-crimson/60 transition-colors"
-          aria-label={`Copy model id ${m.id}`}
-        >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-gold" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
-        </button>
-        <Link
-          href={`/chat?model=${encodeURIComponent(m.id)}`}
-          className={
-            "shrink-0 inline-flex items-center gap-1 font-mono text-[11px] font-bold px-3.5 h-10 rounded-md transition-all " +
-            (emberRim
-              ? "text-ember border border-ember/35 bg-ember/10 hover:bg-ember hover:text-black"
-              : "text-crimson border border-crimson/35 bg-crimson/10 hover:bg-crimson hover:text-white")
-          }
-        >
-          <MessageSquare className="h-3 w-3" /> Try
-        </Link>
-      </div>
-    </div>
-  );
-});
-
-// ─── Component ──────────────────────────────────────────────────────────────
-
 export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
-  const { models, providers } = data;
+  const { models } = data;
   const [query, setQuery] = React.useState("");
-  const [providerFilter, setProviderFilter] = React.useState<string>("all");
-  const [copied, setCopied] = React.useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = React.useState<"all" | FleetGroupSlug>("all");
 
-  // Group models by provider (preserving catalog order).
-  const groups = React.useMemo(() => {
-    const byProvider = new Map<string, CatalogModel[]>();
-    for (const m of models) {
-      const list = byProvider.get(m.providerId);
-      if (list) list.push(m);
-      else byProvider.set(m.providerId, [m]);
-    }
-    return Array.from(byProvider.entries()).map(([providerId, items]) => ({
-      providerId,
-      providerName: items[0]?.providerName ?? providerId,
-      items,
-    }));
-  }, [models]);
+  // Group by fleet line, preserving the fixed display order.
+  const groups = React.useMemo(
+    () =>
+      FLEET_GROUP_META.map((g) => ({
+        ...g,
+        items: models.filter((m) => m.group === g.slug),
+      })),
+    [models],
+  );
 
-  // Apply search + provider filter.
+  // Apply search + group filter.
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return groups
-      .filter((g) => providerFilter === "all" || g.providerId === providerFilter)
+      .filter((g) => groupFilter === "all" || g.slug === groupFilter)
       .map((g) => ({
         ...g,
         items: q
@@ -205,22 +64,13 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
               (m) =>
                 m.name.toLowerCase().includes(q) ||
                 m.id.toLowerCase().includes(q) ||
+                m.brief.toLowerCase().includes(q) ||
                 m.description.toLowerCase().includes(q),
             )
           : g.items,
       }))
       .filter((g) => g.items.length > 0);
-  }, [groups, query, providerFilter]);
-
-  const copyId = React.useCallback(async (id: string) => {
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopied(id);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // clipboard unavailable — ignore
-    }
-  }, []);
+  }, [groups, query, groupFilter]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -228,14 +78,14 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 justify-between">
           <div className="flex flex-col gap-3">
-            <span className="fxz-section-eyebrow">Crimson core // catalog</span>
+            <span className="fxz-section-eyebrow">FreeAIXYZ // model catalog</span>
             <h1 className="fxz-page-title">
-              Native <span className="fxz-gradient-word">models</span>
+              Onyx fleet <span className="fxz-gradient-word">models</span>
             </h1>
             <p className="text-[15px] text-muted-foreground max-w-2xl leading-relaxed">
-              {models.length} free models across {groups.length} native
-              providers. Static registry — every model maps to an implemented
-              adapter. No API key required.
+              {models.length} free models across {FLEET_GROUP_META.length} fleet
+              lines — Uncensored, General and Creative — served by Onyx AI
+              through one OpenAI-compatible endpoint. No API key required.
             </p>
           </div>
           <div className="relative w-full sm:w-72">
@@ -243,83 +93,93 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search models…"
+              placeholder="Search fleet models…"
               className="fxz-input w-full rounded-lg pl-9 pr-3 h-11 text-sm outline-none"
-              aria-label="Search models"
+              aria-label="Search fleet models"
             />
           </div>
         </div>
 
-        {/* Provider filter pills (warm active) */}
+        {/* Fleet-line filter pills (warm active) */}
         <div
           className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 custom-scroll"
           role="tablist"
-          aria-label="Filter by provider"
+          aria-label="Filter by fleet line"
         >
           <button
             type="button"
             role="tab"
-            aria-selected={providerFilter === "all"}
-            onClick={() => setProviderFilter("all")}
+            aria-selected={groupFilter === "all"}
+            onClick={() => setGroupFilter("all")}
             className={cn(
               "fxz-chip",
-              providerFilter === "all" && "fxz-chip-active",
+              groupFilter === "all" && "fxz-chip-active",
             )}
           >
             All ({models.length})
           </button>
           {groups.map((g) => (
             <button
-              key={g.providerId}
+              key={g.slug}
               type="button"
               role="tab"
-              aria-selected={providerFilter === g.providerId}
-              onClick={() => setProviderFilter(g.providerId)}
+              aria-selected={groupFilter === g.slug}
+              onClick={() => setGroupFilter(g.slug)}
               className={cn(
                 "fxz-chip",
-                providerFilter === g.providerId && "fxz-chip-active",
+                groupFilter === g.slug && "fxz-chip-active",
               )}
             >
-              {g.providerName} ({g.items.length})
+              {g.label} ({g.items.length})
             </button>
           ))}
         </div>
       </div>
 
-      {/* Sections */}
+      {/* Sections — one per fleet line */}
       {filtered.length === 0 ? (
         <div className="fxz-panel rounded-xl p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            No models match “{query}”.
+            No fleet models match “{query}”.
           </p>
         </div>
       ) : (
         filtered.map((g) => (
           <section
-            key={g.providerId}
+            key={g.slug}
             className="flex flex-col gap-3"
-            aria-labelledby={`provider-${g.providerId}`}
+            aria-labelledby={`fleet-group-${g.slug}`}
           >
-            <div className="flex items-baseline gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2
-                id={`provider-${g.providerId}`}
+                id={`fleet-group-${g.slug}`}
                 className="text-lg font-bold text-white"
               >
-                {g.providerName}
+                {g.label}
               </h2>
               <span className="text-xs text-muted-foreground font-mono">
                 {g.items.length} model{g.items.length === 1 ? "" : "s"}
               </span>
+              {g.slug === "uncensored" && (
+                <span
+                  className="fxz-badge-nsfw gap-1.5"
+                  title="Every slot in this line passed a live uncensored hard-test battery"
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden />
+                  18+ · adults only
+                </span>
+              )}
             </div>
+            {g.slug === "uncensored" && (
+              <p className="text-xs leading-relaxed text-muted-foreground max-w-3xl">
+                Adults only. These slots passed a live uncensored hard-test
+                battery (zero refusals) and are verified 18+ — explicit adult
+                content, no filtering, no lectures.
+              </p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {g.items.map((m, mi) => (
-                <ModelCard
-                  key={m.id}
-                  m={m}
-                  emberRim={mi % 2 === 1}
-                  copied={copied === m.id}
-                  onCopy={copyId}
-                />
+                <FleetCard key={m.id} m={m} emberRim={mi % 2 === 1} />
               ))}
             </div>
           </section>

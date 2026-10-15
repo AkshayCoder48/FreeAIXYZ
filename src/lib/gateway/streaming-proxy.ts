@@ -34,6 +34,7 @@ import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
 import { isTransientUpstreamError, retryDelayMs, sleep } from "@/lib/gateway/retry";
 import { wrapStreamWithAutoContinue } from "@/lib/gateway/auto-continue";
+import { paceLargeDeltas } from "@/lib/gateway/delta-pacing";
 import type {
   ChatRequest,
   ProviderAdapter,
@@ -142,7 +143,15 @@ class StreamingProxyService {
           // unbalanced brackets), it transparently continues through the
           // same adapter until the upstream truly stops. Tool-carrying
           // requests pass through un-wrapped.
-          gen = wrapStreamWithAutoContinue(candidate.adapter, candidate.req);
+          //
+          // DELTA PACING (lib/gateway/delta-pacing.ts): blob-yielding
+          // upstreams (non-SSE providers, per-round chunkers) get their
+          // oversized deltas split into paced pieces so every model RENDERS
+          // as a live stream. Real streamers (small deltas) pass through
+          // with zero added latency.
+          gen = paceLargeDeltas(
+            wrapStreamWithAutoContinue(candidate.adapter, candidate.req),
+          );
         } catch (err) {
           preflightErr = this.wrapUnknownStreamErr(
             err,
