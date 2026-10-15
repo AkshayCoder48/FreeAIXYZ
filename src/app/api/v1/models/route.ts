@@ -8,6 +8,13 @@
  * surface is fleet-only. `?all=true` adds the underlying catalog back for
  * debugging.
  *
+ * Ten-family metadata (PRD §9): every fleet entry additionally carries
+ * `name`, `provider`, `family`, `variant`, `version`, `release_order`,
+ * `category`, `content_classification`, `status` and `aliases` (the
+ * previous-generation ids that still resolve to the same slot). Display
+ * names stay independent of the inference id; classification comes from
+ * family metadata — never inferred from a model's name.
+ *
  * Query params:
  *   - ?health=true   — include capabilities + status + contextWindow
  *   - ?all=true      — fleet + underlying catalog (debug view)
@@ -24,6 +31,7 @@ import { ensureGateway } from "@/lib/gateway/route-helpers";
 import type { OAIModelList } from "@/lib/openai-types";
 import { withCors, corsPreflight } from "@/lib/api/cors";
 import { FLEET_MODELS, FLEET_PROVIDER_NAME } from "@/lib/onyx/fleet";
+import { fleetFamily } from "@/lib/onyx/families";
 import { findNativeModel } from "@/lib/native-catalog";
 
 export const runtime = "nodejs";
@@ -134,6 +142,17 @@ async function listModels(request: Request): Promise<Response> {
       object: "model" as const,
       created: CREATED_EPOCH,
       owned_by: FLEET_PROVIDER_NAME,
+      // ── Ten-family metadata (PRD §9) ──
+      name: f.name,
+      provider: FLEET_PROVIDER_NAME,
+      family: fleetFamily(f.family).name,
+      variant: f.variant,
+      version: f.version,
+      release_order: f.releaseOrder,
+      category: f.category,
+      content_classification: f.contentClassification,
+      status: "active" as const,
+      aliases: [...f.legacyIds],
       capabilities: fleetCapabilities(f.route),
       free: true,
     };

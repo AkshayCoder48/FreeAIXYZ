@@ -169,7 +169,7 @@ client  ◀─ SSE chunks + data: [DONE]`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "onyx-core-v1",
+    "model": "onyx-astra",
     "messages": [{"role": "user", "content": "Say hello in one sentence."}],
     "stream": true
   }'`,
@@ -193,7 +193,7 @@ client  ◀─ SSE chunks + data: [DONE]`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "onyx-forge-v1",
+    "model": "onyx-codex",
     "messages": [{"role": "user", "content": "What is 12345 times 6789?"}],
     "stream": true,
     "tools": [{
@@ -244,7 +244,7 @@ client = OpenAI(
 )
 
 stream = client.chat.completions.create(
-    model="onyx-core-v1",
+    model="onyx-astra",
     messages=[{"role": "user", "content": "Say hello in one sentence."}],
     stream=True,
 )
@@ -416,7 +416,7 @@ for chunk in stream:
         title: "wire format",
         lang: "text",
         code: `data: {"id":"chatcmpl-…","object":"chat.completion.chunk",
-       "model":"onyx-core-v1",
+       "model":"onyx-astra",
        "choices":[{"index":0,
          "delta":{"role":"assistant"},
          "finish_reason":null}]}
@@ -643,7 +643,7 @@ const calls = [...acc.values()].map((c) => ({
     blocks: [
       {
         kind: "p",
-        text: "Every model has one **fleet id** of the form `onyx-<line>-<version>` — e.g. `onyx-core-v1` or `onyx-forge-v2`. The id is the public contract: `GET /api/v1/models` lists exactly these ids, and every response echoes the id you called.",
+        text: "Every model has one **fleet id** in the ten-family registry: `onyx-<family>[-<variant>][-<version>]` — e.g. `onyx-astra`, `onyx-astra-pro` or `onyx-codex-2`. The id is the public contract: `GET /api/v1/models` lists exactly these ids, and every response echoes the id you called. Previous-generation ids (like `onyx-core-v1` or `onyx-lust-v1`) still resolve as aliases of their renamed slots.",
       },
       {
         kind: "h3",
@@ -687,9 +687,9 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
       {
         kind: "list",
         items: [
-          "`/models` — full catalog, grouped by provider, live search + provider pills",
-          "`/models/<provider>` — one provider's grid",
-          "`/models/<provider>/<model>` — capability matrix, context window, upstream id, one-click into the Playground",
+          "`/models` — full catalog, grouped by family, live search + category pills",
+          "`/models/<family>` — one family's grid (e.g. `/models/amora`)",
+          "`/models/<family>/<model>` — capability matrix, context window, version metadata, one-click into the Playground",
           "`/chat?model=<id>` — open the Playground with the model pre-selected",
         ],
       },
@@ -700,26 +700,39 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
     id: "providers",
     title: "The Onyx Fleet",
     description:
-      "The 24 public models — three lines, one fleet, every slot hard-tested.",
+      "The 24 public models — ten families, one fleet, every slot hard-tested.",
     group: "guides",
-    keywords: ["fleet", "model", "onyx", "uncensored", "catalog"],
+    keywords: ["fleet", "model", "onyx", "family", "amora", "catalog"],
     blocks: [
       {
         kind: "p",
-        text: "Every public model is an **Onyx Fleet** slot: a clean name, a public `onyx-*` id, and a fresh brief. The fleet is **static** — bundled at build time, no dynamic fetching, no stale caches — and every id routes to a live adapter. The underlying infrastructure is an internal detail and is never exposed.",
+        text: "Every public model is an **Onyx Fleet** slot in a ten-family registry: a clean name, a public `onyx-*` id, and a fresh brief. The fleet is **static** — bundled at build time, no dynamic fetching, no stale caches — and every id routes to a live adapter. The underlying infrastructure is an internal detail and is never exposed.",
       },
       {
         kind: "table",
-        head: ["Line", "Slots", "Focus"],
+        head: ["Family", "Slots", "Focus"],
         rows: [
-          ["Uncensored · 18+", "10", "Verified unrestricted NSFW slots — badged only after live hard tests (2/2 explicit prompts, zero refusals). Never faked."],
-          ["General", "10", "Daily drivers, reasoning, coding and research: Core, Spark, Nova, Pulse, Forge, Architect, Sentinel, Echo."],
-          ["Creative", "4", "Non-explicit writing and roleplay: Muse, Storyweaver, Persona, Vision."],
+          ["01 ASTRA", "3", "General-purpose intelligence — Astra, Astra 2, Astra Pro."],
+          ["02 KAIRO", "1", "Fast, everyday AI — Kairo."],
+          ["03 VEX", "2", "Lightweight, low-latency — Vex, Vex Flash."],
+          ["04 LOGOS", "2", "Reasoning and analysis — Logos, Logos Research."],
+          ["05 CODEX", "2", "Programming — Codex, Codex 2."],
+          ["06 OMNIX", "1", "Multimodal vision — Omnix Vision."],
+          ["07 MYTHOS", "3", "Creative writing and roleplay — Muse, Story, Persona."],
+          ["08 AMORA", "10", "Mature-audience creative AI (18+). Verified unrestricted slots — classified only after live hard tests (2/2 explicit prompts, zero refusals). Never faked."],
+          ["09 RIVEN", "0", "Experimental — defined in the registry, no public models yet."],
+          ["10 ZENITH", "0", "Flagship — defined in the registry, no public models yet."],
         ],
       },
       {
         kind: "callout",
         tone: "tip",
+        title: "Versioning",
+        text: "Display names follow `[Family] [Variant] [Version]` — `Amora Pro`, `Astra 2`, `Codex 2`. Versions are strings with a separate release-order field; ids stay stable once published, and legacy ids keep resolving as aliases.",
+      },
+      {
+        kind: "callout",
+        tone: "info",
         title: "Health",
         text: "Providers are free upstreams — availability shifts. The gateway applies per-provider circuit breakers and per-model health tracking, and surfaces `PROVIDER_UNAVAILABLE` / `UPSTREAM_*` errors honestly instead of hanging.",
       },
@@ -755,7 +768,7 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true" | jq '.data | 
     "type": "upstream_error",
     "message": "Upstream unavailable (HTTP 503). Retry later.",
     "provider": "onyx",
-    "model": "onyx-core-v1",
+    "model": "onyx-astra",
     "request_id": "req_a1b2c3",
     "code": "PROVIDER_UNAVAILABLE",
     "status": 503
@@ -913,7 +926,7 @@ Content-Type: application/json`,
         kind: "table",
         head: ["Parameter", "Type", "Default", "Description"],
         rows: [
-          ["model", "string", "— (required)", "Fleet id, e.g. `onyx-core-v1`. Unknown ids → 404 MODEL_NOT_FOUND"],
+          ["model", "string", "— (required)", "Fleet id, e.g. `onyx-astra`. Unknown ids → 404 MODEL_NOT_FOUND"],
           ["messages", "array", "— (required)", "OpenAI-shaped: system / user / assistant / tool roles"],
           ["stream", "boolean", "false", "true → SSE chunks + `[DONE]`"],
           ["tools", "array", "—", "OpenAI function-tool definitions. Validated, then forwarded 1:1"],
@@ -941,7 +954,7 @@ Content-Type: application/json`,
         code: `{
   "id": "chatcmpl-…",
   "object": "chat.completion",
-  "model": "onyx-core-v1",
+  "model": "onyx-astra",
   "choices": [{
     "index": 0,
     "message": {
@@ -972,7 +985,7 @@ Content-Type: application/json`,
         lang: "bash",
         code: `curl -s https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
-  -d '{"model":"onyx-core-v1",
+  -d '{"model":"onyx-astra",
        "messages":[{"role":"user","content":"Hi"}]}'`,
       },
       {
@@ -983,7 +996,7 @@ Content-Type: application/json`,
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    model: "onyx-forge-v1",
+    model: "onyx-codex",
     messages: [{ role: "user", content: "What is 12345 * 6789?" }],
     stream: true,
     tools: [{
@@ -1039,10 +1052,40 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true"`,
   "object": "list",
   "data": [
     {
-      "id": "onyx-core-v1",
+      "id": "onyx-astra",
       "object": "model",
       "created": 1788250097,
-      "owned_by": "Onyx AI"
+      "owned_by": "Onyx AI",
+      "name": "Astra",
+      "provider": "Onyx AI",
+      "family": "ASTRA",
+      "variant": null,
+      "version": null,
+      "release_order": 1,
+      "category": "general",
+      "content_classification": "general",
+      "status": "active",
+      "aliases": [],
+      "capabilities": ["text", "vision", "tools", "streaming"],
+      "free": true
+    },
+    {
+      "id": "onyx-amora-pro",
+      "object": "model",
+      "created": 1788250097,
+      "owned_by": "Onyx AI",
+      "name": "Amora Pro",
+      "provider": "Onyx AI",
+      "family": "AMORA",
+      "variant": "Pro",
+      "version": null,
+      "release_order": 1,
+      "category": "creative",
+      "content_classification": "adult",
+      "status": "active",
+      "aliases": ["onyx-uncensored-pro-v1"],
+      "capabilities": ["text", "tools", "streaming"],
+      "free": true
     }
   ]
 }`,
@@ -1051,8 +1094,9 @@ curl -s "https://freeaixyz4all.vercel.app/api/v1/models?all=true"`,
         kind: "table",
         head: ["Query", "Effect"],
         rows: [
-          ["(none)", "The 75 offered models — the recommended set"],
-          ["?all=true", "The full registry (94 entries) including delisted ids that still resolve"],
+          ["(none)", "The 24 fleet models — the public catalog with family metadata"],
+          ["?all=true", "The full registry including the underlying catalog (debug view)"],
+          ["?health=true", "Adds per-model health, capability flags and context windows"],
         ],
       },
       {
@@ -1176,7 +1220,7 @@ Content-Type: application/json
         code: `{
   "registry": ["calculator", "web_search", "get_current_time"],
   "traces": [{
-    "model": "onyx-core-v1",
+    "model": "onyx-astra",
     "provider": "onyx",
     "streaming": true,
     "toolsRequested": 1,
@@ -1445,7 +1489,7 @@ max(3, 7, 5) + pow(2, 10) → 1031`,
         code: `curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "onyx-forge-v1",
+    "model": "onyx-codex",
     "messages": [{"role":"user","content":"Search the web for the latest Next.js release and summarize it."}],
     "stream": true,
     "tools": [{
@@ -1480,7 +1524,7 @@ const client = new OpenAI({
 });
 
 const stream = await client.chat.completions.create({
-  model: "onyx-core-v1",
+  model: "onyx-astra",
   messages: [{ role: "user", content: "Write a haiku about streaming." }],
   stream: true,
 });
@@ -1519,7 +1563,7 @@ tools = [{
 }]
 
 res = client.chat.completions.create(
-    model="onyx-forge-v1",
+    model="onyx-codex",
     messages=[{"role": "user", "content": "What is 12345 times 6789?"}],
     tools=tools,
     tool_choice="auto",
@@ -1552,7 +1596,7 @@ async function chatWithTools(userMessage: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "onyx-forge-v1",
+        model: "onyx-codex",
         messages,
         stream: true,
         tools: TOOLS,

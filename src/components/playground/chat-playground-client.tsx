@@ -100,6 +100,13 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { NativeModelCapabilities } from "@/lib/native-catalog";
 import type { OAITool, OAIToolCall } from "@/lib/openai-types";
 import {
+  FLEET_FAMILIES,
+  type ContentClassification,
+  type FleetCategory,
+  type FleetFamilyId,
+  type FleetFamilyMeta,
+} from "@/lib/onyx/families";
+import {
   BUILTIN_TOOL_DEFINITIONS,
   BUILTIN_TOOL_META,
   DEFAULT_TOOL_CHOICE,
@@ -111,14 +118,28 @@ import { parseToolCalls } from "@/lib/tool-calls";
 
 export interface PlaygroundModel {
   id: string;
+  /** Previous-generation ids that still resolve to this slot (aliases). */
+  legacyIds: readonly string[];
   name: string;
   /** One-line fleet brief (picker / info card subtitle). */
   brief: string;
   /** Longer description (detail pages). */
   description: string;
-  /** Fleet line — the picker groups by this. */
-  group: "uncensored" | "general" | "creative";
-  /** 18+ badge — hard-test-verified uncensored slots only. */
+  /** Family slug — the picker groups by family (ASTRA … ZENITH). */
+  family: FleetFamilyId;
+  /** Family wordmark ("AMORA"). */
+  familyName: string;
+  /** Optional variant suffix ("Pro", …) or null. */
+  variant: string | null;
+  /** Optional version string ("2", …) or null. */
+  version: string | null;
+  /** Release order within the family(+variant) line. */
+  releaseOrder: number;
+  /** Functional category ("general", "coding", …). */
+  category: FleetCategory;
+  /** Content classification — from family metadata, never from the name. */
+  contentClassification: ContentClassification;
+  /** 18+ notice — hard-test-verified uncensored slots only. */
   uncensored: boolean;
   /** Always "Onyx AI" — the fleet's public provider label. */
   providerName: string;
@@ -234,17 +255,14 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   get_current_time: Clock,
 };
 
-/** Fleet-line order + labels for the picker groups (provider = Onyx AI). */
-const FLEET_GROUP_ORDER: Array<PlaygroundModel["group"]> = [
-  "uncensored",
-  "general",
-  "creative",
-];
-const FLEET_GROUP_LABELS: Record<PlaygroundModel["group"], string> = {
-  uncensored: "Onyx AI · Uncensored — 18+",
-  general: "Onyx AI · General",
-  creative: "Onyx AI · Creative",
-};
+/** Picker grouping — by FAMILY in registry order (01 ASTRA → 10 ZENITH).
+ *  Labels carry the family wordmark; the AMORA family is identified by its
+ *  name (classification shows on the model entries, not the group label). */
+const FLEET_FAMILY_ORDER: readonly FleetFamilyMeta[] = FLEET_FAMILIES;
+
+function familyGroupLabel(f: FleetFamilyMeta): string {
+  return `Onyx AI · ${f.name}`;
+}
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -270,14 +288,14 @@ function parseToolArgs(raw: string): Record<string, unknown> {
   }
 }
 
-/** Group the fleet by its line (fixed display order, catalog order within). */
+/** Group the fleet by family (fixed 01→10 order, release order within). */
 function groupModels(
   models: PlaygroundModel[],
-): Array<{ group: PlaygroundModel["group"]; label: string; items: PlaygroundModel[] }> {
-  return FLEET_GROUP_ORDER.map((group) => ({
-    group,
-    label: FLEET_GROUP_LABELS[group],
-    items: models.filter((m) => m.group === group),
+): Array<{ family: FleetFamilyId; label: string; items: PlaygroundModel[] }> {
+  return FLEET_FAMILY_ORDER.map((f) => ({
+    family: f.id,
+    label: familyGroupLabel(f),
+    items: models.filter((m) => m.family === f.id),
   })).filter((g) => g.items.length > 0);
 }
 
@@ -1657,7 +1675,7 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
             </SelectTrigger>
             <SelectContent className="max-h-[340px]">
               {groups.map((g, gi) => (
-                <React.Fragment key={g.group}>
+                <React.Fragment key={g.family}>
                   {gi > 0 && <SelectSeparator />}
                   <SelectGroup>
                     <SelectLabel className="text-xs">

@@ -32,7 +32,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "FreeAIXYZ — Free OpenAI-Compatible AI Gateway",
   description:
-    "FreeAIXYZ: a free, observable AI gateway. OpenAI-compatible API with the 24-model Onyx AI fleet across 3 lines — uncensored, general and creative. Real end-to-end SSE streaming, tool calling, no API key required.",
+    "FreeAIXYZ: a free, observable AI gateway. OpenAI-compatible API with the 24-model Onyx AI fleet across ten families — Astra, Kairo, Vex, Logos, Codex, Omnix, Mythos, Amora, Riven, Zenith. Real end-to-end SSE streaming, tool calling, no API key required.",
   keywords: [
     "free AI",
     "OpenAI compatible API",

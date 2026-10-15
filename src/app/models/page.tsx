@@ -14,7 +14,7 @@ export const dynamic = "force-static";
 export const metadata = {
   title: "Models — FreeAIXYZ",
   description:
-    "The Onyx AI fleet: 24 free models across three lines — Uncensored (18+), General and Creative. Streaming, reasoning, tools, web search. No API key required.",
+    "The Onyx AI fleet: 24 free models across ten families — Astra, Kairo, Vex, Logos, Codex, Omnix, Mythos, Amora, Riven and Zenith. Streaming, reasoning, tools, web search. No API key required.",
 };
 
 /**
@@ -22,17 +22,25 @@ export const metadata = {
  *
  * The ONLY public model surface. Built entirely from the static Onyx fleet
  * catalog (FLEET_CATALOG): clean display names, onyx-* ids as mono pills,
- * "Onyx AI" attribution everywhere. Provider-prefixed routes are never
- * listed — the underlying registry stays internal.
+ * "Onyx AI" attribution everywhere, grouped by the ten families.
+ * Provider-prefixed routes are never listed — the underlying registry stays
+ * internal.
  */
 export default function ModelsPage() {
   const data: ModelsCatalogData = {
     models: FLEET_CATALOG.map((m: FleetCatalogModel) => ({
       id: m.id,
+      legacyIds: m.legacyIds,
       name: m.name,
+      family: m.family,
+      familyName: m.familyName,
+      variant: m.variant,
+      version: m.version,
+      releaseOrder: m.releaseOrder,
+      category: m.category,
+      contentClassification: m.contentClassification,
       brief: m.brief,
       description: m.description,
-      group: m.group,
       uncensored: m.uncensored,
       providerName: m.providerName,
       capabilities: {

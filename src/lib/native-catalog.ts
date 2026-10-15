@@ -25,11 +25,17 @@ import { isDelistedModel } from "@/lib/gateway/delisted";
 import {
   FLEET_MODELS,
   FLEET_PROVIDER_NAME,
-  type FleetGroup,
   type FleetModel,
 } from "@/lib/onyx/fleet";
+import type {
+  ContentClassification,
+  FleetCategory,
+  FleetFamilyId,
+  FleetFamilyMeta,
+} from "@/lib/onyx/families";
+import { fleetFamily } from "@/lib/onyx/families";
 
-export type { FleetGroup, FleetModel };
+export type { FleetModel, ContentClassification, FleetCategory, FleetFamilyId, FleetFamilyMeta };
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -201,17 +207,37 @@ export const DEFAULT_MODEL_ID: string =
 // Public onyx-* ids mapped onto the existing catalog entries above. The
 // fleet is what the UI lists; capabilities + context windows are inherited
 // from the underlying route. The underlying provider names are NEVER shown.
+//
+// Ten-family architecture: every slot carries family / variant / version /
+// release-order / category / content-classification metadata from the
+// centralized registry (src/lib/onyx/fleet.ts + families.ts).
 
 export interface FleetCatalogModel {
   /** Public fleet id (onyx-*) — the ONLY place "onyx" appears. */
   id: string;
-  /** Clean display name (no "onyx"). */
+  /** Previous-generation ids that still resolve to this slot (aliases). */
+  legacyIds: readonly string[];
+  /** Clean display name (no "onyx") — "[Family] [Variant] [Version]". */
   name: string;
+  /** Family slug ("amora") — see FLEET_FAMILIES. */
+  family: FleetFamilyId;
+  /** Family wordmark ("AMORA"). */
+  familyName: string;
+  /** Optional variant suffix ("Pro", …) or null. */
+  variant: string | null;
+  /** Optional version STRING ("2", "2.6", …) or null — never compared
+   *  lexicographically; ordering uses releaseOrder. */
+  version: string | null;
+  /** Release order within the family(+variant) line — the sort key. */
+  releaseOrder: number;
+  /** Functional category ("general", "coding", …). */
+  category: FleetCategory;
+  /** Content classification — from family metadata, never from the name. */
+  contentClassification: ContentClassification;
   /** One-line brief. */
   brief: string;
   /** Longer description. */
   description: string;
-  group: FleetGroup;
   /** 18+ badge — only on hard-test-verified slots. */
   uncensored: boolean;
   /** Always "Onyx AI" — original providers are never shown. */
@@ -236,12 +262,20 @@ const FLEET_FALLBACK_CAPS: NativeModelCapabilities = {
 export const FLEET_CATALOG: readonly FleetCatalogModel[] = FLEET_MODELS.map(
   (f) => {
     const underlying = ALL_MODELS.find((m) => m.id === f.route) ?? null;
+    const family = fleetFamily(f.family);
     return {
       id: f.id,
+      legacyIds: f.legacyIds,
       name: f.name,
+      family: f.family,
+      familyName: family.name,
+      variant: f.variant,
+      version: f.version,
+      releaseOrder: f.releaseOrder,
+      category: f.category,
+      contentClassification: f.contentClassification,
       brief: f.brief,
       description: f.description,
-      group: f.group,
       uncensored: f.uncensored,
       providerName: FLEET_PROVIDER_NAME,
       capabilities: underlying?.capabilities ?? FLEET_FALLBACK_CAPS,
@@ -251,18 +285,25 @@ export const FLEET_CATALOG: readonly FleetCatalogModel[] = FLEET_MODELS.map(
   },
 );
 
-/** Fleet entries grouped for catalog pages (insertion order preserved). */
-export function fleetByGroup(
-  group: FleetGroup,
+/** Fleet entries of one family (registry order = release order). */
+export function fleetByFamily(
+  family: FleetFamilyId,
 ): readonly FleetCatalogModel[] {
-  return FLEET_CATALOG.filter((m) => m.group === group);
+  return FLEET_CATALOG.filter((m) => m.family === family);
 }
 
-/** Look up a fleet entry by its public id. */
+/**
+ * Look up a fleet entry by its public id — canonical ids AND legacy aliases
+ * ("onyx-lust-v1" → the Amora slot) both resolve, so old deep links and
+ * API calls keep working. The returned entry always carries the canonical
+ * (new) id.
+ */
 export function findFleetCatalogModel(id: string): FleetCatalogModel | null {
   if (!id) return null;
-  return FLEET_CATALOG.find((m) => m.id === id) ?? null;
+  const direct = FLEET_CATALOG.find((m) => m.id === id);
+  if (direct) return direct;
+  return FLEET_CATALOG.find((m) => m.legacyIds.includes(id)) ?? null;
 }
 
 /** The default fleet model for the playground. */
-export const DEFAULT_FLEET_MODEL_ID = "onyx-core-v1";
+export const DEFAULT_FLEET_MODEL_ID = "onyx-astra";

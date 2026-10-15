@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import {
   FLEET_CATALOG,
-  fleetByGroup,
+  fleetByFamily,
   findFleetCatalogModel,
   type FleetCatalogModel,
 } from "@/lib/native-catalog";
+import { FLEET_FAMILIES } from "@/lib/onyx/families";
 import { AuroraGlyph } from "@/components/aurora/shell";
 import { QuickstartTerminal } from "@/components/aurora/quickstart-terminal";
 
@@ -29,14 +30,16 @@ export const dynamic = "force-static";
  * Landing page — FreeAIXYZ (warm crimson/ember kit on #111319).
  *
  * The ONLY public model surface is the Onyx fleet (FLEET_CATALOG): 24 onyx-*
- * ids across three lines — Uncensored (18+), General, Creative — attributed
- * to "Onyx AI" everywhere. Provider-prefixed routes never appear.
+ * ids across TEN families — ASTRA, KAIRO, VEX, LOGOS, CODEX, OMNIX, MYTHOS,
+ * AMORA, RIVEN, ZENITH — attributed to "Onyx AI" everywhere.
+ * Provider-prefixed routes never appear. Mature-audience classification
+ * lives on model entries (AMORA cards), never in the navigation.
  *
  * Hero: copy (left) + the interactive SDK terminal island (right, centered —
  * the orb was retired). Below: the fleet telemetry bar, four featured fleet
- * cards (Lust v1 with its earned 18+ badge, Core v1, Forge v1, Persona v1),
- * the fleet-lines strip, the feature bento, the deep quickstart (onyx ids)
- * and the final CTA.
+ * cards (Astra, Codex, Mythos Persona and the AMORA flagship with its earned
+ * 18+ notice), the families strip, the feature bento, the deep quickstart
+ * (onyx ids) and the final CTA.
  *
  * Type: Space Grotesk display, Geist body, JetBrains Mono for ids/telemetry.
  * Strictly warm — crimson #ff2a55 / ember #ff850d / gold #ffba27 on
@@ -44,16 +47,17 @@ export const dynamic = "force-static";
  */
 
 const FLEET_COUNT = FLEET_CATALOG.length;
-const FLEET_LINES = 3;
+const FLEET_FAMILY_COUNT = FLEET_FAMILIES.length;
 const STREAMING_COUNT = FLEET_CATALOG.filter((m) => m.capabilities.streaming).length;
 const TOOLS_COUNT = FLEET_CATALOG.filter((m) => m.capabilities.tools).length;
 
-/** Four flagship fleet models — one 18+ headline slot + the three pillars. */
+/** Four featured fleet models — the family pillars (AMORA keeps its earned
+ *  18+ notice on the card itself, and is not the headline slot). */
 const FEATURED: FleetCatalogModel[] = [
-  findFleetCatalogModel("onyx-lust-v1"),
-  findFleetCatalogModel("onyx-core-v1"),
-  findFleetCatalogModel("onyx-forge-v1"),
-  findFleetCatalogModel("onyx-persona-v1"),
+  findFleetCatalogModel("onyx-astra"),
+  findFleetCatalogModel("onyx-codex"),
+  findFleetCatalogModel("onyx-mythos-persona"),
+  findFleetCatalogModel("onyx-amora"),
 ].filter((m): m is FleetCatalogModel => m !== null);
 
 const FEATURES = [
@@ -91,14 +95,14 @@ const FEATURES = [
   },
   {
     icon: Layers,
-    title: "Clean public ids",
-    desc: "Every model is a tidy onyx id — onyx-core-v1, onyx-lust-v1 — across three fleet lines: Uncensored, General, Creative.",
+    title: "Ten-family registry",
+    desc: "Every model is a tidy onyx id in a ten-family registry — onyx-astra, onyx-codex-2, onyx-amora-pro — with optional variants and flexible versions. Legacy ids keep working.",
   },
 ];
 
 const TELEMETRY = [
   { icon: Boxes, value: String(FLEET_COUNT), label: "Fleet models", tone: "crimson" },
-  { icon: Layers, value: String(FLEET_LINES), label: "Fleet lines", tone: "ember" },
+  { icon: Layers, value: String(FLEET_FAMILY_COUNT), label: "Families", tone: "ember" },
   { icon: Zap, value: String(STREAMING_COUNT), label: "True streaming", tone: "crimson" },
   { icon: Wrench, value: String(TOOLS_COUNT), label: "Tool-calling", tone: "ember" },
 ] as const;
@@ -200,8 +204,8 @@ export default function Home() {
                 className="max-w-xl text-[15px] md:text-base font-normal leading-relaxed text-muted-foreground fxz-fade-up"
                 style={{ animationDelay: "160ms" }}
               >
-                {FLEET_COUNT} Onyx fleet models across {FLEET_LINES} lines —
-                Uncensored, General and Creative — streamed through one
+                {FLEET_COUNT} Onyx fleet models across {FLEET_FAMILY_COUNT} families —
+                from Astra and Codex to Mythos and Amora — streamed through one
                 OpenAI-compatible API, with real tool calling, live web search,
                 and zero keys or accounts.
               </p>
@@ -247,15 +251,23 @@ export default function Home() {
                 <QuickstartTerminal />
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <span className="fxz-chip" title="Hard-test verified uncensored line">
-                  uncensored ×{fleetByGroup("uncensored").length} · 18+
-                </span>
-                <span className="fxz-chip">
-                  general ×{fleetByGroup("general").length}
-                </span>
-                <span className="fxz-chip">
-                  creative ×{fleetByGroup("creative").length}
-                </span>
+                {FLEET_FAMILIES.map((f) => {
+                  const count = fleetByFamily(f.id).length;
+                  return (
+                    <span
+                      key={f.id}
+                      className="fxz-chip font-mono"
+                      title={
+                        f.adult
+                          ? "Mature-audience family · adults only (18+)"
+                          : f.tagline
+                      }
+                    >
+                      {f.name}
+                      {count > 0 && ` ×${count}`}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -335,19 +347,19 @@ export default function Home() {
                     {m.uncensored ? (
                       <span
                         className="fxz-badge-nsfw shrink-0"
-                        title="Hard-test verified uncensored · adults only"
+                        title="Hard-test verified uncensored · adults only (18+)"
                       >
                         18+ uncensored
                       </span>
                     ) : (
                       <span className="font-mono text-[11px] text-muted-foreground truncate">
-                        {m.group}
+                        {m.familyName}
                       </span>
                     )}
                   </div>
                   <h3 className="text-[17px] font-bold text-white leading-snug">
                     <Link
-                      href={`/models/${m.group}/${encodeURIComponent(m.id)}`}
+                      href={`/models/${m.family}/${encodeURIComponent(m.id)}`}
                       className="hover:text-crimson transition-colors"
                     >
                       {m.name}
@@ -398,32 +410,28 @@ export default function Home() {
       </section>
 
       {/* ───────────────────────────────────────────────────────────────────
-          FLEET LINES STRIP — the three Onyx lines.
+          FAMILIES STRIP — the ten Onyx families (mature-audience AMORA is
+          identified by its family name; classification stays on entries).
           ─────────────────────────────────────────────────────────────────── */}
       <section className="relative border-y border-crimson/20 bg-hd-deep/60">
         <div className="mx-auto max-w-6xl px-6 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
           <p className="font-mono text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground shrink-0">
-            Onyx AI fleet lines
+            Onyx AI families
           </p>
-          <div className="flex flex-wrap justify-center gap-x-7 gap-y-3 items-center w-full">
-            <Link
-              href="/models/uncensored"
-              className="text-sm font-medium text-muted-foreground hover:text-white transition-colors"
-            >
-              Uncensored · 18+ ({fleetByGroup("uncensored").length})
-            </Link>
-            <Link
-              href="/models/general"
-              className="text-sm font-medium text-muted-foreground hover:text-white transition-colors"
-            >
-              General ({fleetByGroup("general").length})
-            </Link>
-            <Link
-              href="/models/creative"
-              className="text-sm font-medium text-muted-foreground hover:text-white transition-colors"
-            >
-              Creative ({fleetByGroup("creative").length})
-            </Link>
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 items-center w-full">
+            {FLEET_FAMILIES.map((f) => (
+              <Link
+                key={f.id}
+                href={`/models/${f.id}`}
+                title={f.tagline}
+                className="text-sm font-medium text-muted-foreground hover:text-white transition-colors"
+              >
+                {f.name}
+                {fleetByFamily(f.id).length > 0 && (
+                  <span className="text-hd-line"> ({fleetByFamily(f.id).length})</span>
+                )}
+              </Link>
+            ))}
           </div>
         </div>
       </section>
@@ -517,7 +525,7 @@ export default function Home() {
               <code>{`curl -N https://freeaixyz4all.vercel.app/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "onyx-core-v1",
+    "model": "onyx-astra",
     "messages": [{"role":"user","content":"Hello FreeAIXYZ"}],
     "stream": true,
     "tools": [{

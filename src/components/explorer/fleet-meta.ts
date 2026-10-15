@@ -2,30 +2,71 @@
  * fleet-meta — shared, server-safe metadata for the public Onyx fleet.
  *
  * A plain module (no "use client") so both RSC pages (/models and its
- * group/detail routes) and client islands (the /models catalog) import the
- * exact same group ordering, labels and serialized model shape.
+ * family/detail routes) and client islands (the /models catalog) import the
+ * exact same serialized model shape.
+ *
+ * Ten-family architecture: grouping is by FAMILY (ASTRA … ZENITH, defined in
+ * `@/lib/onyx/families`) and filtering is by CATEGORY. Family + category
+ * metadata are re-exported from the centralized registry modules so every
+ * surface uses one source of truth.
  *
  * Public identity rules (per product decision):
  *   - Only onyx-* fleet ids are ever shown; underlying provider-prefixed
  *     routes never appear on any public surface.
  *   - Provider attribution is always "Onyx AI".
- *   - The 18+ badge is only rendered for slots whose fleet entry is marked
- *     `uncensored` (live hard-test-verified — never faked).
+ *   - Mature-audience classification lives on model ENTRIES (the 18+ notice)
+ *     — never in the primary navigation.
  */
 
-export type FleetGroupSlug = "uncensored" | "general" | "creative";
+import type {
+  ContentClassification,
+  FleetCategory,
+  FleetFamilyId,
+} from "@/lib/onyx/families";
 
+export {
+  FLEET_FAMILIES,
+  FLEET_CATEGORIES,
+  fleetFamily,
+  fleetCategoryLabel,
+  isFleetFamilySlug,
+  isLegacyFleetGroupSlug,
+} from "@/lib/onyx/families";
+
+export type {
+  ContentClassification,
+  FleetCategory,
+  FleetFamilyId,
+  FleetFamilyMeta,
+} from "@/lib/onyx/families";
+
+/** The client-serializable fleet model (no `route` — internal routing only). */
 export interface CatalogFleetModel {
   /** Public fleet id (onyx-*). */
   id: string;
-  /** Clean display name — never contains "onyx". */
+  /** Previous-generation ids that still resolve to this slot (aliases). */
+  legacyIds: readonly string[];
+  /** Clean display name — "[Family] [Variant] [Version]", never "onyx". */
   name: string;
+  /** Family slug ("amora"). */
+  family: FleetFamilyId;
+  /** Family wordmark ("AMORA"). */
+  familyName: string;
+  /** Optional variant suffix ("Pro", "Raw", …) or null. */
+  variant: string | null;
+  /** Optional version string ("2", "2.6", …) or null. */
+  version: string | null;
+  /** Release order within the family(+variant) line. */
+  releaseOrder: number;
+  /** Functional category ("general", "coding", …). */
+  category: FleetCategory;
+  /** Content classification — from family metadata, never from the name. */
+  contentClassification: ContentClassification;
   /** One-line brief (card subtitle / picker description). */
   brief: string;
   /** Longer description (detail page). */
   description: string;
-  group: FleetGroupSlug;
-  /** 18+ badge flag — hard-test-verified slots only. */
+  /** 18+ notice — hard-test-verified slots only. */
   uncensored: boolean;
   /** Always "Onyx AI". */
   providerName: string;
@@ -39,34 +80,6 @@ export interface CatalogFleetModel {
     systemPrompt: boolean;
   };
   contextWindow: number;
-}
-
-export interface FleetGroupMeta {
-  slug: FleetGroupSlug;
-  /** Long label (page headings, metadata). */
-  label: string;
-  /** Short label (filter pills, breadcrumbs). */
-  shortLabel: string;
-}
-
-/** Fixed display order: the 18+ line first, then general, then creative. */
-export const FLEET_GROUP_META: readonly FleetGroupMeta[] = [
-  { slug: "uncensored", label: "Uncensored · 18+", shortLabel: "Uncensored" },
-  { slug: "general", label: "General", shortLabel: "General" },
-  { slug: "creative", label: "Creative", shortLabel: "Creative" },
-];
-
-const GROUP_SLUGS = new Set<string>(FLEET_GROUP_META.map((g) => g.slug));
-
-/** True only for the three fleet-group slugs — anything else (old provider
- *  ids like "tb" or "nsfwgirlfriend") is invalid and redirects to /models. */
-export function isFleetGroupSlug(raw: string): raw is FleetGroupSlug {
-  return GROUP_SLUGS.has(raw);
-}
-
-/** Group label lookup (falls back to the raw slug). */
-export function fleetGroupLabel(slug: FleetGroupSlug): string {
-  return FLEET_GROUP_META.find((g) => g.slug === slug)?.label ?? slug;
 }
 
 /** Compact context-window label ("128k ctx" / "unknown"). */

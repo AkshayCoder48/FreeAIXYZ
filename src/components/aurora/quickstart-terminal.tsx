@@ -4,7 +4,7 @@
  * QuickstartTerminal — the FreeAIXYZ hero terminal: traffic dots,
  * cURL / Python / Node.js tabs, crimson + ember syntax tints, and a copy
  * button. A pure client island on the otherwise-static homepage. Uses the
- * default Onyx fleet id (onyx-core-v1) in every example.
+ * default Onyx fleet id (onyx-astra) in every example.
  */
 
 import * as React from "react";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 const ENDPOINT = "https://freeaixyz4all.vercel.app/api/v1/chat/completions";
 const BASE_URL = "https://freeaixyz4all.vercel.app/api/v1";
-const DEMO_MODEL = "onyx-core-v1";
+const DEMO_MODEL = "onyx-astra";
 
 type Lang = "curl" | "python" | "node";
 

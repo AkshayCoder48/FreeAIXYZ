@@ -16,7 +16,10 @@ import {
 
 import { AuroraShell } from "@/components/aurora/shell";
 import { CopyIdButton } from "@/components/explorer/copy-id-button";
-import { fleetGroupLabel } from "@/components/explorer/fleet-meta";
+import {
+  fleetFamily,
+  fleetCategoryLabel,
+} from "@/components/explorer/fleet-meta";
 import { findFleetCatalogModel } from "@/lib/native-catalog";
 
 export const dynamic = "force-static";
@@ -54,10 +57,10 @@ function decodeParam(raw: string): string {
 /**
  * /models/[provider]/[model] — one Onyx fleet model's detail page.
  *
- * The model slug accepts ONLY public onyx-* fleet ids; anything else
- * (legacy provider-prefixed ids like "gpt-5") redirects to /models. The
- * provider segment must be the model's fleet-group slug — mismatches are
- * canonicalised to /models/<group>/<id>.
+ * The model slug accepts public onyx-* fleet ids AND their legacy aliases
+ * (an old "onyx-lust-v1" URL canonicalises to /models/amora/onyx-amora).
+ * Anything else redirects to /models. The provider segment must be the
+ * model's FAMILY slug — mismatches are canonicalised.
  */
 export default async function FleetModelDetailPage({ params }: PageProps) {
   const { provider, model } = await params;
@@ -69,13 +72,14 @@ export default async function FleetModelDetailPage({ params }: PageProps) {
     // Non-onyx slugs (old provider-prefixed ids) are no longer public.
     redirect("/models");
   }
-  if (providerParam !== entry.group) {
-    // Canonicalise the URL to the model's fleet-group segment.
-    redirect(`/models/${entry.group}/${encodeURIComponent(entry.id)}`);
+  if (providerParam !== entry.family) {
+    // Canonicalise the URL to the model's family segment (also upgrades
+    // legacy-id URLs to the canonical new id).
+    redirect(`/models/${entry.family}/${encodeURIComponent(entry.id)}`);
   }
 
   const caps = entry.capabilities;
-  const groupLabel = fleetGroupLabel(entry.group);
+  const family = fleetFamily(entry.family);
 
   const capabilityRows: Array<{
     label: string;
@@ -112,25 +116,25 @@ export default async function FleetModelDetailPage({ params }: PageProps) {
           </Link>
           <span className="text-hd-line">/</span>
           <Link
-            href={`/models/${entry.group}`}
+            href={`/models/${entry.family}`}
             className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-white transition-colors"
           >
-            {groupLabel}
+            {family.name}
           </Link>
         </div>
 
         {/* Header */}
         <header className="flex flex-col gap-3">
           <span className="fxz-section-eyebrow">
-            {entry.providerName} · {groupLabel}
+            {entry.providerName} · {family.name} family
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="fxz-badge fxz-badge-warm">fleet</span>
+            <span className="fxz-badge fxz-badge-warm">{family.name}</span>
             <span className="fxz-badge fxz-badge-warm">free</span>
             {entry.uncensored && (
               <span
                 className="fxz-badge-nsfw gap-1.5"
-                title="Hard-test verified uncensored · adults only"
+                title="Hard-test verified uncensored · adults only (18+)"
               >
                 18+ uncensored
               </span>
@@ -223,8 +227,44 @@ export default async function FleetModelDetailPage({ params }: PageProps) {
                   <span className="font-medium text-white">{entry.providerName}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Fleet line</span>
-                  <span className="font-medium text-white">{groupLabel}</span>
+                  <span className="text-muted-foreground">Family</span>
+                  <span className="font-medium text-white">
+                    {family.index} · {family.name}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Category</span>
+                  <span className="font-medium text-white">
+                    {fleetCategoryLabel(entry.category)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Variant</span>
+                  <span className="font-medium text-white">
+                    {entry.variant ?? "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Version</span>
+                  <span className="font-mono text-[#e2e2ea]">
+                    {entry.version ?? "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Release order</span>
+                  <span className="font-mono text-[#e2e2ea]">
+                    #{entry.releaseOrder}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Classification</span>
+                  <span className="font-medium text-white">
+                    {entry.contentClassification === "adult" ? (
+                      <span className="text-crimson">adult · 18+</span>
+                    ) : (
+                      "general"
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Model id</span>
@@ -284,6 +324,18 @@ export default async function FleetModelDetailPage({ params }: PageProps) {
                     Use this id with <span className="fxz-code">POST /api/v1/chat/completions</span>
                   </span>
                 </div>
+                {entry.legacyIds.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed pt-1 border-t border-white/[0.06]">
+                    Legacy id{" "}
+                    {entry.legacyIds.map((legacy, i) => (
+                      <span key={legacy}>
+                        {i > 0 && ", "}
+                        <span className="fxz-code">{legacy}</span>
+                      </span>
+                    ))}{" "}
+                    still resolves to this model.
+                  </p>
+                )}
               </div>
             </div>
           </div>

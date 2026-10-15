@@ -620,8 +620,9 @@ async function handleCanonicalRequest(
   clientModelId?: string,
 ): Promise<Response> {
   const useTools = toolParams.tools.length > 0;
-  // Echo id: what the client asked for (onyx-lust-v1), not the underlying
-  // route (tb/L3-70B-…). OpenAI semantics — responses name the requested id.
+  // Echo id: what the client asked for (onyx-amora or its legacy alias
+  // onyx-lust-v1), not the underlying route (tb/L3-70B-…). OpenAI semantics —
+  // responses name the requested id.
   const echoId = clientModelId ?? model.id;
   // Circuit-breaker check (PRD §121, §122, R-8).
   //
@@ -1127,7 +1128,7 @@ async function handleLegacyRequest(
     return gatewayErrorResponse(
       new GatewayError({
         type: "MODEL_NOT_FOUND",
-        message: `Model "${body.model}" was not found in the fleet. Check GET /api/v1/models for the list of available ids (e.g. "onyx-core-v1", "onyx-lust-v1", "onyx-forge-v2").`,
+        message: `Model "${body.model}" was not found in the fleet. Check GET /api/v1/models for the list of available ids (e.g. "onyx-astra", "onyx-amora", "onyx-codex-2").`,
         status: 404,
       }),
     );

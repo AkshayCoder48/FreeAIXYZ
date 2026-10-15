@@ -9,26 +9,36 @@
  * ids, and "Onyx AI" attribution everywhere. Provider-prefixed routes are
  * never listed here.
  *
- * Layout:
- *   - Eyebrow + headline (one crimson gradient word) + search
- *   - Fleet-line filter pills (All / Uncensored · 18+ / General / Creative)
- *   - One section per fleet line with a responsive grid of obsidian cards;
- *     the Uncensored section carries a group-level 18+ warning chip.
+ * Ten-family layout (PRD §8/§10):
+ *   - Eyebrow + headline + search
+ *   - Category filter pills (General / Performance / Reasoning / Coding /
+ *     Creative / Multimodal / Experimental / Flagship — only categories
+ *     with live models render a pill)
+ *   - One section per family (01 ASTRA → 10 ZENITH, fixed order) with a
+ *     responsive grid of obsidian cards. Families with no public models
+ *     yet (RIVEN, ZENITH) render an honest empty state — never placeholder
+ *     models.
+ *   - The AMORA family is identifiable through its family metadata and
+ *     carries an adults-only notice WITHIN the section; the 18+ notice also
+ *     renders on each AMORA card. Nothing adult-related lives in the
+ *     navigation.
  *
- * Card (FleetCard): display name → detail page, brief, capability chips,
- * onyx id pill + copy, "Try in chat" → /chat?model=<id>, and a prominent
- * crimson-glow 18+ UNCENSORED badge on hard-test-verified slots.
+ * Search matches names, ids, briefs, descriptions, family names and the
+ * legacy aliases (so "onyx-lust-v1" still finds Amora).
  */
 
 import * as React from "react";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, Boxes } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { FleetCard } from "@/components/explorer/fleet-card";
 import {
-  FLEET_GROUP_META,
+  FLEET_FAMILIES,
+  FLEET_CATEGORIES,
+  fleetCategoryLabel,
   type CatalogFleetModel,
-  type FleetGroupSlug,
+  type FleetCategory,
+  type FleetFamilyMeta,
 } from "@/components/explorer/fleet-meta";
 
 export type { CatalogFleetModel };
@@ -40,37 +50,58 @@ export interface ModelsCatalogData {
 export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
   const { models } = data;
   const [query, setQuery] = React.useState("");
-  const [groupFilter, setGroupFilter] = React.useState<"all" | FleetGroupSlug>("all");
+  const [categoryFilter, setCategoryFilter] = React.useState<"all" | FleetCategory>("all");
 
-  // Group by fleet line, preserving the fixed display order.
-  const groups = React.useMemo(
+  // Models per family, preserving the fixed 01→10 family order.
+  const families = React.useMemo(
     () =>
-      FLEET_GROUP_META.map((g) => ({
-        ...g,
-        items: models.filter((m) => m.group === g.slug),
+      FLEET_FAMILIES.map((f: FleetFamilyMeta) => ({
+        ...f,
+        items: models.filter((m) => m.family === f.id),
       })),
     [models],
   );
 
-  // Apply search + group filter.
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return groups
-      .filter((g) => groupFilter === "all" || g.slug === groupFilter)
-      .map((g) => ({
-        ...g,
-        items: q
-          ? g.items.filter(
-              (m) =>
-                m.name.toLowerCase().includes(q) ||
-                m.id.toLowerCase().includes(q) ||
-                m.brief.toLowerCase().includes(q) ||
-                m.description.toLowerCase().includes(q),
-            )
-          : g.items,
-      }))
-      .filter((g) => g.items.length > 0);
-  }, [groups, query, groupFilter]);
+  // Only categories with live models get a filter pill.
+  const liveCategories = React.useMemo(() => {
+    const counts = new Map<FleetCategory, number>();
+    for (const m of models) {
+      counts.set(m.category, (counts.get(m.category) ?? 0) + 1);
+    }
+    return FLEET_CATEGORIES.filter((c) => (counts.get(c.id) ?? 0) > 0).map(
+      (c) => ({ ...c, count: counts.get(c.id) ?? 0 }),
+    );
+  }, [models]);
+
+  const q = query.trim().toLowerCase();
+
+  const matchesQuery = React.useCallback(
+    (m: CatalogFleetModel) => {
+      if (!q) return true;
+      return (
+        m.name.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        m.familyName.toLowerCase().includes(q) ||
+        m.brief.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        m.legacyIds.some((legacy) => legacy.toLowerCase().includes(q))
+      );
+    },
+    [q],
+  );
+
+  // Apply search + category filter.
+  const filtered = React.useMemo(
+    () =>
+      families
+        .filter((f) => categoryFilter === "all" || f.category === categoryFilter)
+        .map((f) => ({ ...f, items: f.items.filter(matchesQuery) })),
+    [families, categoryFilter, matchesQuery],
+  );
+
+  // Any visible model at all (drives the no-results state).
+  const anyVisible = filtered.some((f) => f.items.length > 0);
+  const populatedFamilies = families.filter((f) => f.items.length > 0).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -83,9 +114,9 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
               Onyx fleet <span className="fxz-gradient-word">models</span>
             </h1>
             <p className="text-[15px] text-muted-foreground max-w-2xl leading-relaxed">
-              {models.length} free models across {FLEET_GROUP_META.length} fleet
-              lines — Uncensored, General and Creative — served by Onyx AI
-              through one OpenAI-compatible endpoint. No API key required.
+              {models.length} free models across {FLEET_FAMILIES.length} families
+              — {populatedFamilies} shipping today — served by Onyx AI through
+              one OpenAI-compatible endpoint. No API key required.
             </p>
           </div>
           <div className="relative w-full sm:w-72">
@@ -100,88 +131,102 @@ export function ModelsCatalog({ data }: { data: ModelsCatalogData }) {
           </div>
         </div>
 
-        {/* Fleet-line filter pills (warm active) */}
+        {/* Category filter pills (warm active) */}
         <div
           className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 custom-scroll"
           role="tablist"
-          aria-label="Filter by fleet line"
+          aria-label="Filter by category"
         >
           <button
             type="button"
             role="tab"
-            aria-selected={groupFilter === "all"}
-            onClick={() => setGroupFilter("all")}
+            aria-selected={categoryFilter === "all"}
+            onClick={() => setCategoryFilter("all")}
             className={cn(
               "fxz-chip",
-              groupFilter === "all" && "fxz-chip-active",
+              categoryFilter === "all" && "fxz-chip-active",
             )}
           >
             All ({models.length})
           </button>
-          {groups.map((g) => (
+          {liveCategories.map((c) => (
             <button
-              key={g.slug}
+              key={c.id}
               type="button"
               role="tab"
-              aria-selected={groupFilter === g.slug}
-              onClick={() => setGroupFilter(g.slug)}
+              aria-selected={categoryFilter === c.id}
+              onClick={() => setCategoryFilter(c.id)}
               className={cn(
                 "fxz-chip",
-                groupFilter === g.slug && "fxz-chip-active",
+                categoryFilter === c.id && "fxz-chip-active",
               )}
             >
-              {g.label} ({g.items.length})
+              {c.label} ({c.count})
             </button>
           ))}
         </div>
       </div>
 
-      {/* Sections — one per fleet line */}
-      {filtered.length === 0 ? (
+      {/* Sections — one per family (01 ASTRA → 10 ZENITH) */}
+      {!anyVisible && q ? (
         <div className="fxz-panel rounded-xl p-8 text-center">
           <p className="text-sm text-muted-foreground">
             No fleet models match “{query}”.
           </p>
         </div>
       ) : (
-        filtered.map((g) => (
+        filtered.map((f) => (
           <section
-            key={g.slug}
+            key={f.id}
             className="flex flex-col gap-3"
-            aria-labelledby={`fleet-group-${g.slug}`}
+            aria-labelledby={`fleet-family-${f.id}`}
           >
             <div className="flex flex-wrap items-center gap-3">
               <h2
-                id={`fleet-group-${g.slug}`}
+                id={`fleet-family-${f.id}`}
                 className="text-lg font-bold text-white"
               >
-                {g.label}
+                <span className="font-mono text-xs text-muted-foreground mr-2">
+                  {f.index}
+                </span>
+                {f.name}
               </h2>
+              <span className="fxz-badge font-mono">{fleetCategoryLabel(f.category)}</span>
               <span className="text-xs text-muted-foreground font-mono">
-                {g.items.length} model{g.items.length === 1 ? "" : "s"}
+                {f.items.length > 0
+                  ? `${f.items.length} model${f.items.length === 1 ? "" : "s"}`
+                  : "no public models yet"}
               </span>
-              {g.slug === "uncensored" && (
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground max-w-3xl">
+              {f.tagline}
+              {f.adult && (
                 <span
-                  className="fxz-badge-nsfw gap-1.5"
-                  title="Every slot in this line passed a live uncensored hard-test battery"
+                  className="fxz-badge-nsfw gap-1.5 ml-2"
+                  title="Hard-test verified uncensored · adults only"
                 >
                   <AlertTriangle className="h-3 w-3" aria-hidden />
                   18+ · adults only
                 </span>
               )}
-            </div>
-            {g.slug === "uncensored" && (
-              <p className="text-xs leading-relaxed text-muted-foreground max-w-3xl">
-                Adults only. These slots passed a live uncensored hard-test
-                battery (zero refusals) and are verified 18+ — explicit adult
-                content, no filtering, no lectures.
-              </p>
+            </p>
+            {f.items.length === 0 ? (
+              /* Honest empty family — defined in the registry, nothing fake. */
+              <div className="fxz-panel rounded-xl p-5 flex items-center gap-3 text-muted-foreground">
+                <Boxes className="h-4 w-4 text-hd-line shrink-0" aria-hidden />
+                <p className="text-xs leading-relaxed">
+                  The {f.name} family is defined in the registry — no public
+                  models have been released in it yet. Placeholder models are
+                  never listed.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {f.items.map((m, mi) => (
+                  <FleetCard key={m.id} m={m} emberRim={mi % 2 === 1} />
+                ))}
+              </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {g.items.map((m, mi) => (
-                <FleetCard key={m.id} m={m} emberRim={mi % 2 === 1} />
-              ))}
-            </div>
           </section>
         ))
       )}

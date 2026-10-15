@@ -1,13 +1,13 @@
 {
   "$schema": "https://freeaixyz4all.vercel.app/api/v1/models",
-  "generatedAt": "2026-10-15T12:19:23.827Z",
+  "generatedAt": "2026-10-15T12:52:02.642Z",
   "source": "http://localhost:3000/api/v1/models",
   "count": 24,
   "models": [
     {
-      "id": "onyx-architect-v1",
+      "id": "onyx-amora",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -16,9 +16,107 @@
       ]
     },
     {
-      "id": "onyx-core-v1",
+      "id": "onyx-amora-2",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-afterdark",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-crimson",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-noir",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-pro",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-raw",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-raw-2",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-velvet",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-velvet-2",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-astra",
+      "object": "model",
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -28,9 +126,9 @@
       ]
     },
     {
-      "id": "onyx-core-v2",
+      "id": "onyx-astra-2",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -39,9 +137,9 @@
       ]
     },
     {
-      "id": "onyx-crimson-desire-v1",
+      "id": "onyx-astra-pro",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -50,19 +148,9 @@
       ]
     },
     {
-      "id": "onyx-ebony-v1",
+      "id": "onyx-codex",
       "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-echo-v1",
-      "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -71,9 +159,9 @@
       ]
     },
     {
-      "id": "onyx-forbidden-v1",
+      "id": "onyx-codex-2",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -82,9 +170,9 @@
       ]
     },
     {
-      "id": "onyx-forge-v1",
+      "id": "onyx-kairo",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -93,9 +181,9 @@
       ]
     },
     {
-      "id": "onyx-forge-v2",
+      "id": "onyx-logos",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -104,9 +192,9 @@
       ]
     },
     {
-      "id": "onyx-lust-v1",
+      "id": "onyx-logos-research",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -115,9 +203,29 @@
       ]
     },
     {
-      "id": "onyx-lust-v2",
+      "id": "onyx-mythos-muse",
       "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-mythos-persona",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-mythos-story",
+      "object": "model",
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -126,143 +234,35 @@
       ]
     },
     {
-      "id": "onyx-muse-v1",
+      "id": "onyx-omnix-vision",
       "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-nova-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-persona-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-pulse-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-raw-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-raw-v2",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-sentinel-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-spark-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-storyweaver-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-uncensored-pro-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-velvet-v1",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-velvet-v2",
-      "object": "model",
-      "created": 1792066763,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-vision-v1",
-      "object": "model",
-      "created": 1792066763,
+      "created": 1792068722,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
         "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-vex",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-vex-flash",
+      "object": "model",
+      "created": 1792068722,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
         "tools",
         "streaming"
       ]

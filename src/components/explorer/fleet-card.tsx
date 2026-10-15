@@ -3,14 +3,19 @@
 /**
  * FleetCard — one public Onyx fleet model card (FreeAIXYZ design).
  *
- * Used by the /models catalog (client) and the /models/[group] page (client
+ * Used by the /models catalog (client) and the /models/<family> page (client
  * islands rendered from an RSC). Obsidian panel, alternating crimson/ember
- * rims, mono capability chips, the onyx id as a crimson code pill, and — for
- * hard-test-verified 18+ slots — a prominent crimson-glow UNCENSORED/18+
- * badge (.fxz-badge-nsfw) that reads at a glance.
+ * rims, mono capability chips, the onyx id as a crimson code pill.
+ *
+ * Ten-family rules (PRD §10):
+ *   - The display name is prominent; family/variant info is in the name.
+ *   - Mature-audience classification is displayed WITHIN the entry (the
+ *     crimson 18+ notice on AMORA slots) — never in the navigation.
+ *   - The 18+ notice only renders for slots whose fleet entry is marked
+ *     `uncensored` (live hard-test-verified — never faked).
  *
  * Card CTA is "Try in chat" → /chat?model=<onyx id>; the model name links to
- * the fleet detail page /models/<group>/<onyx id>.
+ * the family detail page /models/<family>/<onyx id>.
  */
 
 import * as React from "react";
@@ -36,17 +41,20 @@ export const FleetCard = React.memo(function FleetCard({
           : "border-crimson/25 hover:border-crimson/70 hover:shadow-[0_16px_36px_rgba(255,42,85,0.25),inset_0_1px_1px_rgba(255,255,255,0.09)]")
       }
     >
-      {/* Row 1: display name + (18+ badge | streaming chip) */}
+      {/* Row 1: display name + (18+ notice | streaming chip) */}
       <div className="flex items-start justify-between gap-2 min-w-0">
         <Link
-          href={`/models/${m.group}/${encodeURIComponent(m.id)}`}
+          href={`/models/${m.family}/${encodeURIComponent(m.id)}`}
           className="text-sm font-semibold text-white hover:text-crimson transition-colors leading-snug min-w-0"
           style={{ overflowWrap: "anywhere" }}
         >
           {m.name}
         </Link>
         {m.uncensored ? (
-          <span className="fxz-badge-nsfw shrink-0" title="Hard-test verified uncensored · adults only">
+          <span
+            className="fxz-badge-nsfw shrink-0"
+            title="Hard-test verified uncensored · adults only (18+)"
+          >
             18+ uncensored
           </span>
         ) : (
