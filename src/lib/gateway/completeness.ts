@@ -94,6 +94,37 @@ export function hasUnbalancedBrackets(text: string): boolean {
 }
 
 /**
+ * Does the text end at a natural sentence/story boundary?
+ *
+ * Used to distinguish "the model finished its reply" from "the stream was
+ * cut mid-thought". A text ending in terminal punctuation (. ! ? …), a
+ * closing quote/bracket/asterisk (roleplay *actions*, "dialogue"), an
+ * em-dash or a markdown fence close is a NATURAL end — long replies that
+ * end this way must NOT be auto-continued (the "unlimited roleplay" bug:
+ * every long story segment looked like a token-cap hit and the gateway
+ * kept issuing continuation rounds until the round cap).
+ *
+ * A cut stream, by contrast, almost always ends mid-word or mid-sentence
+ * with NO trailing punctuation ("With each touch, I'm more and mor").
+ */
+export function endsAtSentenceBoundary(text: string): boolean {
+  // Strip trailing whitespace + zero-width chars.
+  const t = text.replace(/[\s\u200B-\u200D\uFEFF]+$/, "");
+  if (t.length === 0) return false;
+  const last = t[t.length - 1];
+  if (".!?…".includes(last)) return true;
+  // Closing quotes/brackets/asterisks/backticks AFTER terminal punctuation
+  // ('."', '."', '*)', '"}'] — look one char back for the real terminator.
+  if (`"'”’»)\]}`.includes(last)) {
+    const prev = t[t.length - 2];
+    if (prev && ".!?…".includes(prev)) return true;
+  }
+  // Roleplay action close: '*she smiles.*' often ends with a bare '*'.
+  if (last === "*") return true;
+  return false;
+}
+
+/**
  * Is this text structurally incomplete (i.e. the model was almost certainly
  * cut off before finishing)? Used by both the nsfwgf provider-level
  * continuation and the gateway-level generic auto-continue.
@@ -102,8 +133,29 @@ export function looksIncomplete(text: string): boolean {
   const t = text.trimEnd();
   if (t.length < 40) return false; // too short to judge — don't waste a round
   if (hasUnclosedFence(t)) return true;
-  if (hasUnbalancedBrackets(t)) return true;
+  if (hasUnbalancedBrackets(t)) {
+    // PROSE FALSE-POSITIVE GUARD (the "unlimited roleplay" bug): story and
+    // roleplay prose routinely carries a stray unmatched "(" or "[" (an
+    // aside, an emoticon) while ending at a perfectly natural sentence
+    // boundary. Treating that as "cut off" made the gateway continue long,
+    // FINISHED stories round after round. Only treat bracket imbalance as
+    // incomplete when the text ALSO looks cut (no sentence boundary at the
+    // end) or the imbalance includes a brace "{" — a near-certain code/JSON
+    // signal that prose essentially never produces.
+    if (endsAtSentenceBoundary(t) && !hasUnbalancedBraces(t)) return false;
+    return true;
+  }
   return false;
+}
+
+/** Net surplus of "{" openers — the strongest prose-safe code signal. */
+function hasUnbalancedBraces(text: string): boolean {
+  let open = 0;
+  for (const ch of text) {
+    if (ch === "{") open++;
+    else if (ch === "}") open--;
+  }
+  return open > 0;
 }
 
 /**

@@ -272,6 +272,13 @@ function toProviderRequest(req: ChatRequest) {
   };
 }
 
+/** Providers whose adapters run their OWN continuation loop internally.
+ * The generic gateway auto-continue must NOT wrap these — see
+ * ProviderAdapter.selfContinuing (double continuation = "unlimited"). */
+const SELF_CONTINUING_PROVIDERS: ReadonlySet<string> = new Set([
+  "nsfwgf", // provider-level continuation for the ~300-token upstream cap
+]);
+
 /** Build a ProviderAdapter for a single legacy provider. */
 function buildLegacyAdapter(providerId: string): ProviderAdapter {
   const info = PROVIDER_INFO[providerId as keyof typeof PROVIDER_INFO];
@@ -287,6 +294,7 @@ function buildLegacyAdapter(providerId: string): ProviderAdapter {
     name: displayName,
     baseUrl,
     discoveryMode: "manual",
+    selfContinuing: SELF_CONTINUING_PROVIDERS.has(providerId),
     discoverModels: async () => {
       const models = MODELS.filter((m) => m.provider === providerId);
       return models.map(toDiscoveredModel);

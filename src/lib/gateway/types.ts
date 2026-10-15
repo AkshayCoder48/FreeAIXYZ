@@ -159,6 +159,15 @@ export interface ProviderAdapter {
    */
   stream(req: ChatRequest): AsyncGenerator<string, void, unknown>;
 
+  /**
+   * TRUE when the adapter runs its OWN continuation loop internally (e.g.
+   * nsfwgf's provider-level auto-continue for its ~300-token upstream cap).
+   * The gateway-level generic auto-continue (auto-continue.ts) SKIPS such
+   * adapters — wrapping them caused double continuation (up to 24 provider
+   * rounds + 8 more generic rounds = the reported "unlimited generation").
+   */
+  selfContinuing?: boolean;
+
   generateImage?(req: ImageRequest): Promise<{ url?: string; b64?: string }>;
 }
 

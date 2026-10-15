@@ -56,26 +56,46 @@ function buildPayload(
     content: m.content,
   }));
 
+  // PERSONA FIX (the "Hello! How can I help you today?" bug): this backend
+  // (same white-label companion engine as nsfwgirlfriend.com — verified
+  // protocol) honors OUR sysprompt ONLY with `builtin:false` + a custom
+  // `char` object. The previous `builtin:true` forced the server persona
+  // from char_id and BLANKED the sysprompt — fleet personas (Amora etc.)
+  // were silently dropped and the upstream's generic companion greeted
+  // instead of staying in character.
+  const effectiveSysprompt =
+    sysprompt.trim() ||
+    "You are a helpful general-purpose AI assistant. Answer directly, accurately and concisely.";
+
   return {
-    builtin: true,
-    char: null,
-    // char_id and charname MUST match — the backend rejects mismatches with
-    // an opaque "OpenAI unavailable" 500. We use a neutral character id
-    // so the model behaves as a general assistant rather than a fixed persona.
-    char_id: "Linda",
+    builtin: false,
+    char: {
+      id: "custom",
+      name: "Ada",
+      sysprompt: effectiveSysprompt,
+      description: "a helpful assistant",
+      gender: "Female",
+      shortName: "Ada",
+      tone: "",
+      extra: null,
+      difficulty: 0,
+    },
+    // char_id and charname MUST match the char object — the backend rejects
+    // mismatches with an opaque "OpenAI unavailable" 500.
+    char_id: "custom",
     session_id: randStr(22),
     lang: "en",
-    sysprompt,
-    description: "",
+    sysprompt: effectiveSysprompt,
+    description: "a helpful assistant",
     input_messages: inputMessages,
     stream: true,
     model_type: modelType,
     isSummary: false,
-    charname: "Linda",
-    shortname: "",
+    charname: "Ada",
+    shortname: "Ada",
     username: "Guest",
     session_date: dateStr,
-    gender: "Unknown",
+    gender: "Female",
     userGender: "Unknown",
   };
 }

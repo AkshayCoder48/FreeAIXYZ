@@ -42,6 +42,7 @@ import {
 } from "@/lib/openai-types";
 import {
   buildToolSystemPrompt,
+  flattenContent,
   messageToText,
   parseToolCalls,
   hasTools,
@@ -452,6 +453,25 @@ function normalizeMessagesForGateway(
     }
   }
   for (const m of body.messages) {
+    // ─── STALE TOOL-EXCHANGE SANITIZATION ────────────────────────────────
+    // When the CURRENT request carries no tools, tool-result messages and
+    // assistant tool-call fences in the history are machinery the model can
+    // do nothing with — worse, they were serialized as "[tool result for
+    // tool (call_…)]" USER text, and roleplay models wove them into their
+    // stories (calculator results appearing mid-scene). Drop the tool
+    // results entirely and keep only the assistant's visible text.
+    // When tools ARE present (agent loops re-sending history), everything
+    // flows through unchanged.
+    if (!useTools) {
+      if (m.role === "tool" || m.role === "function") continue;
+      if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+        const visible = flattenContent(m.content);
+        if (visible && visible.trim()) {
+          out.push({ role: "assistant", content: visible });
+        }
+        continue;
+      }
+    }
     const role: "system" | "user" | "assistant" =
       m.role === "assistant"
         ? "assistant"

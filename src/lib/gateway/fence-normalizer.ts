@@ -45,7 +45,12 @@
  */
 
 import { generateToolCallId } from "@/lib/openai-types";
-import { freshBalance, feedBalance, repairTruncatedJson } from "@/lib/json-repair";
+import {
+  freshBalance,
+  feedBalance,
+  lenientJsonParse,
+  repairTruncatedJson,
+} from "@/lib/json-repair";
 
 /** One normalized tool-call fragment (complete call — safe for accumulators). */
 export interface FenceToolCallFragment {
@@ -95,9 +100,15 @@ const FENCE_CLOSE = "```";
  *
  *   [{"name":"ask_user","arguments":{"questions":[...]}}]
  *
- * The trigger fires on `[{\s*{\s*"<key>"\s*:` where <key> is any key that
- * marks an object as tool-call-SHAPED. Firing early (before we can know
- * whether an arguments key follows) is safe: the accumulated container is
+ * …and — the fleet-wide leak fixed here — with ESCAPED or CURLY quotes:
+ *
+ *   [{\"name\":\"ask_user\",\"arguments\":{…}}]      (every quote escaped)
+ *   [{\"name\":\"ask_user\",…\"Hard content?”,,”More”?,“Tail\"…}]   (mixed curly)
+ *
+ * The trigger fires on `[\s*{\s*<q>key<q>\s*:` where <q> is a quote-ish
+ * delimiter: straight `"`, backslash-escaped `\"` (any number of leading
+ * backslashes), or curly `“ ”`. Firing early (before we can know whether
+ * an arguments key follows) is safe: the accumulated container is
  * validated at completion and re-emitted as text when it is ordinary JSON.
  */
 const BARE_KEYS = [
@@ -111,13 +122,19 @@ const BARE_KEYS = [
   "tool",
 ] as const;
 const BARE_KEY_ALT = BARE_KEYS.join("|");
+/** A quote-ish delimiter: zero-or-more backslashes + straight/curly quote. */
+const BARE_Q = `\\\\*["“”]`;
 const BARE_OPEN_RE = new RegExp(
-  `(\\[\\s*\\{\\s*"(?:${BARE_KEY_ALT})"\\s*:|\\{\\s*"(?:${BARE_KEY_ALT})"\\s*:)`,
+  `(\\[\\s*\\{\\s*${BARE_Q}\\s*(?:${BARE_KEY_ALT})\\s*${BARE_Q}\\s*:|\\{\\s*${BARE_Q}\\s*(?:${BARE_KEY_ALT})\\s*${BARE_Q}\\s*:)`,
 );
 /** Canonical (whitespace-stripped) trigger literals for hold-back math. */
 const BARE_TRIGGERS: string[] = [];
 for (const k of BARE_KEYS) {
-  BARE_TRIGGERS.push(`[{"${k}":`, `{"${k}":`);
+  for (const q1 of ['"', '\\"', "“", "”", '\\\\"']) {
+    for (const q2 of ['"', '\\"', "”"]) {
+      BARE_TRIGGERS.push(`[{${q1}${k}${q2}:`, `{${q1}${k}${q2}:`);
+    }
+  }
 }
 /** Keys that mark an object as having a tool NAME. */
 const BARE_NAME_KEYS = ["name", "function_name", "tool"] as const;
@@ -256,10 +273,19 @@ export class FenceNormalizer {
         //     bare container body first, then feed the un-fed portion into
         //     the bracket/string balance scanner. When nesting returns to
         //     zero the container is COMPLETE — parse it. Everything after
-        //     the completion index returns to text mode.
+        //     the completion index returns to text mode. A TRAILING LONE
+        //     BACKSLASH is held back: it may be the first half of a `\"`
+        //     delimiter split across deltas (without the hold, the scanner
+        //     would open a PLAIN string on the next delta and mis-track).
         if (this.pending) {
-          this.bareBody += this.pending;
-          this.pending = "";
+          let feed = this.pending;
+          if (!final && feed.endsWith("\\")) {
+            this.bareBody += feed.slice(0, -1);
+            this.pending = "\\";
+          } else {
+            this.bareBody += feed;
+            this.pending = "";
+          }
         }
         const unfed = this.bareBody.slice(this.bareFed);
         this.bareFed = this.bareBody.length;
@@ -395,9 +421,9 @@ export class FenceNormalizer {
    */
   private bareTriggerSuffixLen(s: string): number {
     if (s.length === 0) return 0;
-    // Valid trigger prefixes are ≤ 17 canonical chars — only the last
+    // Valid trigger prefixes are ≤ 24 canonical chars — only the last
     // (canonical-length + whitespace) region can hold one.
-    const maxCanon = 20;
+    const maxCanon = 24;
     const window = s.length > maxCanon * 8 ? s.slice(s.length - maxCanon * 8) : s;
     for (let p = 0; p < window.length; p++) {
       const tail = window.slice(p);
@@ -426,9 +452,13 @@ export class FenceNormalizer {
     this.mode = "text";
     const fullBody = this.openerBody + body;
     this.openerBody = "";
-    // Unterminated-at-EOF fence → allow truncated-JSON repair so a cut-off
-    // tool call still fires instead of leaking raw text.
-    const calls = parseFenceBody(fullBody, unterminated);
+    // REPAIR IS ALWAYS ALLOWED for tool_call-labeled fences: the label is
+    // explicit tool intent, so a malformed body (curly quotes, missing
+    // brackets, truncation artifacts) is aggressively salvaged instead of
+    // leaking to the client as raw JSON text. Valid JSON parses via the
+    // plain candidates first — repair variants are appended AFTER, so this
+    // changes nothing for well-formed bodies.
+    const calls = parseFenceBody(fullBody, true);
     if (calls !== null && calls.length > 0) {
       for (const call of calls) {
         outCalls.push({
@@ -516,6 +546,8 @@ export interface ParsedToolCall {
  *   - a single JSON object of the same shape
  *   - loosely-escaped JSON (models emit \" and \\\" variants)
  *   - JSON embedded in surrounding prose (extracts the outermost […] / {…})
+ *   - LENIENT salvage (last resort): curly quotes, stray junk between
+ *     elements, missing brackets — anything the tolerant parser recovers
  * Returns null when the body does not yield ANY valid call (caller re-emits
  * as text).
  */
@@ -526,8 +558,20 @@ export function parseFenceBody(
   const trimmed = body.trim();
   if (!trimmed) return null;
 
-  for (const candidate of jsonCandidates(trimmed, allowRepair)) {
+  const candidates = jsonCandidates(trimmed, allowRepair);
+
+  // Pass 1 — strict JSON.parse on every candidate.
+  for (const candidate of candidates) {
     const calls = extractCalls(candidate);
+    if (calls !== null && calls.length > 0) return calls;
+  }
+
+  // Pass 2 — LENIENT salvage (curly quotes / junk / missing brackets).
+  // The ```tool_call label is explicit intent, so we salvage aggressively.
+  for (const candidate of candidates.slice(0, 4)) {
+    const parsed = lenientJsonParse(candidate);
+    if (parsed === null) continue;
+    const calls = normalizeParsedCalls(parsed);
     if (calls !== null && calls.length > 0) return calls;
   }
   return null;
@@ -547,7 +591,10 @@ function parseBareBody(
   const trimmed = body.trim();
   if (!trimmed) return null;
 
-  for (const candidate of jsonCandidates(trimmed, truncated)) {
+  const candidates = jsonCandidates(trimmed, truncated);
+
+  // Pass 1 — strict JSON.parse (with tool-call shape validation).
+  for (const candidate of candidates) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(candidate);
@@ -583,26 +630,47 @@ function parseBareBody(
       continue;
     }
 
-    const arr = Array.isArray(parsed) ? parsed : [parsed];
-    const first = arr.find(
-      (x) => x !== null && typeof x === "object",
-    ) as Record<string, unknown> | undefined;
-    if (!first) continue;
-    const fn = (first.function ?? null) as Record<string, unknown> | null;
-    const hasName =
-      BARE_NAME_KEYS.some(
-        (k) => typeof (first as Record<string, unknown>)[k] === "string",
-      ) || typeof fn?.name === "string";
-    const hasArgs =
-      BARE_ARGS_KEYS.some(
-        (k) => (first as Record<string, unknown>)[k] !== undefined,
-      ) || fn?.arguments !== undefined;
-    if (!hasName || !hasArgs) continue; // ordinary JSON — not a tool call
+    if (!bareShapeOk(parsed)) continue; // ordinary JSON — not a tool call
 
     const calls = extractCalls(candidate);
     if (calls !== null && calls.length > 0) return calls;
   }
+
+  // Pass 2 — LENIENT salvage (curly quotes / escaped delimiters / junk /
+  // missing brackets), gated by the same tool-call SHAPE check so ordinary
+  // JSON arrays in prose are never hijacked.
+  for (const candidate of candidates.slice(0, 4)) {
+    const parsed = lenientJsonParse(candidate);
+    if (parsed === null) continue;
+    if (!bareShapeOk(parsed)) continue;
+    const calls = normalizeParsedCalls(parsed);
+    if (calls !== null && calls.length > 0) return calls;
+  }
   return null;
+}
+
+/**
+ * Tool-call SHAPE gate for bare (unfenced) containers: the first object
+ * must carry BOTH a name-ish key AND an arguments-ish key (top-level or
+ * nested under `function`). Ordinary JSON fails this and stays text.
+ */
+function bareShapeOk(parsed: unknown): boolean {
+  if (parsed === null || typeof parsed !== "object") return false;
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  const first = arr.find(
+    (x) => x !== null && typeof x === "object",
+  ) as Record<string, unknown> | undefined;
+  if (!first) return false;
+  const fn = (first.function ?? null) as Record<string, unknown> | null;
+  const hasName =
+    BARE_NAME_KEYS.some(
+      (k) => typeof (first as Record<string, unknown>)[k] === "string",
+    ) || typeof fn?.name === "string";
+  const hasArgs =
+    BARE_ARGS_KEYS.some(
+      (k) => (first as Record<string, unknown>)[k] !== undefined,
+    ) || fn?.arguments !== undefined;
+  return hasName && hasArgs;
 }
 
 /** Parse DSML invoke/parameter tags into tool calls. */
@@ -639,6 +707,11 @@ function extractCalls(candidate: string): ParsedToolCall[] | null {
   } catch {
     return null;
   }
+  return normalizeParsedCalls(parsed);
+}
+
+/** Normalize an ALREADY-PARSED value into tool calls (strict shapes only). */
+function normalizeParsedCalls(parsed: unknown): ParsedToolCall[] | null {
   const arr = Array.isArray(parsed) ? parsed : [parsed];
   const out: ParsedToolCall[] = [];
   for (const item of arr) {
@@ -671,48 +744,49 @@ function extractCalls(candidate: string): ParsedToolCall[] | null {
 
 /**
  * Loose-JSON candidates for models that emit escaped / prose-wrapped JSON.
- * When `allowRepair` is set (end-of-stream truncated container / fence),
- * repaired variants are appended — repairTruncatedJson closes open strings
- * and brackets so a cut-off tool call still parses (identity on balanced
- * JSON, so appending it is always safe).
+ * Each base (whole string + extracted outermost container) is expanded with
+ * unescape variants (\" → ", \\\" → "), and — when `allowRepair` is set
+ * (truncated container / tool_call-labeled fence) — with truncated-JSON
+ * repair variants appended AFTER the plain ones so valid JSON always wins.
  */
 function jsonCandidates(s: string, allowRepair = false): string[] {
-  const candidates: string[] = [s];
+  const out: string[] = [];
+  const push = (t: string): void => {
+    if (t && !out.includes(t)) out.push(t);
+  };
 
-  // Unescape \" → " (single-escaped).
-  if (s.includes('\\"')) candidates.push(s.replace(/\\"/g, '"'));
-  // Unescape \\" → " (double-escaped).
-  if (s.includes('\\\\\\"')) candidates.push(s.replace(/\\+"/g, '"'));
-  // Strip stray backslashes before quotes.
-  if (/\\+"/.test(s)) candidates.push(s.replace(/\\+"/g, '"'));
+  // Extract the outermost container (models wrap tool JSON in prose).
+  const extracted = extractOutermostContainer(s);
 
-  // Extract outermost JSON array or object when wrapped in prose.
-  const arrIdx = indexOfTopLevel(s, "[");
-  const objIdx = indexOfTopLevel(s, "{");
-  const pick = arrIdx === -1 ? objIdx : objIdx === -1 ? arrIdx : Math.min(arrIdx, objIdx);
-  if (pick !== -1) {
-    const open = s[pick];
-    const close = open === "[" ? "]" : "}";
-    const lastIdx = s.lastIndexOf(close);
-    if (lastIdx > pick) {
-      candidates.push(s.slice(pick, lastIdx + 1));
-    }
+  // Bases + their unescape variants.
+  const bases = extracted && extracted !== s ? [s, extracted] : [s];
+  for (const base of bases) {
+    push(base);
+    if (base.includes('\\"')) push(base.replace(/\\"/g, '"'));
+    if (/\\+"/.test(base)) push(base.replace(/\\+"/g, '"'));
   }
 
   if (allowRepair) {
-    // Truncated-JSON repair: whole string and the extracted container.
-    candidates.push(repairTruncatedJson(s));
-    if (pick !== -1) {
-      const open = s[pick];
-      const close = open === "[" ? "]" : "}";
-      const lastIdx = s.lastIndexOf(close);
-      const end = lastIdx > pick ? lastIdx + 1 : s.length;
-      candidates.push(repairTruncatedJson(s.slice(pick, end)));
+    // Truncated-JSON repair on every variant so far: closes open strings
+    // and brackets, salvaging a structurally sound PARTIAL tool call.
+    for (const base of [...out]) {
+      push(repairTruncatedJson(base));
     }
   }
+  return out;
+}
 
-  // Deduplicate.
-  return [...new Set(candidates)];
+/** The outermost JSON array or object in `s`, or null when none. */
+function extractOutermostContainer(s: string): string | null {
+  const arrIdx = indexOfTopLevel(s, "[");
+  const objIdx = indexOfTopLevel(s, "{");
+  const pick = arrIdx === -1 ? objIdx : objIdx === -1 ? arrIdx : Math.min(arrIdx, objIdx);
+  if (pick === -1) return null;
+  const open = s[pick];
+  const close = open === "[" ? "]" : "}";
+  const lastIdx = s.lastIndexOf(close);
+  if (lastIdx > pick) return s.slice(pick, lastIdx + 1);
+  return null;
 }
 
 /** Index of the first `ch` that is not inside a string literal (approximate). */

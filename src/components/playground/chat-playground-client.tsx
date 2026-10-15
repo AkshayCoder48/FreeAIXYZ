@@ -1018,11 +1018,36 @@ export function ChatPlaygroundClient({ data }: { data: ChatPlaygroundData }) {
 
   // ─── Actions ────────────────────────────────────────────────────────────
 
-  const handleSelectModel = React.useCallback((id: string) => {
-    setSelectedModelId(id);
-    setUsage(null);
-    setStreamTokens(null);
-  }, []);
+  const handleSelectModel = React.useCallback(
+    (id: string) => {
+      const isSwitch = id !== selectedModelRef.current;
+      setSelectedModelId(id);
+      setUsage(null);
+      setStreamTokens(null);
+      // MODEL ISOLATION — each fleet model has its own persona and tool
+      // policy. Re-sending one model's turns to a DIFFERENT model produced
+      // the reported cross-contamination: calculator tool results
+      // ("[tool result for tool (call_…)]") and other models' greetings
+      // (e.g. a generic "Hello! How can I help you today?") woven into
+      // Amora roleplay stories, and moderation refusals from one slot
+      // leaking into another. Switching models now starts a fresh
+      // conversation.
+      if (isSwitch && messagesRef.current.length > 0) {
+        if (abortRef.current) {
+          abortRef.current.abort();
+          abortRef.current = null;
+        }
+        generatingRef.current = false;
+        setMessages([]);
+        setErrorMessage(null);
+        setToolStatus(null);
+        setPhase("idle");
+        const nextName = models.find((m) => m.id === id)?.name ?? id;
+        toast(`Switched to ${nextName} — chat cleared (each model starts fresh)`);
+      }
+    },
+    [models],
+  );
 
   const toggleTool = React.useCallback((name: string) => {
     setEnabledTools((prev) => ({ ...prev, [name]: !prev[name] }));

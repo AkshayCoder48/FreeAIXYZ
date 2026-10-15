@@ -25,7 +25,7 @@ import type {
   OAIToolCall,
   OAIToolChoice,
 } from "@/lib/openai-types";
-import { repairTruncatedJson } from "@/lib/json-repair";
+import { repairTruncatedJson, lenientJsonParse } from "@/lib/json-repair";
 
 const TOOL_CALL_FENCE_OPEN = "```tool_call";
 const TOOL_CALL_FENCE_CLOSE = "```";
@@ -135,8 +135,14 @@ export function buildToolSystemPrompt(
  * - String content → returned as-is.
  * - Array content (vision format) → text parts are joined; image parts are
  *   noted as "[image attached]" since no free upstream supports vision yet.
+ *
+ * Exported for the completions route's stale-tool sanitization: when a
+ * request carries NO tools, assistant.tool_calls history must be reduced to
+ * its visible text (no ```tool_call fence) so roleplay models never receive
+ * tool machinery they cannot use — the source of the "[tool result for
+ * tool (call_…)]" contamination reported inside Amora story output.
  */
-function flattenContent(content: unknown): string {
+export function flattenContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const parts: string[] = [];
@@ -378,6 +384,19 @@ function tryParseJsonLoose(s: string): unknown | null {
       } catch {
         /* not recoverable */
       }
+    }
+  }
+
+  // Strategy 5 (final fallback): LENIENT salvage. Models emit tool calls
+  // with curly quotes (“ ”), escaped delimiters (\"), stray punctuation
+  // between elements, and missing closing brackets — all observed live on
+  // the fleet. The tolerant parser recovers a structurally sound tool call
+  // from these; strict parse + repair above already failed, so this can
+  // only improve the outcome.
+  for (const candidate of candidates) {
+    const lenient = lenientJsonParse(candidate);
+    if (lenient !== null) {
+      return lenient;
     }
   }
   return null;

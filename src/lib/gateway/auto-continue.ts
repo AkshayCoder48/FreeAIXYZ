@@ -47,6 +47,10 @@ import { sleep } from "@/lib/gateway/retry";
 /** Max continuation rounds for the GENERIC layer (nsfwgf does its own, richer
  *  version internally; this cap bounds worst-case latency for everyone). */
 export const MAX_GENERIC_CONTINUATION_ROUNDS = 8;
+/** Hard budget on total accumulated chars the generic layer will continue up
+ *  to. Story/roleplay models asked to "continue" will keep writing new scenes
+ *  indefinitely — this backstop guarantees the stream always terminates. */
+const MAX_GENERIC_CONTINUATION_CHARS = 16_000;
 /** Retries per continuation round before giving up gracefully. */
 const ROUND_RETRIES = 1;
 /** The model's confirmation that the text was already complete. */
@@ -167,6 +171,12 @@ export function wrapStreamWithAutoContinue(
   // pipeline own the stream end-state; interleaving continuations could
   // corrupt tool-call parsing.
   const eligible = (req.tools?.length ?? 0) === 0;
+  // Self-continuing adapters (nsfwgf) run their own continuation loop —
+  // wrapping them caused DOUBLE continuation (the "unlimited generation"
+  // bug: 24 provider rounds + 8 more generic rounds).
+  if (adapter.selfContinuing) {
+    return adapter.stream(req);
+  }
   return (async function* () {
     const base = adapter.stream(req);
     let accumulated = "";
@@ -193,6 +203,12 @@ export function wrapStreamWithAutoContinue(
 
     for (let round = 1; round <= MAX_GENERIC_CONTINUATION_ROUNDS; round++) {
       if (req.signal?.aborted) return;
+      if (accumulated.length >= MAX_GENERIC_CONTINUATION_CHARS) {
+        console.error(
+          `${TAG} ${adapter.id}/${req.modelId}: total-char budget reached (${accumulated.length} chars) — ending`,
+        );
+        return;
+      }
       const round$ = continuationRound(adapter, req, accumulated);
       let outcome: RoundOutcome | null = null;
       try {
@@ -237,9 +253,16 @@ export async function completeWithAutoContinue(
   let text = (await adapter.complete(req)).text ?? "";
   if ((req.tools?.length ?? 0) > 0) return { text };
   if (req.signal?.aborted) return { text };
+  if (adapter.selfContinuing) return { text }; // adapter already continued
 
   for (let round = 1; round <= MAX_GENERIC_CONTINUATION_ROUNDS; round++) {
     if (!looksIncomplete(text)) break;
+    if (text.length >= MAX_GENERIC_CONTINUATION_CHARS) {
+      console.error(
+        `${TAG} ${adapter.id}/${req.modelId}: total-char budget reached (${text.length} chars) — stopping`,
+      );
+      break;
+    }
     console.error(
       `${TAG} ${adapter.id}/${req.modelId}: complete() text looks incomplete (${text.length} chars) — continuing (round ${round})`,
     );

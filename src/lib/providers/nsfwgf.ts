@@ -59,6 +59,7 @@
 import type { Provider, ProviderCompletionRequest, ProviderMessage } from "./types";
 import {
   continueInstruction,
+  endsAtSentenceBoundary,
   looksIncomplete,
   overlapTrimLen,
   OVERLAP_WINDOW,
@@ -674,7 +675,12 @@ async function* segment(
  * client this is one seamless stream.
  */
 const SEGMENT_CAP_CHARS = 1000; // finish=stop segment ≥ this ⇒ likely a cap hit
-const MAX_CONTINUATION_ROUNDS = 24; // ≈ 7k tokens total — effectively unlimited
+const MAX_CONTINUATION_ROUNDS = 6; // ≈ 7k tokens total — bounded, NOT "effectively unlimited"
+/** Hard budget on the TOTAL accumulated text across all continuation rounds.
+ *  Roleplay models never consider a story "finished", so the round cap alone
+ *  still allowed ~30k chars of never-ending scenes (the reported "unlimited
+ *  generation" bug). This budget is the absolute backstop. */
+const MAX_TOTAL_CONTINUATION_CHARS = 12_000;
 /** Attempts per continuation ROUND (fresh upstream session each attempt —
  *  a failed round used to END the stream mid-code; now it is retried with a
  *  fresh account before giving up). */
@@ -692,15 +698,25 @@ function shouldContinue(
 ): boolean {
   if (!roundText.trim()) return false;
   if (finishReason === "length") return true; // definitive cap signal
-  // The upstream sometimes reports "stop" on cap hits (observed once per
-  // model); capped segments land in a tight ~1050–1200 char band, so treat
-  // near-cap-length stop segments as capped too. The DONE-marker swallow
-  // makes the occasional false positive harmless (one wasted round).
-  if (roundText.length >= SEGMENT_CAP_CHARS) return true;
   // STRONGEST signal: the accumulated text is structurally incomplete
   // (unclosed code fence / unbalanced brackets) — the model was cut mid-code
   // no matter what the finish_reason claims.
   if (looksIncomplete(accumulated)) return true;
+  // Length-band heuristic — but ONLY when the segment also looks CUT: the
+  // upstream labels cap hits "stop" and capped segments land in a tight
+  // ~1050–1200 char band. A long segment that ends at a natural sentence
+  // boundary (".", "!", "?", closing quote/asterisk) is a FINISHED reply —
+  // this is exactly the roleplay case: Amora/Velvet stories are always
+  // ≥1000 chars, and treating every one of them as a cap hit made the
+  // gateway continue finished stories round after round (the "unlimited
+  // generation" bug). Continuing only mid-sentence cuts keeps the cap
+  // workaround working while letting natural long replies end.
+  if (
+    roundText.length >= SEGMENT_CAP_CHARS &&
+    !endsAtSentenceBoundary(roundText)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -718,6 +734,15 @@ async function* streamWithAutoContinue(
 
   for (let round = 1; round <= MAX_CONTINUATION_ROUNDS; round++) {
     if (req.signal?.aborted) return;
+    // Absolute backstop: never stream more than the total-char budget of
+    // continued text (roleplay models will happily keep "continuing" a
+    // finished story forever if asked).
+    if (accumulated.length >= MAX_TOTAL_CONTINUATION_CHARS) {
+      console.error(
+        `[NSFWGF-CONT] round ${round}: total-char budget reached (${accumulated.length} chars) — stopping`,
+      );
+      return;
+    }
     if (!shouldContinue(roundText, roundFinish, accumulated)) {
       console.error(`[NSFWGF-CONT] round ${round}: stopping (roundLen=${roundText.length} finish=${roundFinish})`);
       return;
