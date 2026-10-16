@@ -73,6 +73,12 @@ import {
 import { ensureGateway, resolveAdapterForModel } from "@/lib/gateway/route-helpers";
 import { completeWithAutoContinue } from "@/lib/gateway/auto-continue";
 import {
+  embedThinking,
+  requestWantsThinking,
+  runThinkingRound,
+  streamThinkingChat,
+} from "@/lib/gateway/thinking-phase";
+import {
   isNativeToolProvider,
   TOOL_AVAILABILITY_SYSTEM_PROMPT,
   validateToolParams,
@@ -599,6 +605,11 @@ async function handleChatCompletions(request: Request): Promise<Response> {
           toolParams,
           wantsStream,
           clientModelId,
+          // THINKING MODELS: fleet slots flagged `thinking` fire the
+          // two-round flow by default (planning round → reasoning_content
+          // deltas; final round with tools). A request-level reasoning_effort
+          // / thinking param forces the same flow on ANY model.
+          fleetEntry.thinking === true || requestWantsThinking(body),
         );
       }
       // A fleet slot whose underlying id no longer resolves (provider sweep
@@ -609,7 +620,17 @@ async function handleChatCompletions(request: Request): Promise<Response> {
     // ─── NEW GATEWAY PATH (canonical ids like fg/gpt-5, oc/big-pickle) ────────
     const resolved = resolveAdapterForModel(body.model);
     if (resolved) {
-      return handleCanonicalRequest(body, request, resolved.model, resolved.adapter, toolParams, wantsStream);
+      return handleCanonicalRequest(
+        body,
+        request,
+        resolved.model,
+        resolved.adapter,
+        toolParams,
+        wantsStream,
+        undefined,
+        // Request-level thinking trigger works on canonical ids too.
+        requestWantsThinking(body),
+      );
     }
 
     // ─── LEGACY FALLBACK (old-style ids like fgpt-gpt-5-5, oc-big-pickle) ─────
@@ -639,6 +660,9 @@ async function handleCanonicalRequest(
   wantsStream: boolean,
   /** The id the CALLER used (onyx-* fleet id) — echoed in API responses. */
   clientModelId?: string,
+  /** THINKING-MODEL FLOW: fire the two-round flow (planning round streamed
+   *  as reasoning_content deltas, then the real request with tools). */
+  thinkingRequested?: boolean,
 ): Promise<Response> {
   const useTools = toolParams.tools.length > 0;
   // Echo id: what the client asked for (onyx-amora or its legacy alias
@@ -834,7 +858,15 @@ async function handleCanonicalRequest(
       }),
     );
     try {
-      const { response, timings } = await streamChat(chatReq, adapter, fallbacks);
+      // THINKING MODELS (two-round flow): round 1 plans (streamed to the
+      // client as reasoning_content deltas), round 2 is the real request —
+      // tools included, plan embedded — piped through the normal streaming
+      // pipeline (tool-call normalizers + content sanitizer + usage).
+      const { response, timings } = thinkingRequested
+        ? await streamThinkingChat(chatReq, adapter, fallbacks, (r, a, f) =>
+            streamChat(r, a, f),
+          )
+        : await streamChat(chatReq, adapter, fallbacks);
       metricsService.recordStreamTimings(timings);
       return response;
     } catch (err) {
@@ -856,6 +888,21 @@ async function handleCanonicalRequest(
   let usedFallback: { model: DiscoveredModel; adapter: ProviderAdapter } | null = null;
   let text: string | null = null;
   let primaryErr: GatewayError | null = null;
+  // THINKING MODELS (non-streaming): round 1 runs first (best-effort); its
+  // plan is embedded into round 2 and ALSO returned on the final message as
+  // `reasoning_content` so non-streaming clients see the thinking too.
+  let thinkingText: string | null = null;
+  let effectiveChatReq: ChatRequest = chatReq;
+  if (thinkingRequested) {
+    thinkingText = await runThinkingRound(adapter, chatReq);
+    if (thinkingText) {
+      effectiveChatReq = {
+        ...chatReq,
+        messages: embedThinking(chatReq.messages, thinkingText),
+      };
+    }
+  }
+  const finalChatReq = effectiveChatReq;
   // FIX A: transient upstream failures (network / 5xx / 429 / upstream edge
   // crashes like the intermittent "edge runtime does not support Node.js
   // 'crypto' module" 502) get ONE same-model retry with linear backoff BEFORE
@@ -867,7 +914,7 @@ async function handleCanonicalRequest(
       // GENERIC AUTO-CONTINUE — if the provider cuts the text mid-code
       // (unclosed fence / unbalanced brackets), transparently continue
       // through the same adapter until the text looks complete.
-      const result = await completeWithAutoContinue(adapter, chatReq);
+      const result = await completeWithAutoContinue(adapter, finalChatReq);
       text = result.text;
       completeErr = null;
       break;
@@ -888,7 +935,7 @@ async function handleCanonicalRequest(
     // Audit D1: only failover if the error is a retryable candidate.
     if (isFailoverCandidate(primaryErr) && fallbacks.length > 0) {
       const fb = fallbacks[0];
-      const fbReq = buildFailoverChatReq(chatReq, fb.model);
+      const fbReq = buildFailoverChatReq(finalChatReq, fb.model);
       try {
         const result = await completeWithAutoContinue(fb.adapter, fbReq);
         text = result.text;
@@ -1006,6 +1053,7 @@ async function handleCanonicalRequest(
             message: {
               role: "assistant",
               content: parsed.text || null,
+              ...(thinkingText ? { reasoning_content: thinkingText } : {}),
               tool_calls: parsed.toolCalls,
             },
             finish_reason: "tool_calls",
@@ -1034,7 +1082,11 @@ async function handleCanonicalRequest(
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content: finalText },
+        message: {
+          role: "assistant",
+          content: finalText,
+          ...(thinkingText ? { reasoning_content: thinkingText } : {}),
+        },
         finish_reason: "stop",
       },
     ],

@@ -92,10 +92,10 @@ function capabilityList(m: DiscoveredModel): string[] {
 }
 
 /** Capabilities for a fleet entry, derived from its underlying route. */
-function fleetCapabilities(route: string): string[] {
+function fleetCapabilities(route: string, thinking?: boolean): string[] {
   const underlying = findNativeModel(route);
-  if (!underlying) return ["text"];
-  const out: string[] = ["text"];
+  const out: string[] = thinking ? ["text", "thinking"] : ["text"];
+  if (!underlying) return out;
   if (underlying.capabilities.vision) out.push("vision");
   if (underlying.capabilities.tools) out.push("tools");
   if (underlying.capabilities.streaming) out.push("streaming");
@@ -153,7 +153,10 @@ async function listModels(request: Request): Promise<Response> {
       content_classification: f.contentClassification,
       status: "active" as const,
       aliases: [...f.legacyIds],
-      capabilities: fleetCapabilities(f.route),
+      capabilities: fleetCapabilities(f.route, f.thinking),
+      // THINKING MODEL marker: the two-round flow (planning round streamed
+      // as reasoning_content + final round with tools) fires by default.
+      ...(f.thinking ? { thinking: true } : {}),
       free: true,
     };
     if (!showHealth) return base;

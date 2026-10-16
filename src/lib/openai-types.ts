@@ -67,6 +67,9 @@ export interface OAIChatCompletionResponse {
     message: {
       role: "assistant";
       content: string | null;
+      /** THINKING MODELS: the round-1 planning text (DeepSeek-style field —
+       *  every OnyxAgent runtime reads reasoning_content first). */
+      reasoning_content?: string;
       tool_calls?: OAIToolCall[];
     };
     finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | null;

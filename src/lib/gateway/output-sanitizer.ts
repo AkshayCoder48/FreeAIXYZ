@@ -17,6 +17,9 @@
  *        "<tool_result name=… tool_call_id=…>…</tool_result>" (client wire-compat)
  *        "```tool_call …```" fences that escaped the FenceNormalizer
  *        "[Calling create_file with {…}]"                 (client tool-text mode)
+ *        "[Used tools: web_search, use_browser]"          (client history
+ *            annotation — models ECHO it and INVENT new ones with
+ *            hallucinated tool names like "Onyx Platform"; both die here)
  *
  * Both classes are stripped from the visible content at the gateway, so
  * clients (and the conversation history they build from the reply) never
@@ -40,6 +43,14 @@ const MACHINERY_MARKER_RES: RegExp[] = [
   /<tool_result[^>]{0,200}>[ \t]*\n?/g,
   // Client tool-text mode call lines.
   /\[Calling [a-zA-Z0-9_.-]{1,64} with [\s\S]{0,2200}?\][ \t]*\n?/g,
+  // PRIOR-TURN TOOL-USE ANNOTATION echoes + hallucinated variants. The
+  // client appends "[Used tools: a, b]" to prior assistant messages so the
+  // model can see its own past tool use — small models echo the line back
+  // AND fabricate new ones for tools that don't exist ("[Used tools: Onyx
+  // Platform, Message Display]"). Tool names here are free-form words
+  // (spaces allowed), so the pattern is looser than the [Calling …] one.
+  /\[Used tools?:\s?[^\]\n]{0,300}\][ \t]*\n?/gi,
+  /\(You (?:previously )?used tools?:[^)\n]{0,300}\)[ \t]*\n?/gi,
   // ```tool_call fences that slipped past the FenceNormalizer (paired, then
   // unterminated — an unterminated fence in visible content is always a leak).
   /```tool_call[^\n]*\n[\s\S]*?```[ \t]*\n?/g,

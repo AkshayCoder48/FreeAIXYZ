@@ -1,122 +1,13 @@
 {
   "$schema": "https://freeaixyz4all.vercel.app/api/v1/models",
-  "generatedAt": "2026-10-15T12:52:02.642Z",
+  "generatedAt": "2026-10-16T09:28:24.714155Z",
   "source": "http://localhost:3000/api/v1/models",
   "count": 24,
   "models": [
     {
-      "id": "onyx-amora",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-2",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-afterdark",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-crimson",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-noir",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-pro",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-raw",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-raw-2",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-velvet",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-amora-velvet-2",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
       "id": "onyx-astra",
       "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -128,7 +19,7 @@
     {
       "id": "onyx-astra-2",
       "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -139,29 +30,7 @@
     {
       "id": "onyx-astra-pro",
       "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-codex",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-codex-2",
-      "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -172,75 +41,10 @@
     {
       "id": "onyx-kairo",
       "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-logos",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-logos-research",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-mythos-muse",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-mythos-persona",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-mythos-story",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "tools",
-        "streaming"
-      ]
-    },
-    {
-      "id": "onyx-omnix-vision",
-      "object": "model",
-      "created": 1792068722,
-      "owned_by": "Onyx AI",
-      "capabilities": [
-        "text",
-        "vision",
         "tools",
         "streaming"
       ]
@@ -248,7 +52,7 @@
     {
       "id": "onyx-vex",
       "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",
@@ -259,7 +63,207 @@
     {
       "id": "onyx-vex-flash",
       "object": "model",
-      "created": 1792068722,
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-logos",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "thinking": true,
+      "capabilities": [
+        "text",
+        "thinking",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-logos-research",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "thinking": true,
+      "capabilities": [
+        "text",
+        "thinking",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-codex",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-codex-2",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-omnix-vision",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "vision",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-mythos-muse",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-mythos-story",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-mythos-persona",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-2",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-raw",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-raw-2",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-velvet",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-velvet-2",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-noir",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-pro",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-afterdark",
+      "object": "model",
+      "created": 1792142904,
+      "owned_by": "Onyx AI",
+      "capabilities": [
+        "text",
+        "tools",
+        "streaming"
+      ]
+    },
+    {
+      "id": "onyx-amora-crimson",
+      "object": "model",
+      "created": 1792142904,
       "owned_by": "Onyx AI",
       "capabilities": [
         "text",

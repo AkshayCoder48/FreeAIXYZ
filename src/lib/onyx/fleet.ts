@@ -100,6 +100,11 @@ export interface FleetModel {
   uncensored: boolean;
   /** Injected as the first system message (null = no injection). */
   systemPrompt: string | null;
+  /** THINKING MODEL: fires the two-round flow by default (round 1 = a
+   *  planning call streamed to clients as `reasoning_content` deltas; round
+   *  2 = the real request with the plan embedded, tools included). See
+   *  lib/gateway/thinking-phase.ts. */
+  thinking?: boolean;
   /** Underlying canonical gateway id — routing target (unchanged upstream). */
   route: string;
 }
@@ -230,9 +235,10 @@ export const FLEET_MODELS: readonly FleetModel[] = [
     contentClassification: "general",
     brief: "Reasoning · thinks before it speaks",
     description:
-      "The LOGOS baseline: thinks the problem through before answering — math, logic, trade-offs, structured conclusions.",
+      "The LOGOS baseline: a THINKING model — it fires a private planning round (shown live in the thinking panel), then answers from that plan: math, logic, trade-offs, structured conclusions.",
     uncensored: false,
     systemPrompt: null,
+    thinking: true,
     route: "tb/deepseek-r1",
   },
   {
@@ -247,9 +253,10 @@ export const FLEET_MODELS: readonly FleetModel[] = [
     contentClassification: "general",
     brief: "Reasoning Research · analysis-grade",
     description:
-      "The Research tier of LOGOS: weighs evidence, compares options, cites trade-offs. The fleet's deep investigator.",
+      "The Research tier of LOGOS — a THINKING model with a live planning round before every answer. Weighs evidence, compares options, cites trade-offs. The fleet's deep investigator.",
     uncensored: false,
     systemPrompt: null,
+    thinking: true,
     route: "tb/gemini-2.5-pro",
   },
 
