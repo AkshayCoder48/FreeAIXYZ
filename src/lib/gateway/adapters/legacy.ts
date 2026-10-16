@@ -165,11 +165,15 @@ function wrapLegacyError(
   const lower = message.toLowerCase();
   // Keyword-based detection for rate limits (some providers swallow the HTTP
   // status code and surface a friendlier message after their own retries).
+  // "quota" added for toolbaz's "Per-minute quota for model … exceeded"
+  // (observed live as a plain 500/200 body — previously classified
+  // UPSTREAM_5XX 502, which clients retried instead of backing off).
   if (
     /\b429\b/.test(message) ||
     lower.includes("rate limit") ||
     lower.includes("queue full") ||
-    lower.includes("too many requests")
+    lower.includes("too many requests") ||
+    /\bquota\b/.test(lower)
   ) {
     return classifyUpstreamStatus(429, {
       provider: providerId,

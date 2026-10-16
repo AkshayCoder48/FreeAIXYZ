@@ -30,7 +30,7 @@ import {
 } from "@/lib/providers";
 import type { ProviderTool } from "@/lib/providers/types";
 import { ToolbazError } from "@/lib/toolbaz";
-import { resolveFleetModel } from "@/lib/onyx/fleet";
+import { resolveFleetModel, FLEET_MODELS } from "@/lib/onyx/fleet";
 import {
   generateCompletionId,
   generateToolCallId,
@@ -83,8 +83,8 @@ import {
   TOOL_AVAILABILITY_SYSTEM_PROMPT,
   validateToolParams,
   type ValidatedToolParams,
-} from "@/lib/tools/validation";
-import { toolDiagnostics } from "@/lib/tools/diagnostics";
+} from "@/lib/gateway-tools/validation";
+import { toolDiagnostics } from "@/lib/gateway-tools/diagnostics";
 import {
   imageAnnotation,
   normalizeMessageContent,
@@ -223,6 +223,54 @@ function findFailoverCandidates(
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * FLEET-AWARE FAILOVER (the "amora-2 quota dead-end" fix).
+ *
+ * Fleet requests (onyx-*) carry their persona INSIDE the messages (the fleet
+ * system prompt), so ANY sibling fleet route with the same content
+ * classification can serve the turn with the persona intact. When the
+ * primary's provider is having a provider-wide outage — e.g. toolbaz's
+ * per-minute quota exhausting BOTH tb routes at once — the audit-D1
+ * same-upstreamId lookup finds nothing (no other provider exposes
+ * "midnight-rose") and the client got a dead 502. Instead: pick sibling
+ * fleet routes on OTHER providers (adult→adult, general→general),
+ * breaker-healthy, excluding the same route and the same provider as the
+ * failing primary.
+ *
+ * Non-fleet requests (or fleets with no healthy sibling) keep the original
+ * audit-D1 semantics unchanged.
+ */
+function buildFallbackModels(
+  originalModel: DiscoveredModel,
+  clientModelId: string | undefined,
+  limit: number,
+): Array<{ model: DiscoveredModel; adapter: ProviderAdapter }> {
+  const fleetEntry = clientModelId
+    ? resolveFleetModel(clientModelId)
+    : undefined;
+  if (fleetEntry) {
+    const out: Array<{ model: DiscoveredModel; adapter: ProviderAdapter }> = [];
+    for (const other of FLEET_MODELS) {
+      if (other.id === fleetEntry.id) continue;
+      if (other.route === fleetEntry.route) continue;
+      if (other.contentClassification !== fleetEntry.contentClassification) continue;
+      const resolved = resolveAdapterForModel(other.route);
+      if (!resolved) continue;
+      if (resolved.model.id === originalModel.id) continue;
+      if (resolved.model.providerId === originalModel.providerId) continue;
+      if (resolved.model.status === "offline") continue;
+      // Only healthy siblings — a breaker-open fallback would just move the
+      // outage from one dead route to another.
+      if (providerHealthService.isModelOpen(resolved.model.id)) continue;
+      if (providerHealthService.isOpen(resolved.model.providerId)) continue;
+      out.push({ model: resolved.model, adapter: resolved.adapter });
+      if (out.length >= limit) break;
+    }
+    if (out.length > 0) return out;
+  }
+  return findFailoverCandidates(originalModel, limit);
 }
 
 /**
@@ -669,32 +717,37 @@ async function handleCanonicalRequest(
   // onyx-lust-v1), not the underlying route (tb/L3-70B-…). OpenAI semantics —
   // responses name the requested id.
   const echoId = clientModelId ?? model.id;
-  // Circuit-breaker check (PRD §121, §122, R-8).
+
+  // ─── BREAKER-AWARE FAILOVER PROMOTION (the "quota dead-end" fix) ──────────
+  // Circuit-breaker check (PRD §121, §122, R-8) — R-8: the breaker is keyed
+  // per-ROUTE (model id), NOT just per-provider; the per-provider breaker is
+  // consulted for genuine provider-wide outages.
   //
-  // R-8: the breaker is keyed per-ROUTE (model id), NOT just per-provider.
-  // The audit found that a single failing model of a provider took down
-  // its healthy siblings (`tb/gpt-5`, both `ss/*` models all scored
-  // 0% under load but 100% when serialized — BUG-6). The per-provider
-  // breaker is still consulted for genuine provider-wide outages, but
-  // the per-model breaker now fires independently so one bad sibling
-  // cannot trip its healthy neighbours.
-  if (providerHealthService.isModelOpen(model.id)) {
-    const err = new GatewayError({
-      type: "PROVIDER_UNAVAILABLE",
-      message: `Model "${echoId}" is temporarily unavailable (circuit open). Retry later.`,
-      provider: model.providerId,
-      model: echoId,
-    });
-    return gatewayErrorResponse(err);
-  }
-  if (providerHealthService.isOpen(model.providerId)) {
-    const err = new GatewayError({
-      type: "PROVIDER_UNAVAILABLE",
-      message: `Provider "${model.providerId}" is temporarily unavailable (circuit open). Retry later.`,
-      provider: model.providerId,
-      model: echoId,
-    });
-    return gatewayErrorResponse(err);
+  // NEW: a breaker-open primary used to end the request instantly with 503 —
+  // during a provider-wide outage (e.g. toolbaz per-minute quota exhausting
+  // both tb fleet routes) EVERY fleet request died at this gate even though
+  // healthy sibling routes existed. Now the gate first looks for a healthy
+  // fallback (fleet-aware — persona rides in the messages) and PROMOTES it
+  // to primary; only when no fallback exists does the honest 503 go out.
+  let promotedFromBreaker: Array<{ model: DiscoveredModel; adapter: ProviderAdapter }> = [];
+  if (
+    providerHealthService.isModelOpen(model.id) ||
+    providerHealthService.isOpen(model.providerId)
+  ) {
+    promotedFromBreaker = buildFallbackModels(model, clientModelId, 2);
+    const promoted = promotedFromBreaker.shift();
+    if (promoted) {
+      model = promoted.model;
+      adapter = promoted.adapter;
+    } else {
+      const err = new GatewayError({
+        type: "PROVIDER_UNAVAILABLE",
+        message: `Model "${echoId}" is temporarily unavailable (circuit open) and no healthy fallback route was found. Retry later or switch models.`,
+        provider: model.providerId,
+        model: echoId,
+      });
+      return gatewayErrorResponse(err);
+    }
   }
 
   // ─── Tool PRD §21: capability mismatch gate ───────────────────────────────
@@ -848,10 +901,18 @@ async function handleCanonicalRequest(
   if (wantsStream) {
     // Streaming path — streamChat returns a ready Response (the streaming fix).
     // Forwards every upstream delta immediately, no buffering/re-pacing.
-    // Audit D1: build failover candidates from the catalog — when the primary
-    // adapter fails BEFORE any content is forwarded, the streaming-proxy will
-    // try each fallback in order. Cap at 1 attempt.
-    const fallbacks: FailoverCandidate[] = findFailoverCandidates(model, 1).map(
+    // Audit D1: build failover candidates — when the primary adapter fails
+    // BEFORE any content is forwarded, the streaming-proxy tries each
+    // fallback in order. FLEET-AWARE (the quota dead-end fix): fleet requests
+    // get sibling fleet routes on other providers (persona rides in the
+    // messages), so a provider-wide outage fails over instead of erroring.
+    // After a breaker promotion the leftovers of that promotion ARE the
+    // fallback list (already filtered healthy + different provider).
+    const fallbackModels: Array<{ model: DiscoveredModel; adapter: ProviderAdapter }> =
+      promotedFromBreaker.length > 0
+        ? promotedFromBreaker
+        : buildFallbackModels(model, clientModelId, 2);
+    const fallbacks: FailoverCandidate[] = fallbackModels.map(
       ({ model: fm, adapter: fa }) => ({
         req: buildFailoverChatReq(chatReq, fm),
         adapter: fa,
@@ -884,7 +945,12 @@ async function handleCanonicalRequest(
   const requestStart = Date.now();
   const requestId = generateRequestId();
   const promptText = messages.map((m) => m.content).join("\n");
-  const fallbacks = findFailoverCandidates(model, 1);
+  // Fleet-aware fallbacks here too (non-streaming path) — see the streaming
+  // branch above for the rationale. Breaker-promotion leftovers are reused.
+  const fallbacks =
+    promotedFromBreaker.length > 0
+      ? promotedFromBreaker
+      : buildFallbackModels(model, clientModelId, 2);
   let usedFallback: { model: DiscoveredModel; adapter: ProviderAdapter } | null = null;
   let text: string | null = null;
   let primaryErr: GatewayError | null = null;

@@ -71,9 +71,18 @@ export interface FenceDeltaOut {
 /**
  * Openers, longest first. Each is matched case-insensitively; the regex form
  * also tolerates `tool-calls`, `function calls`, etc.
+ *
+ * NEWLINE-TOLERANT OPENER (the `````\ntool_call` leak fix): real upstreams
+ * (observed live on au/* models) open the fence with the ``` marker and put
+ * the label on the NEXT line. The old regex required the label on the same
+ * line, so those blocks fell through to plain text and leaked as visible
+ * "```\ntool_call\n```" garbage while a parallel tool call parsed fine.
+ * `\r?\n?[ \t]*` between the marker and the label accepts both shapes — a
+ * plain ``` code fence whose first content line starts with "tool_call"
+ * is tool intent either way.
  */
 const FENCE_OPEN_RE =
-  /```(?:tool_calls?|tool-calls?|function[_\s-]*calls?)[ \t]*\n?/i;
+  /```[ \t]*\r?\n?[ \t]*(?:tool_calls?|tool-calls?|function[_\s-]*calls?)[ \t]*\r?\n?/i;
 const DSML_OPEN_RE = /<｜｜DSML｜｜tool_calls\s*>/i;
 const DSML_CLOSE_RE = /<\/｜｜DSML｜｜tool_calls\s*>/i;
 
@@ -89,6 +98,11 @@ const OPENER_LITERALS: string[] = [
   "```function-calls",
   "```function call",
   "```function calls",
+  "```\ntool_call",
+  "```\ntool_calls",
+  "```\nfunction_call",
+  "```\nfunction_calls",
+  "```\r\ntool_call",
   "<｜｜DSML｜｜tool_calls>",
 ];
 
@@ -452,6 +466,14 @@ export class FenceNormalizer {
     this.mode = "text";
     const fullBody = this.openerBody + body;
     this.openerBody = "";
+    // EMPTY-BODY FENCE (the ```\ntool_call\n\n``` leak fix): an opener with
+    // no body carries zero user value — it is pure tool machinery the model
+    // emitted and then abandoned. Re-emitting it as content (the old
+    // fall-through) leaked the raw fence markers into the visible reply.
+    if (!fullBody.trim()) {
+      this.openerText = "";
+      return;
+    }
     // REPAIR IS ALWAYS ALLOWED for tool_call-labeled fences: the label is
     // explicit tool intent, so a malformed body (curly quotes, missing
     // brackets, truncation artifacts) is aggressively salvaged instead of
@@ -472,10 +494,11 @@ export class FenceNormalizer {
       this.hadToolCalls = true;
       return;
     }
-    // Unparseable → re-emit the ORIGINAL block as text (never lose content).
-    outTextParts.push(
-      `${this.openerText}${fullBody}${unterminated ? "" : FENCE_CLOSE}`,
-    );
+    // Unparseable but NON-EMPTY → re-emit the BODY as text (never lose
+    // content) WITHOUT the ```/tool_call opener — the opener is machinery,
+    // not something the model meant the user to see.
+    outTextParts.push(fullBody);
+    this.openerText = "";
   }
 
   /** A closed (or end-of-stream) DSML block: parse invoke/parameter tags. */

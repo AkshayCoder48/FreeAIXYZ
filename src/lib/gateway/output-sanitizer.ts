@@ -57,6 +57,12 @@ const MACHINERY_MARKER_RES: RegExp[] = [
   /```tool_call[^\n]*\n[\s\S]*$/g,
   // A bare opening fence line with nothing after it.
   /```tool_call[ \t]*\n?/g,
+  // MULTILINE VARIANT (the "```\ntool_call" leak): the marker and the label
+  // on SEPARATE lines — the single-line patterns above miss it. Paired first,
+  // then the unterminated tail, then a bare marker+label open.
+  /```[ \t]*\r?\n[ \t]*tool_calls?[^\n]*\n[\s\S]*?```[ \t]*\n?/gi,
+  /```[ \t]*\r?\n[ \t]*tool_calls?[\s\S]*$/gi,
+  /```[ \t]*\r?\n[ \t]*tool_calls?[ \t]*\r?\n?/gi,
 ];
 
 /**

@@ -29,7 +29,7 @@ import {
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
-import { toolDiagnostics } from "@/lib/tools/diagnostics";
+import { toolDiagnostics } from "@/lib/gateway-tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
 import { VisibleContentSanitizer } from "@/lib/gateway/output-sanitizer";
@@ -56,6 +56,28 @@ export const STREAM_HEADERS: Record<string, string> = {
 
 /** Transient-failure retries per candidate during pre-flight (FIX A). */
 const PREFLIGHT_RETRIES = 1;
+
+/**
+ * FIRST-CHUNK BUDGET (the "eternal thinking" fix, gateway side).
+ *
+ * The pre-flight `gen.next()` used to wait for the upstream's first chunk
+ * with NO deadline. Adapters that perform slow bootstrap work before their
+ * first yield (nsfwgf's disposable-inbox account creation, cold toolbaz
+ * identities) can legitimately sit silent for 30-60s — but a dead/hung
+ * upstream sat FOREVER: the client's fetch never received headers, the app
+ * showed an endless "thinking" state, and on Vercel the function only died
+ * at the 300s maxDuration with a hard connection cut.
+ *
+ * 90s covers every healthy first-chunk latency we have measured (velvet
+ * cold TTFT ~22s, nsfwgf bootstrap ~40-60s) while bounding the worst case
+ * to a single honest UPSTREAM_TIMEOUT error the client can surface. The
+ * budget applies PER ATTEMPT (attempt + 1 retry + failovers), keeping the
+ * total pre-flight well inside the 300s function budget.
+ */
+const PREFLIGHT_FIRST_CHUNK_BUDGET_MS = 90_000;
+
+/** Symbol marker for a first-chunk budget expiry (distinguishable from upstream throws). */
+const FIRST_CHUNK_BUDGET_EXPIRED = Symbol("firstChunkBudgetExpired");
 
 /**
  * Failover candidate (audit D1). The gateway resolves the requested model
@@ -167,7 +189,65 @@ class StreamingProxyService {
           break;
         }
         try {
-          const first = await gen.next();
+          // FIRST-CHUNK BUDGET: race the generator's first yield against the
+          // deadline. A win by the budget means the upstream produced nothing
+          // for 90s — cancel the generator, classify as UPSTREAM_TIMEOUT, and
+          // let the failover ladder (retry same candidate once → next
+          // candidate) or the honest 504 reach the client instead of an
+          // unbounded hang.
+          let first: IteratorResult<string, void>;
+          let budgetExpired = false;
+          {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const expired = new Promise<typeof FIRST_CHUNK_BUDGET_EXPIRED>(
+              (resolve) => {
+                timer = setTimeout(
+                  () => resolve(FIRST_CHUNK_BUDGET_EXPIRED),
+                  PREFLIGHT_FIRST_CHUNK_BUDGET_MS,
+                );
+              },
+            );
+            try {
+              const raced = await Promise.race([gen.next(), expired]);
+              if (raced === FIRST_CHUNK_BUDGET_EXPIRED) {
+                budgetExpired = true;
+                first = { done: true, value: undefined };
+              } else {
+                first = raced;
+              }
+            } finally {
+              if (timer) clearTimeout(timer);
+            }
+          }
+          if (budgetExpired) {
+            // Best-effort cancel of the hung generator. NOT awaited: an async
+            // generator suspended at an internal await only settles return()
+            // after that await resolves — awaiting here would hang the
+            // pre-flight again. Fire-and-forget; adapters release their
+            // sockets in finally blocks when the return propagates.
+            void Promise.resolve(gen.return(undefined)).catch(() => {});
+            preflightErr = new GatewayError({
+              type: "UPSTREAM_TIMEOUT",
+              status: 504,
+              code: "upstream_timeout",
+              message:
+                `Upstream "${candidate!.adapter.id}" produced no output within ` +
+                `${Math.round(PREFLIGHT_FIRST_CHUNK_BUDGET_MS / 1000)}s (first-chunk budget). ` +
+                `The provider is hung or bootstrapping very slowly — try again or switch models.`,
+              provider: candidate!.adapter.id,
+              model: candidate!.req.modelId,
+              requestId: timings.requestId,
+            });
+            failoverOccurred = !isPrimary || failoverOccurred;
+            // A budget expiry is NOT worth a same-instance retry: a hung
+            // bootstrap restarted from scratch will hang again (observed:
+            // nsfwgf's disposable-account flow sat silent for 90s+ on BOTH
+            // attempts while the client's fetch waited headerless). Break
+            // straight to the next failover candidate (fleet-aware fallbacks
+            // make this a healthy sibling on another provider) or the honest
+            // 504 — total pre-flight stays ≤ ~90s per candidate.
+            break;
+          }
           if (first.done) {
             // Generator returned without yielding anything → empty upstream.
             // Retry once: some upstreams intermittently return an empty
@@ -434,9 +514,18 @@ class StreamingProxyService {
         }
       }
       // G4: release the sanitizer's held-back tail (last content of stream).
+      // COUNTS AS CONTENT: when the entire cleaned reply fits inside the
+      // sanitizer's 64-char hold-back window (short "hello world" replies,
+      // single-chunk tool-text providers), EVERY push() held back and this
+      // finish() tail is the ONLY content the client ever receives. The old
+      // code emitted it but never set anyContent → the R-5 empty-check below
+      // raised a spurious EMPTY_UPSTREAM_RESPONSE AFTER the content was
+      // already delivered → clients saw finish_reason:"error" on perfectly
+      // good replies and retried/errored out (the "stuck at thinking" class).
       {
         const tail = contentSanitizer.finish();
         if (tail) {
+          anyContent = true;
           this.enqueueContentChunk(
             controller,
             encoder,
@@ -448,6 +537,10 @@ class StreamingProxyService {
         }
       }
       if (fenceOut.toolCalls && fenceOut.toolCalls.length > 0) {
+        // Tool calls emitted at flush time ARE a successful upstream
+        // response — count them or a tool-only fence-parsed round would
+        // wrongly trip the R-5 empty-check below.
+        anyContent = true;
         this.enqueueToolCallsChunk(
           controller,
           encoder,
