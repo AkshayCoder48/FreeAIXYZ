@@ -309,7 +309,14 @@ function renderNarrative(turns: PromptTurn[]): string {
  *   4. As a last resort, truncate system heads further (2.5k → 1.2k → 600).
  */
 function compactTurnsForBudget(turns: PromptTurn[], budget: number): PromptTurn[] {
-  const SYS_HEAD = [2500, 1200, 600];
+  // Ladder starts at 5000 (not 2500): with a ~1K tool directive and ~2K of
+  // last-3-turns, a 5000-char system head still fits the 9000 budget —
+  // doubling the instructions that survive compaction vs the first cut.
+  const SYS_HEAD = [5000, 2500, 1200, 600];
+  // Cap for each verbatim kept turn: a single huge turn (e.g. a create_file
+  // tool result carrying a whole HTML file) must not eat the entire budget
+  // and collapse the system head two rungs down.
+  const TURN_CAP = 2500;
   for (const sysHead of SYS_HEAD) {
     const lastIdx = turns.length - 1;
     const keepVerbatimFrom = Math.max(0, lastIdx - 2); // last 3 turns
@@ -317,7 +324,11 @@ function compactTurnsForBudget(turns: PromptTurn[], budget: number): PromptTurn[
       if (t.role === "system") {
         return { role: t.role, text: t.text.slice(0, sysHead) };
       }
-      if (i >= keepVerbatimFrom) return t;
+      if (i >= keepVerbatimFrom) {
+        return t.text.length > TURN_CAP
+          ? { role: t.role, text: `${t.text.slice(0, TURN_CAP)}\n…(truncated for length)` }
+          : t;
+      }
       const ellipsis =
         t.role === "assistant"
           ? "(earlier reply omitted for length)"
