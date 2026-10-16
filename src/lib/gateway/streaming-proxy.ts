@@ -32,6 +32,7 @@ import { metricsService } from "@/lib/gateway/metrics";
 import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
+import { VisibleContentSanitizer } from "@/lib/gateway/output-sanitizer";
 import { isTransientUpstreamError, retryDelayMs, sleep } from "@/lib/gateway/retry";
 import { wrapStreamWithAutoContinue } from "@/lib/gateway/auto-continue";
 import { paceLargeDeltas } from "@/lib/gateway/delta-pacing";
@@ -342,6 +343,13 @@ class StreamingProxyService {
     // code block and concluding "the AI has no tools".
     const fence = new FenceNormalizer((candidate.req.tools?.length ?? 0) > 0);
 
+    // G4 — one VisibleContentSanitizer per stream, wrapping EVERY
+    // delta.content before it reaches the client: strips transcript
+    // labels ("Assistant:"/"User:" line opens) and tool-machinery echoes
+    // that models emit despite the upstream prompt fixes. Small hold-back
+    // window (64 chars) so markers split across deltas are caught whole.
+    const contentSanitizer = new VisibleContentSanitizer();
+
     // Emit the buffered first chunk immediately (no buffering beyond the
     // single pre-flight chunk — the price of returning a real HTTP status
     // for pre-first-token errors).
@@ -357,6 +365,7 @@ class StreamingProxyService {
         firstDelta,
         normalizer,
         fence,
+        contentSanitizer,
       );
       if (hadFrag) anyContent = true;
       timings.proxyFirstForward = Date.now();
@@ -390,6 +399,7 @@ class StreamingProxyService {
           delta,
           normalizer,
           fence,
+          contentSanitizer,
         );
         if (hadFrag) anyContent = true;
         if (!firstEnqueued) {
@@ -410,15 +420,32 @@ class StreamingProxyService {
       // fence-parsed tool calls as standard delta.tool_calls chunks.
       const fenceOut = fence.flush();
       if (fenceOut.content) {
-        this.enqueueContentChunk(
-          controller,
-          encoder,
-          sseId,
-          created,
-          candidate.req.modelId,
-          fenceOut.content,
-        );
-        anyContent = true;
+        anyContent = true; // presence counts even if the sanitizer holds it back
+        const released = contentSanitizer.push(fenceOut.content);
+        if (released) {
+          this.enqueueContentChunk(
+            controller,
+            encoder,
+            sseId,
+            created,
+            candidate.req.modelId,
+            released,
+          );
+        }
+      }
+      // G4: release the sanitizer's held-back tail (last content of stream).
+      {
+        const tail = contentSanitizer.finish();
+        if (tail) {
+          this.enqueueContentChunk(
+            controller,
+            encoder,
+            sseId,
+            created,
+            candidate.req.modelId,
+            tail,
+          );
+        }
       }
       if (fenceOut.toolCalls && fenceOut.toolCalls.length > 0) {
         this.enqueueToolCallsChunk(
@@ -691,21 +718,27 @@ class StreamingProxyService {
     delta: string,
     normalizer: ToolCallNormalizer,
     fence: FenceNormalizer,
+    sanitizer: VisibleContentSanitizer,
   ): boolean {
     const norm = normalizer.consume(delta);
     let forwarded = false;
     if (norm.content) {
       const fenceOut = fence.push(norm.content);
       if (fenceOut.content) {
-        this.enqueueContentChunk(
-          controller,
-          encoder,
-          sseId,
-          created,
-          model,
-          fenceOut.content,
-        );
-        forwarded = true;
+        // G4: route through the per-stream visible-content sanitizer before
+        // the chunk reaches the client (may hold back a small tail).
+        const released = sanitizer.push(fenceOut.content);
+        if (released) {
+          this.enqueueContentChunk(
+            controller,
+            encoder,
+            sseId,
+            created,
+            model,
+            released,
+          );
+          forwarded = true;
+        }
       }
       if (fenceOut.toolCalls && fenceOut.toolCalls.length > 0) {
         this.enqueueToolCallsChunk(

@@ -7,12 +7,23 @@
  * completion — the bug PRD §238 / §137 calls out).
  *
  *   +0ms     generator returned
- *   +500ms   yields "Hello"
- *   +1000ms  yields " world"
- *   +1500ms  yields "!"
+ *   +500ms   yields DELTA_1
+ *   +1000ms  yields DELTA_2
+ *   +1500ms  yields DELTA_3
  *   +1500ms  generator returns (done)
  *
- * `complete()` returns `{ text: "Hello world!" }` after 1500ms.
+ * G4 note: the streaming proxy now routes delta.content through the
+ * VisibleContentSanitizer, which holds back the last 64 chars of the
+ * cleaned buffer (so machinery markers split across deltas are caught
+ * whole). Each delta here is deliberately sized 65–96 chars: above the
+ * 64-char hold-back (so content is still released INCREMENTALLY per delta,
+ * keeping the test's incremental-forwarding proof meaningful) but at or
+ * below delta-pacing's 96-char split threshold (paced 40-char pieces come
+ * 70ms apart, which would defeat the >200ms inter-chunk gap assertion).
+ * (The old "Hello"/" world"/"!" deltas summed to 12 chars and would be
+ * held back entirely until finish().)
+ *
+ * `complete()` returns `{ text: FULL_TEXT }` after 1500ms.
  * `discoverModels()` returns a single DiscoveredModel.
  *
  * This provider is ONLY used by tests — it is NEVER registered with the
@@ -26,6 +37,19 @@ const UPSTREAM_ID = "test-model";
 const MODEL_ID = "fake/test-model";
 
 const STEP_MS = 500; // 500ms per delta
+
+// Plain prose, 65–96 chars each (see G4 note above), no transcript labels
+// or tool machinery, so the sanitizer passes them through unchanged and
+// releases content per delta.
+const DELTA_1 =
+  "Hello from the fake slow provider: this first delta clears the hold-back window.";
+const DELTA_2 =
+  " Second delta arrives five hundred milliseconds later and is forwarded immediately.";
+const DELTA_3 =
+  " Third and final delta closes the upstream stream; the held tail flushes at the end.";
+
+export const FAKE_STREAM_DELTAS = [DELTA_1, DELTA_2, DELTA_3];
+export const FAKE_FULL_TEXT = DELTA_1 + DELTA_2 + DELTA_3;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -44,7 +68,7 @@ export function createFakeSlowProvider() {
     /** Non-streaming completion — accumulates the same deltas then returns. */
     async complete(req) {
       await sleep(STEP_MS * 3);
-      return { text: "Hello world!" };
+      return { text: FAKE_FULL_TEXT };
     },
 
     /**
@@ -54,11 +78,11 @@ export function createFakeSlowProvider() {
      */
     async *stream(req) {
       await sleep(STEP_MS);
-      yield "Hello";
+      yield DELTA_1;
       await sleep(STEP_MS);
-      yield " world";
+      yield DELTA_2;
       await sleep(STEP_MS);
-      yield "!";
+      yield DELTA_3;
       // generator returns (done=true) here
     },
 

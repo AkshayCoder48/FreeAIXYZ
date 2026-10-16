@@ -186,11 +186,21 @@ export function messageToText(m: OAIChatMessage): string | null {
       return parts.length > 0 ? parts.join("\n\n") : null;
     }
     case "tool": {
+      // NATURAL TOOL-RESULT FRAMING (G2): the old format —
+      //   "[tool result for create_file (call_mvao…)]\n{json}"
+      // — read as alien machinery to roleplay models: they ECHOED it
+      // verbatim into their visible replies (the "[tool result for …]"
+      // leak), fabricated errors from the call id ("Sorry, tool_call not
+      // found: create_file (call_…)"), and wove it into fake transcripts
+      // ("Assistant: User: …"). A natural sentence + the payload, with NO
+      // call id (pure noise to the model — it can't use it and it leaks
+      // into invented error text), reads as context instead of protocol.
       const name = m.name ?? "tool";
-      return `[tool result for ${name}${m.tool_call_id ? ` (${m.tool_call_id})` : ""}]\n${flat}`;
+      return `The ${name} tool finished with this result:\n${flat}`;
     }
     case "function": {
-      return `[function result]\n${flat}`;
+      const name = m.name ?? "function";
+      return `The ${name} tool finished with this result:\n${flat}`;
     }
     default:
       return m.content ?? null;

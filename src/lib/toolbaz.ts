@@ -198,6 +198,19 @@ export interface PromptTurn {
 }
 
 /**
+ * Hard upstream prompt budget (chars of the SERIALIZED `text` field,
+ * FILLER envelope included). Live-probed on writing.php (L3-70B-Euryale):
+ * 9 000 chars passes, 9 500 fails with
+ * "You have reached the maximum prompt length limit" — so 9 000 is the
+ * safe ceiling. Requests over the budget are COMPACTED (see
+ * compactTurnsForBudget) instead of surfacing the upstream 400 to clients
+ * (a client-side "self-healing" downgrade of a 24KB agent system prompt to
+ * "You are helpful. Be concise." was lobotomizing models — the root cause
+ * of the agency-speak / misplaced-rounds regression).
+ */
+export const TOOLBAZ_MAX_PROMPT_CHARS = 9000;
+
+/**
  * Convert an array of pre-serialized turns into the single `text` string that
  * writing.php expects. The prompt is wrapped with the Hangul-filler delimiters
  * exactly like the Toolbaz web UI does.
@@ -205,8 +218,32 @@ export interface PromptTurn {
  * Callers are responsible for serializing each message to its `text` (this
  * keeps tool-call / tool-result rendering in the API route layer, where it
  * belongs).
+ *
+ * ─── v2: NARRATIVE SERIALIZATION (no labeled transcript) ───────────────────
+ * v1 rendered multi-turn history as a labeled transcript
+ * ("System: … / User: … / Assistant: … / Tool: …"). Live regression
+ * (2026-09 user report): those labels TAUGHT the models to write transcripts
+ * in their REPLIES — replies began with a literal "Assistant:" label, then
+ * fabricated the user's side too ("User: …"), misplacing conversation
+ * rounds, regurgitating tool machinery verbatim and degenerating into
+ * scripted support-agent dialogue. v2 renders the same turns as NARRATIVE:
+ * roleplay/writing models echo narration far less than they echo dialogue
+ * labels, and no "User:"/"Assistant:" token ever appears in the prompt.
+ *
+ *   system    → instruction blocks, unlabeled, in order (joined by blank
+ *               lines — writing.php treats leading text as the brief)
+ *   user      → "The user said: …" (all but the latest)
+ *               "The user now says: …" (the latest user turn)
+ *   assistant → "You replied: …"
+ *   tool/func → "A tool reported: …" (pre-serialized upstream in the route
+ *               layer already frames tool results as natural sentences)
+ * The serialized prompt ends with "Respond now." so the completion starts
+ * as the assistant's answer, not as another transcript line.
  */
-export function turnsToText(turns: PromptTurn[]): string {
+export function turnsToText(
+  turns: PromptTurn[],
+  budget: number = TOOLBAZ_MAX_PROMPT_CHARS,
+): string {
   const filtered = turns.filter((t) => t.text != null && t.text !== "");
   if (filtered.length === 0) {
     return `${FILLER} : ${FILLER}`;
@@ -214,22 +251,93 @@ export function turnsToText(turns: PromptTurn[]): string {
 
   // Single user message -> exact same shape as the website.
   if (filtered.length === 1 && filtered[0].role === "user") {
-    return `${FILLER} : ${filtered[0].text}${FILLER}`;
+    return `${FILLER} : ${truncateToBudget(filtered[0].text, budget)}${FILLER}`;
   }
 
-  const parts: string[] = [];
-  for (const t of filtered) {
-    const label =
-      t.role === "system"
-        ? "System"
-        : t.role === "assistant"
-          ? "Assistant"
-          : t.role === "tool" || t.role === "function"
-            ? "Tool"
-            : "User";
-    parts.push(`${label}: ${t.text}`);
+  let body = renderNarrative(filtered);
+  if (serializedLength(body) > budget) {
+    body = renderNarrative(compactTurnsForBudget(filtered, budget));
   }
-  return `${FILLER} : ${parts.join("\n\n")}${FILLER}`;
+  return `${FILLER} : ${body}${FILLER}`;
+}
+
+/** Length that counts against the budget (FILLER envelope adds 5 chars). */
+function serializedLength(body: string): number {
+  return body.length + 5; // "\u3164 : " + "\u3164"
+}
+
+/** Narrative rendering of the turns (no role labels anywhere). */
+function renderNarrative(turns: PromptTurn[]): string {
+  // Index of the LAST user turn — everything before it is history; it is
+  // the current message.
+  let lastUserIdx = -1;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i]?.role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  const parts: string[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i];
+    if (!t) continue;
+    if (t.role === "system") {
+      parts.push(t.text);
+    } else if (t.role === "assistant") {
+      parts.push(`You replied: ${t.text}`);
+    } else if (t.role === "tool" || t.role === "function") {
+      parts.push(`A tool reported: ${t.text}`);
+    } else if (i === lastUserIdx) {
+      parts.push(`The user now says: ${t.text}`);
+    } else {
+      parts.push(`The user said: ${t.text}`);
+    }
+  }
+  return `${parts.join("\n\n")}\n\nRespond now.`;
+}
+
+/**
+ * Budget compaction — called when the serialized narrative exceeds the
+ * upstream limit. Priorities (in this order):
+ *   1. Keep EVERY system turn's HEAD (identity + core instructions live in
+ *      the first ~2.5KB of agent prompts; the tail is reference material).
+ *   2. Keep the LAST 3 turns verbatim (the current exchange — the model
+ *      must see the message it is answering and the turns that framed it).
+ *   3. Summarize every other turn to one line ("The user said: (earlier
+ *      message omitted for length)" style) — presence preserves the
+ *      conversation's shape and round ordering without its bulk.
+ *   4. As a last resort, truncate system heads further (2.5k → 1.2k → 600).
+ */
+function compactTurnsForBudget(turns: PromptTurn[], budget: number): PromptTurn[] {
+  const SYS_HEAD = [2500, 1200, 600];
+  for (const sysHead of SYS_HEAD) {
+    const lastIdx = turns.length - 1;
+    const keepVerbatimFrom = Math.max(0, lastIdx - 2); // last 3 turns
+    const compacted: PromptTurn[] = turns.map((t, i) => {
+      if (t.role === "system") {
+        return { role: t.role, text: t.text.slice(0, sysHead) };
+      }
+      if (i >= keepVerbatimFrom) return t;
+      const ellipsis =
+        t.role === "assistant"
+          ? "(earlier reply omitted for length)"
+          : t.role === "tool" || t.role === "function"
+            ? "(earlier tool report omitted for length)"
+            : "(earlier message omitted for length)";
+      return { role: t.role, text: ellipsis };
+    });
+    if (serializedLength(renderNarrative(compacted)) <= budget) {
+      return compacted;
+    }
+  }
+  // Still over: hard-truncate the whole body (keeps the head — identity
+  // first, dialogue tail last would be useless without the instructions).
+  return turns;
+}
+
+/** Truncate a single text to the budget (single-message fast path). */
+function truncateToBudget(text: string, budget: number): string {
+  return text.length + 5 > budget ? text.slice(0, Math.max(0, budget - 5)) : text;
 }
 
 export interface CompletionOptions {
@@ -279,8 +387,16 @@ export async function complete({
   turns,
   signal,
 }: CompletionOptions): Promise<CompletionResult> {
-  const text = turnsToText(turns);
-  const MAX_ATTEMPTS = 2;
+  // Prompt-length backstop (G3b): turnsToText already compacts to
+  // TOOLBAZ_MAX_PROMPT_CHARS, but if the upstream STILL rejects the size
+  // (limit drift, or a model-specific tighter cap), halve the budget and
+  // rebuild instead of surfacing the 400 to the client (which triggers
+  // destructive client-side system-prompt downgrades).
+  let budget = TOOLBAZ_MAX_PROMPT_CHARS;
+  let text = turnsToText(turns, budget);
+  let promptLengthRetries = 0;
+  let identityRetries = 0; // fresh-identity retries stay capped at 1 (load)
+  const MAX_ATTEMPTS = 6; // 1 + 1 identity retry + up to 2 prompt-length rebuilds + slack
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -321,8 +437,17 @@ export async function complete({
 
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        // Transient 5xx → retry with a fresh identity.
-        if (res.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+        // Prompt-length rejection → halve the budget, rebuild the text and
+        // retry (budget floor 1200 — below that the prompt is unusable).
+        if (/maximum prompt length|prompt (is )?too long|prompt length limit/i.test(raw) && budget > 1200 && promptLengthRetries < 2) {
+          promptLengthRetries += 1;
+          budget = Math.max(1200, Math.floor(budget / 2));
+          text = turnsToText(turns, budget);
+          continue;
+        }
+        // Transient 5xx → retry ONCE with a fresh identity.
+        if (res.status >= 500 && identityRetries < 1) {
+          identityRetries += 1;
           lastError = new ToolbazError(model, res.status, raw);
           continue;
         }
@@ -337,7 +462,8 @@ export async function complete({
       // fresh session id succeeds on the 2nd attempt.
       const isEmpty = raw.trim() === "" || /^Output is empty!/i.test(raw);
       if (isEmpty) {
-        if (attempt < MAX_ATTEMPTS - 1) {
+        if (identityRetries < 1) {
+          identityRetries += 1;
           lastError = new ToolbazError(model, 200, raw || "Output is empty!");
           continue;
         }
@@ -354,14 +480,16 @@ export async function complete({
       if (err instanceof ToolbazError) {
         const isTransient =
           err.upstreamStatus >= 500 || /empty/i.test(err.message);
-        if (!isTransient || attempt >= MAX_ATTEMPTS - 1) throw err;
+        if (!isTransient || identityRetries >= 1) throw err;
+        identityRetries += 1;
         lastError = err;
         continue;
       }
 
       // Network/timeout errors (AbortError, TypeError fetch failed, etc.)
       // → retry once with a fresh identity.
-      if (attempt < MAX_ATTEMPTS - 1) {
+      if (identityRetries < 1) {
+        identityRetries += 1;
         lastError = err;
         continue;
       }

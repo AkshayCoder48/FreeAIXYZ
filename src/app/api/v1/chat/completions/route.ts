@@ -47,6 +47,7 @@ import {
   parseToolCalls,
   hasTools,
 } from "@/lib/tool-calls";
+import { sanitizeVisibleContent, VisibleContentSanitizer } from "@/lib/gateway/output-sanitizer";
 import {
   catalogStore,
   errorResponse as gatewayErrorResponse,
@@ -1418,7 +1419,9 @@ async function legacyJsonCompletion(
             index: 0,
             message: {
               role: "assistant",
-              content: parsed.text || null,
+              // G4: visible text is sanitized (transcript labels + tool
+              // machinery echoes) — structured tool_calls above are untouched.
+              content: sanitizeVisibleContent(parsed.text || "") || null,
               tool_calls: parsed.toolCalls,
             },
             finish_reason: "tool_calls",
@@ -1441,7 +1444,7 @@ async function legacyJsonCompletion(
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content: text },
+        message: { role: "assistant", content: sanitizeVisibleContent(text) },
         finish_reason: "stop",
       },
     ],
@@ -1686,7 +1689,9 @@ async function legacyStreamCompletion(
         } else {
           // No tool calls — emit ONE content chunk with the full text + stop.
           // (PRD §137 — never fake-stream non-streaming provider output.)
-          const content = (parsed.text || fullText || "").trim();
+          // G4: sanitized — transcript labels and tool-machinery echoes never
+          // reach the client's visible content.
+          const content = sanitizeVisibleContent(parsed.text || fullText || "").trim();
           if (!content) {
             // R-5: empty upstream reply → mid-stream error event + terminal
             // chunk (the stream is already open over 200 OK, so we can't
@@ -1738,27 +1743,15 @@ async function legacyStreamCompletion(
           // Forward each upstream delta immediately (PRD §137). The first
           // delta is already in hand from the pre-flight — emit it now, then
           // continue pulling from the (already-opened) generator.
+          // G4: every content delta passes through a VisibleContentSanitizer
+          // (64-char hold-back) — the held tail is flushed before the final
+          // stop chunk below.
+          const contentSan = new VisibleContentSanitizer();
           let hasContent = false;
           if (firstDelta) {
             hasContent = true;
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: firstDelta },
-                  finish_reason: null,
-                },
-              ],
-            });
-          }
-          for await (const delta of gen) {
-            if (signal.aborted) break;
-            if (delta) {
-              hasContent = true;
+            const rel = contentSan.push(firstDelta);
+            if (rel) {
               await send({
                 id,
                 object: "chat.completion.chunk",
@@ -1767,11 +1760,33 @@ async function legacyStreamCompletion(
                 choices: [
                   {
                     index: 0,
-                    delta: { content: delta },
+                    delta: { content: rel },
                     finish_reason: null,
                   },
                 ],
               });
+            }
+          }
+          for await (const delta of gen) {
+            if (signal.aborted) break;
+            if (delta) {
+              hasContent = true;
+              const rel = contentSan.push(delta);
+              if (rel) {
+                await send({
+                  id,
+                  object: "chat.completion.chunk",
+                  created,
+                  model: model.id,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: rel },
+                      finish_reason: null,
+                    },
+                  ],
+                });
+              }
             }
           }
           if (signal.aborted) {
@@ -1798,6 +1813,25 @@ async function legacyStreamCompletion(
               durationMs: Date.now() - requestStart,
             });
             return;
+          }
+          // G4: flush the sanitizer's held-back tail before the stop chunk.
+          {
+            const tail = contentSan.finish();
+            if (tail) {
+              await send({
+                id,
+                object: "chat.completion.chunk",
+                created,
+                model: model.id,
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content: tail },
+                    finish_reason: null,
+                  },
+                ],
+              });
+            }
           }
           await send({
             id,
@@ -1843,22 +1877,27 @@ async function legacyStreamCompletion(
           }
           // Honest non-fake-stream: split into word-ish tokens so the UI can
           // render incrementally even though the upstream yielded the whole
-          // text in one delta.
-          const tokens = fullText.match(/(\s+|\S+)/g) ?? [fullText];
-          for (const token of tokens) {
-            await send({
-              id,
-              object: "chat.completion.chunk",
-              created,
-              model: model.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: token },
-                  finish_reason: null,
-                },
-              ],
-            });
+          // text in one delta. G4: sanitize first — machinery echoes and
+          // transcript labels are dropped before tokenizing (an entirely-
+          // junk reply sanitizes to "" and emits no content chunk at all).
+          const cleanText = sanitizeVisibleContent(fullText);
+          if (cleanText) {
+            const tokens = cleanText.match(/(\s+|\S+)/g) ?? [cleanText];
+            for (const token of tokens) {
+              await send({
+                id,
+                object: "chat.completion.chunk",
+                created,
+                model: model.id,
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content: token },
+                    finish_reason: null,
+                  },
+                ],
+              });
+            }
           }
           await send({
             id,

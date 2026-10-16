@@ -8,19 +8,22 @@
  *
  * Methodology (PRD §182 — "test timing, not just final content"):
  *   1. Build a fake slow provider whose `stream()` async generator yields
- *      "Hello" at +500ms, " world" at +1000ms, "!" at +1500ms.
+ *      DELTA_1 at +500ms, DELTA_2 at +1000ms, DELTA_3 at +1500ms (each
+ *      > 64 chars — see fake-slow-provider.mjs: the G4 sanitizer holds
+ *      back the last 64 chars, so deltas must exceed that window for
+ *      incremental release to be observable).
  *   2. Call `streamChat(req, fakeProvider)` → `{ response, timings }`.
  *   3. Read `response.body` with a single `TextDecoder` (PRD §18) +
  *      `SseParser` to extract each SSE event as it arrives. Record wall
  *      time at first byte + each event arrival.
  *   4. ASSERT:
- *        - First content chunk ("Hello") arrives BEFORE 1100ms
+ *        - First content chunk arrives BEFORE 1100ms
  *          (slack for CI jitter — would be ~1500ms+ on the old
  *          buffered-then-re-paced `streamText()` code).
- *        - Second content chunk (" world") arrives > 200ms after the
+ *        - Second content chunk arrives > 200ms after the
  *          first — proves incremental, not all-at-once.
  *        - [DONE] arrives BEFORE 2500ms.
- *        - Concatenated content === "Hello world!".
+ *        - Concatenated content === the provider's full text.
  *        - timings.chunkCount >= 3 (we observed ≥3 upstream deltas).
  *        - timings.ttftMs < 1100 (time-to-first-token).
  *
@@ -28,7 +31,7 @@
  *   - buffers ALL upstream deltas into `fullText` (no client output until
  *     upstream completion at +1500ms),
  *   - then re-paces with 30ms inter-chunk sleep (final [DONE] at +~1520ms+).
- * The "Hello" content would arrive at ~1500ms instead of ~500ms.
+ * The first content would arrive at ~1500ms instead of ~500ms.
  *
  * Deterministic (PRD §183): no real network — the fake provider uses
  * `setTimeout` only.
@@ -37,13 +40,13 @@
 import assert from "node:assert/strict";
 import { SseParser, extractOpenAiDelta } from "../src/lib/gateway/sse-parser.ts";
 import { streamChat } from "../src/lib/gateway/streaming-proxy.ts";
-import { createFakeSlowProvider } from "./fake-slow-provider.mjs";
+import { createFakeSlowProvider, FAKE_FULL_TEXT } from "./fake-slow-provider.mjs";
 
 // CI jitter tolerance — the fake provider yields at +500/1000/1500ms; the
 // proxy + reader + decoder add a few ms. We assert "well before the next
 // expected chunk" rather than exact equality.
-const FIRST_CONTENT_MAX_MS = 1100;   // "Hello" must arrive < 1100ms
-const INTER_CHUNK_MIN_MS = 200;      // gap between "Hello" and " world"
+const FIRST_CONTENT_MAX_MS = 1100;   // first content must arrive < 1100ms
+const INTER_CHUNK_MIN_MS = 200;      // gap between first and second content
 const DONE_MAX_MS = 2500;            // [DONE] must arrive < 2500ms
 const TTFT_MAX_MS = 1100;            // timings.ttftMs must be < 1100ms
 
@@ -158,7 +161,7 @@ export async function run() {
   );
   assert.ok(
     firstContentMs !== null && firstContentMs < FIRST_CONTENT_MAX_MS,
-    `first content chunk "Hello" arrived at ${firstContentMs}ms — expected < ${FIRST_CONTENT_MAX_MS}ms (would be ~1500ms on the old re-pacer)\n${logStr}`,
+    `first content chunk arrived at ${firstContentMs}ms — expected < ${FIRST_CONTENT_MAX_MS}ms (would be ~1500ms on the old re-pacer)\n${logStr}`,
   );
   assert.ok(
     secondContentMs !== null &&
@@ -171,10 +174,13 @@ export async function run() {
   );
 
   // ─── ASSERT content (PRD §137, §238) ──────────────────────────────
+  // G4: delta.content passes through the VisibleContentSanitizer (64-char
+  // hold-back, flushed at finish()) — for clean prose the concatenation is
+  // byte-identical to the provider's full text.
   assert.equal(
     totalContent,
-    "Hello world!",
-    `concatenated content must equal "Hello world!" — got ${JSON.stringify(totalContent)}\n${logStr}`,
+    FAKE_FULL_TEXT,
+    `concatenated content must equal the provider's full text — got ${JSON.stringify(totalContent)}\n${logStr}`,
   );
 
   // ─── ASSERT timings (PRD §6, §130) ────────────────────────────────
