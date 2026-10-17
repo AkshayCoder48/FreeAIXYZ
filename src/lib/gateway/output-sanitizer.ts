@@ -72,6 +72,16 @@ const MACHINERY_MARKER_RES: RegExp[] = [
   /```[ \t]*\r?\n[ \t]*tool_calls?[^\n]*\n[\s\S]*?```[ \t]*\n?/gi,
   /```[ \t]*\r?\n[ \t]*tool_calls?[\s\S]*$/gi,
   /```[ \t]*\r?\n[ \t]*tool_calls?[ \t]*\r?\n?/gi,
+  // WEB-SEARCH CITATION TOKENS (live leak, 2026-10-17 UI verify): upstream
+  // search grounding (aipkit/unlimitedai with frontend_web_search_active)
+  // inlines raw JSON citation payloads into the content stream:
+  //   【{"id":1,"cursor":0,"loc":0}】
+  // The payload is wire machinery — source coordinates for the upstream
+  // site's own citation popover — never user-facing prose. The model
+  // narrates its sources in text ("as shown on the npm package page"),
+  // so the token is stripped wholesale. Non-JSON brackets (【1】 index
+  // style, CJK quotes) are left alone.
+  /【\s*\{[^】]{0,400}?\}\s*】[ \t]?/g,
 ];
 
 /**
@@ -165,6 +175,14 @@ const MACHINERY_PREFIX_LITERALS: string[] = [
 ];
 
 /**
+ * Cap for the unclosed-citation hold (see machinerySuffixLen): a "【" whose
+ * matching "】" has not arrived yet may be the head of a JSON citation
+ * payload (typical payloads are 20–60 chars; 96 covers generous loc/cursor
+ * values). Past the cap the bracket is treated as prose and released.
+ */
+const CITATION_HOLD_CAP = 96;
+
+/**
  * Length of the longest suffix of `s` (case-folded) that is a proper
  * prefix of a machinery marker literal — i.e. a tail that could still
  * complete into a marker across the next delta boundary. 0 = emit all.
@@ -182,7 +200,21 @@ function machinerySuffixLen(s: string): number {
       }
     }
   }
-  return Math.min(best, TAIL_HOLD);
+  let hold = Math.min(best, TAIL_HOLD);
+  // UNCLOSED CITATION TOKEN: a "【" with no "】" after it could be a
+  // JSON-payload citation split across deltas — hold from that bracket so
+  // the completed token reaches MACHINERY_MARKER_RES in one buffer.
+  // The literal-prefix mechanism above cannot express this (payloads are
+  // variable-length JSON), hence the dedicated scan. Capped so a stray
+  // bracket in ordinary prose streams without stalling.
+  const openIdx = s.lastIndexOf("【");
+  if (openIdx !== -1 && s.indexOf("】", openIdx) === -1) {
+    const citationHold = s.length - openIdx;
+    if (citationHold <= CITATION_HOLD_CAP) {
+      hold = Math.max(hold, citationHold);
+    }
+  }
+  return hold;
 }
 
 /**
