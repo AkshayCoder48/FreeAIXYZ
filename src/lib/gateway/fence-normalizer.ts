@@ -109,6 +109,42 @@ const OPENER_LITERALS: string[] = [
 const FENCE_CLOSE = "```";
 
 /**
+ * BRACKET-LABEL tool-call openers (the live `[tool_call] {…}` leak, observed
+ * on the Onyx fleet): some upstreams label a text-embedded tool call with a
+ * bracket tag instead of a ``` fence —
+ *
+ *   [tool_call] {"name":"create_file_chunk","arguments":{…}}
+ *   [tool_calls] [{"name":"web_search","arguments":{"query":…}}]
+ *   [tool-call]: {…}
+ *
+ * The old behavior: the bare-JSON path matched only the CONTAINER after the
+ * label, so the JSON converted to delta.tool_calls while the label itself
+ * leaked into the visible reply as a dangling `[tool_call]` fragment
+ * (verified live in the OnyxAgent UI). Recognizing the label lets the whole
+ * construct convert; the label is consumed as machinery (like a ``` opener).
+ */
+const BRACKET_LABEL_BASE =
+  /\[(?:tool[_\s-]*calls?|tool-calls?|function[_\s-]*calls?)[\s:]*\][\s:]*/i;
+/** The label must be immediately followed by a JSON container to ARM. */
+const BRACKET_LABEL_ARMED_RE = new RegExp(
+  BRACKET_LABEL_BASE.source + "(?=[{\\[])",
+  "i",
+);
+/** Canonical literals for split-across-deltas hold-back math. */
+const BRACKET_LABEL_LITERALS: string[] = [
+  "[tool_call]",
+  "[tool_calls]",
+  "[tool-call]",
+  "[tool-calls]",
+  "[function_call]",
+  "[function_calls]",
+  "[function-call]",
+  "[function-calls]",
+  "[tool call]",
+  "[function call]",
+];
+
+/**
  * BARE-JSON tool-call openers. Real upstreams (observed live) write the tool
  * call as plain JSON with NO fence at all:
  *
@@ -172,6 +208,9 @@ export class FenceNormalizer {
   private openerBody = "";
   /** Bare-JSON container body accumulated while mode === "bare". */
   private bareBody = "";
+  /** Bracket-label text consumed when a bare container was entered via
+   *  `[tool_call] {…}` (re-emitted with the body when validation fails). */
+  private bareLabel = "";
   /** How many chars of bareBody have been fed into the balance scanner. */
   private bareFed = 0;
   /** Bracket/string balance scanner state for the open bare container. */
@@ -242,11 +281,33 @@ export class FenceNormalizer {
           (dsmlMatch === null || fenceMatch.index <= dsmlMatch.index);
         let match = useFence ? fenceMatch : dsmlMatch;
         if (match === null) {
+          // 1a-b. BRACKET-LABEL opener (`[tool_call] {…}` — the live fleet
+          // leak). Must run BEFORE the bare check: the bare path would match
+          // only the container AFTER the label, letting the label itself
+          // leak into the visible text while the JSON converts (observed
+          // live: a dangling `[tool_call]` fragment in the rendered reply).
+          const labelMatch = BRACKET_LABEL_ARMED_RE.exec(this.pending);
+          if (labelMatch !== null) {
+            outTextParts.push(this.pending.slice(0, labelMatch.index));
+            this.bareLabel = this.pending.slice(
+              labelMatch.index,
+              labelMatch.index + labelMatch[0].length,
+            );
+            this.bareBody = this.pending.slice(
+              labelMatch.index + labelMatch[0].length,
+            );
+            this.pending = "";
+            this.bareFed = 0;
+            this.bareBalance = freshBalance();
+            this.mode = "bare";
+            continue;
+          }
           // 1b. BARE-JSON tool-call opener? (no fence at all — observed on
           // real upstreams). Accumulate the container while it streams.
           const bareMatch = BARE_OPEN_RE.exec(this.pending);
           if (bareMatch !== null) {
             outTextParts.push(this.pending.slice(0, bareMatch.index));
+            this.bareLabel = "";
             this.bareBody = this.pending.slice(bareMatch.index);
             this.pending = "";
             this.bareFed = 0;
@@ -273,6 +334,7 @@ export class FenceNormalizer {
           : Math.max(
               this.openerPrefixSuffixLen(this.pending),
               this.bareTriggerSuffixLen(this.pending),
+              this.bracketLabelSuffixLen(this.pending),
             );
         const emitLen = this.pending.length - hold;
         if (emitLen > 0) {
@@ -419,10 +481,14 @@ export class FenceNormalizer {
         this.emittedCount++;
       }
       this.hadToolCalls = true;
+      this.bareLabel = ""; // the label is machinery — consumed, never shown
       return;
     }
-    // Ordinary JSON (or unparseable) — re-emit as text (never lose content).
-    outTextParts.push(body);
+    // Ordinary JSON (or unparseable) — re-emit as text (never lose
+    // content). A bracket label that armed this capture is re-emitted with
+    // it: the construct was NOT a tool call, so it is the model's text.
+    outTextParts.push(this.bareLabel + body);
+    this.bareLabel = "";
   }
 
   /**
@@ -531,6 +597,44 @@ export class FenceNormalizer {
       .replace(/<\/｜｜DSML｜｜[^>]*>/g, "")
       .trim();
     if (stripped) outTextParts.push(stripped);
+  }
+
+  /**
+   * Length of the longest suffix of `s` that is a proper prefix of a bracket
+   * label (`[tool_call]`…), case-insensitive. 0 = nothing to hold. A partial
+   * label (`[tool`, `[tool_call`) split across deltas must not leak as text
+   * before it can arm — same rule as the fence/bare openers.
+   */
+  private bracketLabelSuffixLen(s: string): number {
+    if (s.length === 0) return 0;
+    const lower = s.toLowerCase();
+    let best = 0;
+    for (const label of BRACKET_LABEL_LITERALS) {
+      // (a) PROPER PREFIX (split mid-label): "[tool", "[tool_call"…
+      const maxK = Math.min(label.length - 1, lower.length);
+      for (let k = maxK; k > best; k--) {
+        if (lower.endsWith(label.slice(0, k))) {
+          best = k;
+          break;
+        }
+      }
+      // (b) COMPLETE label + trailing whitespace: could still ARM when the
+      // NEXT delta opens the container (the live case — label in one
+      // delta, the JSON object in the next). Hold label + whitespace tail
+      // (capped: a long whitespace run without a container is prose
+      // formatting, not an arming gap).
+      const at = lower.lastIndexOf(label);
+      if (at !== -1) {
+        const tail = lower.slice(at + label.length);
+        // an arming gap may be pure whitespace AND/OR colons ("[tool_call]: ")
+        const gapOk = /^[\s:]*$/.test(tail);
+        if (tail.length === 0 || gapOk) {
+          const hold = Math.min(lower.length - at, label.length + 20);
+          if (hold > best) best = hold;
+        }
+      }
+    }
+    return best;
   }
 
   /**

@@ -126,7 +126,10 @@ async function run() {
     const n = new FenceNormalizer(true);
     const { text, calls } = collect(n, ["```tool_call\nthis is not json\n```"]);
     assert.equal(calls.length, 0);
-    assert.ok(text.includes("```tool_call"));
+    // T8 (updated to the e24f50c+ behavior): the ```tool_call opener is
+    // machinery, NOT content the model meant the user to see — it is
+    // stripped. The BODY is never lost.
+    assert.ok(!text.includes("```tool_call"));
     assert.ok(text.includes("this is not json"));
   }
 
@@ -183,7 +186,45 @@ async function run() {
     assert.equal(calls[0].function.name, "v");
   }
 
-  console.log("fence-normalizer: 12 assertions groups passed");
+  // T13 — BRACKET-LABEL openers (the live `[tool_call] {…}` leak): the
+  // label + JSON convert to standard tool calls; the label never leaks as
+  // visible text. Split-across-deltas must hold the partial label back.
+  {
+    const n = new FenceNormalizer(true);
+    const { text, calls } = collect(n, [
+      "Sure! [tool_call] ",
+      '{"name":"create_file_chunk","arg',
+      'uments":{"path":"/tmp/x.txt","content":"hi"}}',
+      " Done.",
+    ]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].function.name, "create_file_chunk");
+    assert.deepEqual(JSON.parse(calls[0].function.arguments), { path: "/tmp/x.txt", content: "hi" });
+    assert.equal(text.trim(), "Sure!  Done.".trim());
+  }
+  // T13b — array form + colon after the label.
+  {
+    const n = new FenceNormalizer(true);
+    const { text, calls } = collect(n, [
+      '[tool_calls]: [{"name":"web_search","arguments":{"query":"ai"}},{"name":"read_file","arguments":{"path":"a"}}]',
+    ]);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].function.name, "web_search");
+    assert.equal(calls[1].function.name, "read_file");
+    assert.equal(text, "");
+  }
+  // T13c — unarmed label (no container) is NOT hijacked as a tool call and
+  // the machinery label is stripped from visible text by the sanitizer
+  // layer, but the FenceNormalizer itself must leave it as text (it is
+  // prose until armed).
+  {
+    const n = new FenceNormalizer(true);
+    const { text, calls } = collect(n, ["See [tool_call] the docs for details."]);
+    assert.equal(calls.length, 0);
+    assert.ok(text.includes("[tool_call]")); // unarmed = ordinary text
+  }
+
+  console.log("fence-normalizer: 15 assertions groups passed");
 }
 
 export { run };

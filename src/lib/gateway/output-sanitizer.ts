@@ -57,6 +57,15 @@ const MACHINERY_MARKER_RES: RegExp[] = [
   /```tool_call[^\n]*\n[\s\S]*$/g,
   // A bare opening fence line with nothing after it.
   /```tool_call[ \t]*\n?/g,
+  // BRACKET-LABEL tool-call markers that never ARMED (no JSON container
+  // followed, so the FenceNormalizer left them as text) — the live fleet
+  // leak: upstreams label text-embedded calls `[tool_call] {…}`; when the
+  // JSON after the label parses via another path or is absent, the label
+  // still surfaces in the visible reply as a dangling fragment. Armed
+  // labels are consumed by the FenceNormalizer BEFORE the sanitizer runs,
+  // so anything left here is stray machinery.
+  /\[(?:tool[_\s-]*calls?|tool-calls?|function[_\s-]*calls?)[\s:]*\][\s:]*(?=\n|$)/gi,
+  /\[(?:tool[_\s-]*calls?|tool-calls?|function[_\s-]*calls?)[\s:]*\][\s:]*(?=[{\[])/gi,
   // MULTILINE VARIANT (the "```\ntool_call" leak): the marker and the label
   // on SEPARATE lines — the single-line patterns above miss it. Paired first,
   // then the unterminated tail, then a bare marker+label open.
@@ -96,11 +105,85 @@ export function sanitizeVisibleContent(text: string): string {
 
 /**
  * Hold-back window for streaming: the tail of the cleaned buffer that stays
- * unemitted until more deltas arrive (or finish()). Long enough to cover the
- * longest marker prefix that can span a delta boundary ("[tool result for …"
- * is ~40 chars; "<tool_result …" ~30; a label + newline ~14).
+ * unemitted until more deltas arrive (or finish()). CAPS the dynamic hold
+ * from machinerySuffixLen (see below) — see TAIL_HOLD note.
  */
 const TAIL_HOLD = 64;
+
+/**
+ * DYNAMIC HOLD (the streaming-regression fix): the OLD flat 64-char tail
+ * hold meant a stream whose content so far is < 64 chars — or whose first
+ * content is followed by a pause (thinking models) — emitted NOTHING until
+ * flush(): the client's first byte only arrived at upstream completion
+ * (PRD §137 violation, "proxy buffered until upstream completion", live:
+ * short replies felt frozen). The hold must cover exactly what could
+ * still GROW INTO a machinery marker split across deltas — the same
+ * prefix-suffix rule the FenceNormalizer uses for its openers. Everything
+ * before that prefix is safe to emit immediately.
+ */
+const MACHINERY_PREFIX_LITERALS: string[] = [
+  // [Used tools: …] / (You previously used tools: …) echoes + fabrications.
+  "[used tools:",
+  "[used tool:",
+  "(you previously used tools:",
+  "(you used tools:",
+  // [Calling X with {…}] client tool-text mode.
+  "[calling ",
+  // v1/v2 gateway tool-result headers.
+  "[tool result for ",
+  "[the ",
+  // Client wire-compat <tool_result> blocks.
+  "<tool_result",
+  // ```tool_call fences that slipped past the FenceNormalizer.
+  "```tool_call",
+  "```tool_calls",
+  "```tool-call",
+  "```tool-calls",
+  "```function_call",
+  "```function_calls",
+  "```function-call",
+  "```function-calls",
+  "```",
+  // DSML tags.
+  "<｜｜dsml｜｜tool_calls",
+  // Unarmed bracket labels (the live [tool_call] leak — stripped only when
+  // they resolve as stray machinery; held here so a split label is caught).
+  "[tool_call",
+  "[tool_calls",
+  "[tool-call",
+  "[tool-calls",
+  "[function_call",
+  "[function_calls",
+  "[function-call",
+  "[function-calls",
+  // Transcript speaker labels (sanitizeVisible* strips them at line
+  // starts; the hold keeps a split one from being emitted as text first).
+  "assistant:",
+  "user:",
+  "system:",
+  "tool:",
+];
+
+/**
+ * Length of the longest suffix of `s` (case-folded) that is a proper
+ * prefix of a machinery marker literal — i.e. a tail that could still
+ * complete into a marker across the next delta boundary. 0 = emit all.
+ */
+function machinerySuffixLen(s: string): number {
+  if (s.length === 0) return 0;
+  const lower = s.toLowerCase();
+  let best = 0;
+  for (const lit of MACHINERY_PREFIX_LITERALS) {
+    const maxK = Math.min(lit.length - 1, lower.length);
+    for (let k = maxK; k > best; k--) {
+      if (lower.endsWith(lit.slice(0, k))) {
+        best = k;
+        break;
+      }
+    }
+  }
+  return Math.min(best, TAIL_HOLD);
+}
 
 /**
  * Streaming sanitizer — feed it content deltas, receive clean fragments.
@@ -126,12 +209,18 @@ export class VisibleContentSanitizer {
     const cleaned = this.emitted
       ? sanitizeVisibleBody(this.buffer)
       : sanitizeVisibleContent(this.buffer);
-    if (cleaned.length <= TAIL_HOLD) {
+    // DYNAMIC HOLD: only the tail that could still complete into a
+    // machinery marker stays unemitted (machinerySuffixLen) — everything
+    // before it streams to the client immediately. The old flat 64-char
+    // window held back the first content of every short-or-paused stream
+    // until flush() ("proxy buffered until upstream completion").
+    const hold = machinerySuffixLen(cleaned);
+    if (cleaned.length <= hold) {
       this.buffer = cleaned;
       return "";
     }
-    const emit = cleaned.slice(0, cleaned.length - TAIL_HOLD);
-    this.buffer = cleaned.slice(cleaned.length - TAIL_HOLD);
+    const emit = cleaned.slice(0, cleaned.length - hold);
+    this.buffer = cleaned.slice(cleaned.length - hold);
     this.emitted = true;
     return emit;
   }

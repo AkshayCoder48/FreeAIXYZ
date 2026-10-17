@@ -29,7 +29,7 @@ import {
 } from "@/lib/gateway/errors";
 import { providerHealthService } from "@/lib/gateway/health";
 import { metricsService } from "@/lib/gateway/metrics";
-import { toolDiagnostics } from "@/lib/gateway-tools/diagnostics";
+import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import { ToolCallNormalizer } from "@/lib/gateway/tool-call-normalizer";
 import { FenceNormalizer } from "@/lib/gateway/fence-normalizer";
 import { VisibleContentSanitizer } from "@/lib/gateway/output-sanitizer";
@@ -78,6 +78,27 @@ const PREFLIGHT_FIRST_CHUNK_BUDGET_MS = 90_000;
 
 /** Symbol marker for a first-chunk budget expiry (distinguishable from upstream throws). */
 const FIRST_CHUNK_BUDGET_EXPIRED = Symbol("firstChunkBudgetExpired");
+
+/**
+ * MID-STREAM IDLE WATCHDOG (the "eternal thinking" fix, mid-stream side).
+ *
+ * The first-chunk budget only bounds the gap BEFORE the first yield. After
+ * it, the consume loop awaited `gen.next()` with NO deadline: an upstream
+ * that opened the SSE stream, delivered a chunk or two, and then went
+ * silent FOREVER held the connection open — the client's reader waits on
+ * bytes that never arrive (the app-layer "thinking" spinner with nothing
+ * to recover it until the platform kills the job).
+ *
+ * 120s after the last chunk is generous (well above every healthy
+ * inter-chunk gap we have measured — real streamers emit sub-second;
+ * blob-yielders are split by delta-pacing) and comfortably under the 300s
+ * route budget, so the watchdog fires while the function is still alive
+ * to emit an honest `event: error` + terminal chunk + clean close.
+ */
+const MIDSTREAM_IDLE_BUDGET_MS = 120_000;
+
+/** Symbol marker for a mid-stream idle expiry (distinguishable from upstream throws). */
+const MIDSTREAM_IDLE_EXPIRED = Symbol("midstreamIdleExpired");
 
 /**
  * Failover candidate (audit D1). The gateway resolves the requested model
@@ -461,7 +482,45 @@ class StreamingProxyService {
           this.safeClose(controller);
           return;
         }
-        const next = await gen.next();
+        // MID-STREAM IDLE WATCHDOG: race the generator's next yield against
+        // the no-bytes deadline (see MIDSTREAM_IDLE_BUDGET_MS above). Expiry
+        // throws MIDSTREAM_IDLE_TIMEOUT → the catch below emits
+        // `event: error` + terminal chunk + close — the client sees a
+        // bounded, honest, recoverable failure instead of a held-open
+        // connection (the app-side "eternal thinking" condition).
+        let next: IteratorResult<string, void>;
+        {
+          let idleTimer: ReturnType<typeof setTimeout> | undefined;
+          const expired = new Promise<typeof MIDSTREAM_IDLE_EXPIRED>(
+            (resolve) => {
+              idleTimer = setTimeout(
+                () => resolve(MIDSTREAM_IDLE_EXPIRED),
+                MIDSTREAM_IDLE_BUDGET_MS,
+              );
+            },
+          );
+          try {
+            const raced = await Promise.race([gen.next(), expired]);
+            if (raced === MIDSTREAM_IDLE_EXPIRED) {
+              throw new GatewayError({
+                type: "UPSTREAM_TIMEOUT",
+                status: 504,
+                code: "midstream_idle_timeout",
+                message:
+                  `Upstream "${candidate.adapter.id}" produced no bytes for ` +
+                  `${Math.round(MIDSTREAM_IDLE_BUDGET_MS / 1000)}s after streaming started ` +
+                  `(mid-stream idle watchdog). The provider stalled mid-generation — ` +
+                  `try again or switch models.`,
+                provider: candidate.adapter.id,
+                model: candidate.req.modelId,
+                requestId: timings.requestId,
+              });
+            }
+            next = raced;
+          } finally {
+            if (idleTimer) clearTimeout(idleTimer);
+          }
+        }
         if (next.done) break;
         const delta = next.value;
         if (!delta) continue;
@@ -629,7 +688,13 @@ class StreamingProxyService {
       // case). Clients parsing SSE see the structured error; clients that
       // also check the top-level `http_status` field on the SSE error frame
       // can recover the real HTTP status.
-      try { await gen.return(undefined); } catch { /* ignore */ }
+      // Fire-and-forget return (NOT awaited): a generator suspended at an
+      // internal await settles return() only when that await resolves —
+      // awaiting here would re-hang the error path exactly when it must
+      // deliver the honest failure to the client (the pre-flight path
+      // already uses this pattern; the mid-stream catch used to await and
+      // could stall before emitting anything).
+      try { void Promise.resolve(gen.return(undefined)).catch(() => {}); } catch { /* ignore */ }
       this.handleStreamError(
         controller,
         err,
