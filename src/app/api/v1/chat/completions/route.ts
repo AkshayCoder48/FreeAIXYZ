@@ -83,8 +83,8 @@ import {
   TOOL_AVAILABILITY_SYSTEM_PROMPT,
   validateToolParams,
   type ValidatedToolParams,
-} from "@/lib/gateway-tools/validation";
-import { toolDiagnostics } from "@/lib/gateway-tools/diagnostics";
+} from "@/lib/tools/validation";
+import { toolDiagnostics } from "@/lib/tools/diagnostics";
 import {
   imageAnnotation,
   normalizeMessageContent,
